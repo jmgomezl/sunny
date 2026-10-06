@@ -543,13 +543,19 @@ ul {
   animation: bob 4.2s ease-in-out infinite;
 }
 
-.sunny-shadow {
+.sunny-shadow-wrap {
   position: absolute;
-  left: 50%;
+  left: 0;
+  right: 0;
   bottom: 0;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.sunny-shadow {
   width: 46%;
   height: 16px;
-  translate: -50% 0;
   border-radius: 50%;
   background: radial-gradient(closest-side, rgba(150, 80, 20, 0.35), rgba(150, 80, 20, 0));
   animation: shadow 4.2s ease-in-out infinite;
@@ -591,7 +597,7 @@ ul {
 .sunny-eye {
   transform-box: fill-box;
   transform-origin: center;
-  animation: blink 4.8s ease-in-out infinite;
+  animation: blink 9.4s ease-in-out infinite;
 }
 
 .sunny-cheeks {
@@ -1281,12 +1287,22 @@ ul {
 
 @keyframes blink {
   0%,
-  91%,
-  97%,
+  42%,
+  46%,
+  88%,
+  90.5%,
+  93.5%,
+  96%,
   100% {
     transform: scaleY(1);
   }
-  94% {
+  44% {
+    transform: scaleY(0.08);
+  }
+  89.2% {
+    transform: scaleY(0.08);
+  }
+  94.8% {
     transform: scaleY(0.08);
   }
 }
@@ -2079,4 +2095,116 @@ ul {
 
 .meter--frozen .meter-hint {
   color: var(--ice-ink);
+}
+
+/* ───────────────────────── Realism layer ───────────────────────── */
+
+.sunny-sway,
+.sunny-body,
+.sunny-jelly {
+  display: block;
+  will-change: transform;
+}
+
+/* A slow sway on its own period; combined with the float and breath (different
+   periods) the idle motion never visibly loops. */
+.sunny-sway {
+  animation: idle-sway 7.3s ease-in-out infinite;
+}
+
+.sunny-react > svg {
+  transform-origin: 50% 56%;
+  animation: breath 3.3s ease-in-out infinite;
+}
+
+/* Rays flicker like soft flames, each on its own rhythm (set inline). */
+.sunny-ray {
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+  animation-name: flicker;
+  animation-timing-function: ease-in-out;
+  animation-iteration-count: infinite;
+  animation-direction: alternate;
+}
+
+.sunny--frozen .sunny-ray,
+.sunny--dozing .sunny-ray,
+.sunny--sleepy .sunny-ray {
+  animation-play-state: paused;
+}
+
+/* Ambient light from the sky tints Sunny: cool in storms, warm at golden hour. */
+.sunny-ambient {
+  fill: var(--ambient, #fff);
+  opacity: var(--ambient-o, 0);
+  mix-blend-mode: soft-light;
+  transition: fill 1s ease, opacity 1s ease;
+  pointer-events: none;
+}
+
+:root[data-weather='golden'] {
+  --ambient: #ff8f2e;
+  --ambient-o: 0.4;
+}
+
+:root[data-weather='storm'] {
+  --ambient: #5d78b3;
+  --ambient-o: 0.55;
+}
+
+:root[data-weather='night'] {
+  --ambient: #3d4596;
+  --ambient-o: 0.32;
+}
+
+:root[data-weather='hazy'] {
+  --ambient: #ff7f6a;
+  --ambient-o: 0.35;
+}
+
+@keyframes idle-sway {
+  0%,
+  100% {
+    rotate: -1.3deg;
+  }
+  50% {
+    rotate: 1.3deg;
+  }
+}
+
+@keyframes breath {
+  0%,
+  100% {
+    transform: scale(1, 1);
+  }
+  50% {
+    transform: scale(1.016, 1.026);
+  }
+}
+
+@keyframes flicker {
+  from {
+    transform: scaleY(0.93) rotate(-2.5deg);
+  }
+  to {
+    transform: scaleY(1.07) rotate(2.5deg);
+  }
+}
+
+/* Sky parallax (driven by --px/--py from the pointer). */
+.sky-clouds {
+  position: absolute;
+  inset: 0;
+  translate: calc(var(--px, 0) * -16px) calc(var(--py, 0) * -8px);
+  transition: translate 1.1s cubic-bezier(0.2, 0.7, 0.3, 1);
+}
+
+.sky-stars {
+  translate: calc(var(--px, 0) * -5px) calc(var(--py, 0) * -3px);
+  transition: opacity 1.2s ease, translate 1.4s cubic-bezier(0.2, 0.7, 0.3, 1);
+}
+
+.sky-sunbeam {
+  translate: calc(-50% + var(--px, 0) * -6px) calc(-50% + var(--py, 0) * -4px);
+  transition: opacity 1s ease, translate 1.4s cubic-bezier(0.2, 0.7, 0.3, 1);
 }

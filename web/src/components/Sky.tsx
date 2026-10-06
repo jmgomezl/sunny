@@ -1,3 +1,5 @@
+import { useEffect, useRef } from 'react'
+
 export type Weather = 'clear' | 'golden' | 'storm' | 'night' | 'hazy'
 
 const WEATHERS: Weather[] = ['clear', 'golden', 'storm', 'night', 'hazy']
@@ -36,8 +38,22 @@ const CLOUDS = [
 ]
 
 export function Sky({ weather }: { weather: Weather }) {
+  const ref = useRef<HTMLDivElement>(null)
+
+  // Parallax: far layers (stars, sunbeam) barely move, near clouds move more, so the sky has depth.
+  useEffect(() => {
+    const onMove = (e: PointerEvent) => {
+      const el = ref.current
+      if (!el) return
+      el.style.setProperty('--px', ((e.clientX / window.innerWidth) * 2 - 1).toFixed(3))
+      el.style.setProperty('--py', ((e.clientY / window.innerHeight) * 2 - 1).toFixed(3))
+    }
+    window.addEventListener('pointermove', onMove)
+    return () => window.removeEventListener('pointermove', onMove)
+  }, [])
+
   return (
-    <div className={`sky sky--${weather}`} aria-hidden="true">
+    <div ref={ref} className={`sky sky--${weather}`} aria-hidden="true">
       {WEATHERS.map((w) => (
         <div key={w} className={`sky-layer sky-layer--${w}`} data-active={w === weather} />
       ))}
@@ -48,24 +64,40 @@ export function Sky({ weather }: { weather: Weather }) {
         {STARS.map((s, i) => (
           <span
             key={i}
-            style={{ left: `${s.left}%`, top: `${s.top}%`, width: s.size, height: s.size, animationDelay: `${s.delay}s` }}
+            style={{
+              left: `${s.left}%`,
+              top: `${s.top}%`,
+              width: s.size,
+              height: s.size,
+              animationDelay: `${s.delay}s`,
+            }}
           />
         ))}
       </div>
 
-      {CLOUDS.map((c, i) => (
-        <div
-          key={i}
-          className="sky-cloud"
-          style={{ top: `${c.top}%`, animationDuration: `${c.duration}s`, animationDelay: `${c.delay}s`, ['--s' as string]: c.scale }}
-        >
-          <CloudShape />
-        </div>
-      ))}
+      <div className="sky-clouds">
+        {CLOUDS.map((c, i) => (
+          <div
+            key={i}
+            className="sky-cloud"
+            style={{
+              top: `${c.top}%`,
+              animationDuration: `${c.duration}s`,
+              animationDelay: `${c.delay}s`,
+              ['--s' as string]: c.scale,
+            }}
+          >
+            <CloudShape />
+          </div>
+        ))}
+      </div>
 
       <div className="sky-rain" data-active={weather === 'storm'}>
         {DROPS.map((d, i) => (
-          <span key={i} style={{ left: `${d.left}%`, animationDelay: `${d.delay}s`, animationDuration: `${d.duration}s` }} />
+          <span
+            key={i}
+            style={{ left: `${d.left}%`, animationDelay: `${d.delay}s`, animationDuration: `${d.duration}s` }}
+          />
         ))}
       </div>
 

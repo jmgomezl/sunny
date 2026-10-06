@@ -83,7 +83,14 @@ const GESTURES: Record<Gesture, () => Play> = {
     ms: 1100,
     bond: 1,
   }),
-  double: () => ({ reaction: 'spin', line: 'Wheee! ✨', particles: ['sparkle', 7], haptic: 'medium', ms: 1000, bond: 2 }),
+  double: () => ({
+    reaction: 'spin',
+    line: 'Wheee! ✨',
+    particles: ['sparkle', 7],
+    haptic: 'medium',
+    ms: 1000,
+    bond: 2,
+  }),
   pet: () => ({
     reaction: 'love',
     line: 'Aww… I like that. I’ll keep your wallet extra safe today.',
@@ -350,14 +357,7 @@ export default function App() {
         </div>
 
         <div className="sunny-slot">
-          <Sunny
-            mood={mood}
-            reaction={reaction}
-            frozen={frozen}
-            dozing={dozing}
-            size={200}
-            onGesture={onGesture}
-          />
+          <Sunny mood={mood} reaction={reaction} frozen={frozen} dozing={dozing} size={200} onGesture={onGesture} />
           <Particles items={particles} onDone={(id) => setParticles((prev) => prev.filter((p) => p.id !== id))} />
         </div>
 
@@ -375,8 +375,8 @@ export default function App() {
           <SolanaMark size={14} /> Built on Solana
         </div>
         <p className="footnote">
-          Sunny watches and explains. It never invests for you without asking, and it can’t spend past the limits
-          you set on Solana.
+          Sunny watches and explains. It never invests for you without asking, and it can’t spend past the limits you
+          set on Solana.
         </p>
       </main>
 
@@ -454,7 +454,14 @@ function Meter({ label, hint, value, tone }: { label: string; hint: string; valu
         <span className="meter-label">{label}</span>
         <span className="meter-num">{v}%</span>
       </div>
-      <div className="meter-bar" role="meter" aria-label={label} aria-valuenow={v} aria-valuemin={0} aria-valuemax={100}>
+      <div
+        className="meter-bar"
+        role="meter"
+        aria-label={label}
+        aria-valuenow={v}
+        aria-valuemin={0}
+        aria-valuemax={100}
+      >
         <motion.span
           className="meter-fill"
           initial={false}
@@ -538,10 +545,7 @@ function Sparkline({ points }: { points: number[] }) {
   const half = Math.max((hi - lo) / 2, mid * 0.12)
   const min = mid - half
   const max = mid + half
-  const xy = points.map((p, i) => [
-    (i / (points.length - 1)) * w,
-    h - 8 - ((p - min) / (max - min)) * (h - 18),
-  ])
+  const xy = points.map((p, i) => [(i / (points.length - 1)) * w, h - 8 - ((p - min) / (max - min)) * (h - 18)])
   const line = xy.map(([x, y], i) => `${i ? 'L' : 'M'}${x.toFixed(1)} ${y.toFixed(1)}`).join(' ')
   const [lx, ly] = xy[xy.length - 1]
   return (
@@ -587,7 +591,11 @@ function Watchlist({ tokens }: { tokens: Token[] }) {
                 {t.symbol[0]}
               </span>
               <span className={`token-safety token-safety--${t.safety}`}>
-                {t.safety === 'safe' ? <CheckIcon size={12} strokeWidth={2.6} /> : <AlertIcon size={12} strokeWidth={2.4} />}
+                {t.safety === 'safe' ? (
+                  <CheckIcon size={12} strokeWidth={2.6} />
+                ) : (
+                  <AlertIcon size={12} strokeWidth={2.4} />
+                )}
                 {t.safety === 'safe' ? 'Checked' : 'Risky'}
               </span>
             </div>

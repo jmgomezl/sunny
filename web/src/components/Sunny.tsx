@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState, type PointerEvent, type ReactNode } from 'react'
-import { motion, useAnimate } from 'motion/react'
+import { motion, useAnimate, useMotionTemplate, useMotionValue, useSpring, useTransform } from 'motion/react'
 
 export type Mood = 'happy' | 'excited' | 'sleepy' | 'worried' | 'hungry'
 /** Short-lived expressions that play over the current mood. */
@@ -14,7 +14,8 @@ const BLUSH = '#FF7C8C'
 const LONG_RAY = 'M -12 -56 C -15 -74 -7 -90 0 -98 C 7 -90 15 -74 12 -56 Z'
 const SHORT_RAY = 'M -10 -56 C -12 -69 -6 -80 0 -86 C 6 -80 12 -69 10 -56 Z'
 const SPARKLE = 'M0 -9 C1 -2.5 2.5 -1 9 0 C2.5 1 1 2.5 0 9 C-1 2.5 -2.5 1 -9 0 C-2.5 -1 -1 -2.5 0 -9 Z'
-const HEART = 'M 0 5 C -7 -0.5 -10 -5 -6.2 -8.8 C -3.6 -11.4 -0.9 -10.2 0 -8 C 0.9 -10.2 3.6 -11.4 6.2 -8.8 C 10 -5 7 -0.5 0 5 Z'
+const HEART =
+  'M 0 5 C -7 -0.5 -10 -5 -6.2 -8.8 C -3.6 -11.4 -0.9 -10.2 0 -8 C 0.9 -10.2 3.6 -11.4 6.2 -8.8 C 10 -5 7 -0.5 0 5 Z'
 
 const LONG_PRESS_MS = 520
 const DOUBLE_TAP_MS = 320
@@ -46,6 +47,38 @@ export function Sunny({ mood, reaction = null, frozen = false, dozing = false, s
   const pressTimer = useRef<number | undefined>(undefined)
   const pressFired = useRef(false)
   const press = useRef<{ x: number; y: number; dist: number; lastRub: number } | null>(null)
+  const settleTimer = useRef<number | undefined>(undefined)
+
+  // ── Realism layer ──────────────────────────────────────────────
+  // A spring-smoothed gaze (-1..1) turns Sunny like a sphere toward the pointer:
+  // the face slides across the surface, while the gloss, rays and halo shift the
+  // other way, so each layer reads at its own depth.
+  const gx = useMotionValue(0)
+  const gy = useMotionValue(0)
+  const sgx = useSpring(gx, { stiffness: 120, damping: 15, mass: 0.8 })
+  const sgy = useSpring(gy, { stiffness: 120, damping: 15, mass: 0.8 })
+  const faceX = useTransform(sgx, (v) => v * 7)
+  const faceY = useTransform(sgy, (v) => v * 5)
+  const faceTurn = useTransform(sgx, (v) => 1 - Math.abs(v) * 0.07)
+  const cheekX = useTransform(sgx, (v) => v * 6)
+  const glossX = useTransform(sgx, (v) => v * -7)
+  const glossY = useTransform(sgy, (v) => v * -5)
+  const backX = useTransform(sgx, (v) => v * -3.5)
+  const backY = useTransform(sgy, (v) => v * -2.5)
+  const haloX = useTransform(sgx, (v) => v * -7)
+  const haloY = useTransform(sgy, (v) => v * -5)
+  const lean = useTransform(sgx, (v) => v * 4)
+  const shadowX = useTransform(sgx, (v) => v * -9)
+
+  // Jelly body: pressing squashes Sunny along the line of the touch; letting go
+  // springs back past rest and wobbles, like a soft plush toy.
+  const squashTarget = useMotionValue(0)
+  const squash = useSpring(squashTarget, { stiffness: 480, damping: 8, mass: 0.7 })
+  const pressAngle = useMotionValue(90)
+  const squashAlong = useTransform(squash, (v) => 1 - v * 0.1)
+  const bulgeAcross = useTransform(squash, (v) => 1 + v * 0.075)
+  const unrotate = useTransform(pressAngle, (a) => -a)
+  const jelly = useMotionTemplate`rotate(${pressAngle}deg) scale(${squashAlong}, ${bulgeAcross}) rotate(${unrotate}deg)`
 
   // Eyes follow the pointer anywhere on the page.
   useEffect(() => {
@@ -56,40 +89,63 @@ export function Sunny({ mood, reaction = null, frozen = false, dozing = false, s
       const dx = (e.clientX - (r.left + r.width / 2)) / r.width
       const dy = (e.clientY - (r.top + r.height / 2)) / r.height
       look(svg, clamp(dx * 7, -3.6, 3.6), clamp(dy * 6, -3, 3))
+      gx.set(clamp(dx * 1.6, -1, 1))
+      gy.set(clamp(dy * 1.6, -1, 1))
       lastLook.current = performance.now()
+      window.clearTimeout(settleTimer.current)
+      settleTimer.current = window.setTimeout(() => {
+        gx.set(0)
+        gy.set(0)
+      }, 2600)
     }
     window.addEventListener('pointermove', onMove)
     return () => window.removeEventListener('pointermove', onMove)
-  }, [])
+  }, [gx, gy])
 
   // Idle life: glance around now and then, and sometimes wave.
   useEffect(() => {
     let timers: number[] = []
     const schedule = () => {
       timers.push(
-        window.setTimeout(() => {
-          const svg = svgRef.current
-          const quiet = performance.now() - lastLook.current > 3000
-          if (svg && quiet && mood !== 'sleepy' && !reaction && !dozing) {
-            if (Math.random() < 0.35) {
-              setIdleWave(true)
-              timers.push(window.setTimeout(() => setIdleWave(false), 1400))
-            } else {
-              look(svg, -3.2, 0.5)
-              timers.push(window.setTimeout(() => look(svg, 3.2, -1), 750))
-              timers.push(window.setTimeout(() => look(svg, 0, 0), 1500))
+        window.setTimeout(
+          () => {
+            const svg = svgRef.current
+            const quiet = performance.now() - lastLook.current > 3000
+            if (svg && quiet && mood !== 'sleepy' && !reaction && !dozing) {
+              if (Math.random() < 0.35) {
+                setIdleWave(true)
+                timers.push(window.setTimeout(() => setIdleWave(false), 1400))
+              } else {
+                glance(svg, -1, 0.2)
+                timers.push(window.setTimeout(() => glance(svg, 1, -0.4), 800))
+                timers.push(window.setTimeout(() => glance(svg, 0, 0), 1600))
+              }
             }
-          }
-          schedule()
-        }, 5500 + Math.random() * 5000),
+            schedule()
+          },
+          5500 + Math.random() * 5000,
+        ),
       )
     }
+    const glance = (svg: SVGSVGElement, x: number, y: number) => {
+      look(svg, x * 3.2, y * 2.5)
+      gx.set(x * 0.55)
+      gy.set(y * 0.4)
+    }
+    // Micro-saccades: tiny eye flicks, so Sunny never looks frozen in place.
+    const saccades = window.setInterval(() => {
+      const svg = svgRef.current
+      const quiet = performance.now() - lastLook.current > 3000
+      if (!svg || !quiet || reaction || dozing || mood === 'sleepy') return
+      look(svg, (Math.random() - 0.5) * 2.2, (Math.random() - 0.5) * 1.4)
+    }, 1400)
     schedule()
     return () => {
       timers.forEach(clearTimeout)
       timers = []
+      clearInterval(saccades)
     }
-  }, [mood, reaction, dozing])
+  }, [mood, reaction, dozing, gx, gy])
 
   // A little pop whenever the mood changes, and a full twirl for the spin reaction.
   const firstMood = useRef(true)
@@ -116,6 +172,8 @@ export function Sunny({ mood, reaction = null, frozen = false, dozing = false, s
       // Capture can fail for synthetic or already-released pointers; rubbing still works on Sunny.
     }
     press.current = { x: e.clientX, y: e.clientY, dist: 0, lastRub: 0 }
+    pressAngle.set(angleAt(e.clientX, e.clientY))
+    squashTarget.set(1)
     pressFired.current = false
     window.clearTimeout(pressTimer.current)
     pressTimer.current = window.setTimeout(() => {
@@ -131,6 +189,9 @@ export function Sunny({ mood, reaction = null, frozen = false, dozing = false, s
     p.dist += Math.hypot(e.clientX - p.x, e.clientY - p.y)
     p.x = e.clientX
     p.y = e.clientY
+    // While rubbing, the squash follows the finger, so Sunny rolls under your hand.
+    pressAngle.set(angleAt(e.clientX, e.clientY))
+    squashTarget.set(0.7)
     if (p.dist < RUB_DISTANCE_PX) return
     window.clearTimeout(pressTimer.current)
     const now = performance.now()
@@ -144,6 +205,18 @@ export function Sunny({ mood, reaction = null, frozen = false, dozing = false, s
   const endPress = () => {
     window.clearTimeout(pressTimer.current)
     press.current = null
+    squashTarget.set(0)
+  }
+
+  // Angle of the touch from Sunny's centre; a press near the middle squashes straight down.
+  const angleAt = (x: number, y: number) => {
+    const svg = svgRef.current
+    if (!svg) return 90
+    const r = svg.getBoundingClientRect()
+    const dx = x - (r.left + r.width / 2)
+    const dy = y - (r.top + r.height / 2)
+    if (Math.hypot(dx, dy) < r.width * 0.08) return 90
+    return (Math.atan2(dy, dx) * 180) / Math.PI
   }
 
   const onPointerUp = (e: PointerEvent<HTMLButtonElement>) => {
@@ -191,151 +264,175 @@ export function Sunny({ mood, reaction = null, frozen = false, dozing = false, s
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
       onPointerCancel={endPress}
+      onLostPointerCapture={() => squashTarget.set(0)}
       onContextMenu={(e) => e.preventDefault()}
-      whileTap={{ scaleX: 1.12, scaleY: 0.88 }}
-      transition={{ type: 'spring', stiffness: 520, damping: 11 }}
       aria-label={`Sunny is feeling ${mood}. Tap to say hi, hold to pet.`}
     >
       <div className="sunny-bob">
-        <div className="sunny-body" ref={scope}>
-          <div className="sunny-react">
-            <svg ref={svgRef} viewBox="-120 -120 240 240" width={size} height={size} aria-hidden="true">
-              <defs>
-                <radialGradient id={ref('halo')}>
-                  <stop offset="0" stopColor="#FFE896" stopOpacity="0.95" />
-                  <stop offset="0.5" stopColor="#FFC650" stopOpacity="0.38" />
-                  <stop offset="1" stopColor="#FFB238" stopOpacity="0" />
-                </radialGradient>
-                <radialGradient id={ref('body')} cx="36%" cy="30%" r="78%">
-                  <stop offset="0" stopColor="#FFF8D8" />
-                  <stop offset="0.3" stopColor="#FFE07A" />
-                  <stop offset="0.68" stopColor="#FFB940" />
-                  <stop offset="1" stopColor="#F3892C" />
-                </radialGradient>
-                <radialGradient id={ref('shade')} cx="34%" cy="26%" r="90%">
-                  <stop offset="0.6" stopColor="#B9470F" stopOpacity="0" />
-                  <stop offset="1" stopColor="#B9470F" stopOpacity="0.34" />
-                </radialGradient>
-                <radialGradient id={ref('frost')} cx="40%" cy="30%" r="80%">
-                  <stop offset="0" stopColor="#F4FBFF" stopOpacity="0.55" />
-                  <stop offset="1" stopColor="#9FD4FF" stopOpacity="0.5" />
-                </radialGradient>
-                <linearGradient id={ref('ray')} x1="0" y1="1" x2="0" y2="0">
-                  <stop offset="0" stopColor="#FFAA35" />
-                  <stop offset="0.65" stopColor="#FFCB55" />
-                  <stop offset="1" stopColor="#FFE38A" />
-                </linearGradient>
-                <radialGradient id={ref('arm')} cx="40%" cy="35%" r="70%">
-                  <stop offset="0" stopColor="#FFD066" />
-                  <stop offset="1" stopColor="#F59A33" />
-                </radialGradient>
-                <linearGradient id={ref('drop')} x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0" stopColor="#D8F1FF" />
-                  <stop offset="1" stopColor="#7FC4F2" />
-                </linearGradient>
-                <linearGradient id={ref('orbit')} x1="0" y1="0" x2="1" y2="1">
-                  <stop offset="0" style={{ stopColor: 'var(--orbit-a)' }} stopOpacity="0.95" />
-                  <stop offset="0.5" style={{ stopColor: 'var(--orbit-b)' }} stopOpacity="0.15" />
-                  <stop offset="1" style={{ stopColor: 'var(--orbit-b)' }} stopOpacity="0.85" />
-                </linearGradient>
-                <linearGradient id={ref('rim')} x1="0.15" y1="0" x2="0.85" y2="1">
-                  <stop offset="0" stopColor="#FFFFFF" stopOpacity="0.9" />
-                  <stop offset="0.45" stopColor="#FFFFFF" stopOpacity="0" />
-                </linearGradient>
-                <filter id={ref('blur-s')} x="-50%" y="-50%" width="200%" height="200%">
-                  <feGaussianBlur stdDeviation="2.4" />
-                </filter>
-                {/* Plush felt texture: fine noise, tinted warm, kept only inside the body. */}
-                <filter id={ref('felt')} x="0" y="0" width="100%" height="100%">
-                  <feTurbulence type="fractalNoise" baseFrequency="1.25" numOctaves="2" seed="11" />
-                  <feColorMatrix
-                    type="matrix"
-                    values="0 0 0 0 0.62  0 0 0 0 0.32  0 0 0 0 0.08  0 0 0 1.1 -0.42"
+        <motion.div className="sunny-sway" style={{ rotate: lean }}>
+          <div className="sunny-body" ref={scope}>
+            <motion.div className="sunny-jelly" style={{ transform: jelly }}>
+              <div className="sunny-react">
+                <svg ref={svgRef} viewBox="-120 -120 240 240" width={size} height={size} aria-hidden="true">
+                  <defs>
+                    <radialGradient id={ref('halo')}>
+                      <stop offset="0" stopColor="#FFE896" stopOpacity="0.95" />
+                      <stop offset="0.5" stopColor="#FFC650" stopOpacity="0.38" />
+                      <stop offset="1" stopColor="#FFB238" stopOpacity="0" />
+                    </radialGradient>
+                    <radialGradient id={ref('body')} cx="36%" cy="30%" r="78%">
+                      <stop offset="0" stopColor="#FFF8D8" />
+                      <stop offset="0.3" stopColor="#FFE07A" />
+                      <stop offset="0.68" stopColor="#FFB940" />
+                      <stop offset="1" stopColor="#F3892C" />
+                    </radialGradient>
+                    <radialGradient id={ref('shade')} cx="34%" cy="26%" r="90%">
+                      <stop offset="0.6" stopColor="#B9470F" stopOpacity="0" />
+                      <stop offset="1" stopColor="#B9470F" stopOpacity="0.34" />
+                    </radialGradient>
+                    <radialGradient id={ref('frost')} cx="40%" cy="30%" r="80%">
+                      <stop offset="0" stopColor="#F4FBFF" stopOpacity="0.55" />
+                      <stop offset="1" stopColor="#9FD4FF" stopOpacity="0.5" />
+                    </radialGradient>
+                    <linearGradient id={ref('ray')} x1="0" y1="1" x2="0" y2="0">
+                      <stop offset="0" stopColor="#FFAA35" />
+                      <stop offset="0.65" stopColor="#FFCB55" />
+                      <stop offset="1" stopColor="#FFE38A" />
+                    </linearGradient>
+                    <radialGradient id={ref('arm')} cx="40%" cy="35%" r="70%">
+                      <stop offset="0" stopColor="#FFD066" />
+                      <stop offset="1" stopColor="#F59A33" />
+                    </radialGradient>
+                    <linearGradient id={ref('drop')} x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0" stopColor="#D8F1FF" />
+                      <stop offset="1" stopColor="#7FC4F2" />
+                    </linearGradient>
+                    <linearGradient id={ref('orbit')} x1="0" y1="0" x2="1" y2="1">
+                      <stop offset="0" style={{ stopColor: 'var(--orbit-a)' }} stopOpacity="0.95" />
+                      <stop offset="0.5" style={{ stopColor: 'var(--orbit-b)' }} stopOpacity="0.15" />
+                      <stop offset="1" style={{ stopColor: 'var(--orbit-b)' }} stopOpacity="0.85" />
+                    </linearGradient>
+                    <linearGradient id={ref('rim')} x1="0.15" y1="0" x2="0.85" y2="1">
+                      <stop offset="0" stopColor="#FFFFFF" stopOpacity="0.9" />
+                      <stop offset="0.45" stopColor="#FFFFFF" stopOpacity="0" />
+                    </linearGradient>
+                    <filter id={ref('blur-s')} x="-50%" y="-50%" width="200%" height="200%">
+                      <feGaussianBlur stdDeviation="2.4" />
+                    </filter>
+                    {/* Plush felt texture: fine noise, tinted warm, kept only inside the body. */}
+                    <filter id={ref('felt')} x="0" y="0" width="100%" height="100%">
+                      <feTurbulence type="fractalNoise" baseFrequency="1.25" numOctaves="2" seed="11" />
+                      <feColorMatrix type="matrix" values="0 0 0 0 0.62  0 0 0 0 0.32  0 0 0 0 0.08  0 0 0 1.1 -0.42" />
+                    </filter>
+                    <clipPath id={ref('body-clip')}>
+                      <circle r="62" />
+                    </clipPath>
+                  </defs>
+
+                  <motion.g style={{ x: haloX, y: haloY }}>
+                    <circle className="sunny-halo" r="114" fill={url('halo')} />
+                  </motion.g>
+
+                  <g className="sunny-orbit">
+                    <circle r="108" fill="none" stroke={url('orbit')} strokeWidth="1.5" />
+                    <circle className="sunny-orbit-dot" cx="0" cy="-108" r="3.6" />
+                  </g>
+
+                  <motion.g style={{ x: backX, y: backY }}>
+                    <g className="sunny-glow-rays">
+                      {Array.from({ length: 10 }, (_, i) => (
+                        <ellipse key={i} cx="0" cy="-80" rx="2.4" ry="15" transform={`rotate(${i * 36 + 18})`} />
+                      ))}
+                    </g>
+
+                    <g className="sunny-rays-breathe">
+                      <g className="sunny-rays">
+                        {Array.from({ length: 10 }, (_, i) => (
+                          <g key={i} transform={`rotate(${i * 36})`}>
+                            {/* Each ray flickers on its own rhythm, like a living flame. */}
+                            <path
+                              className="sunny-ray"
+                              d={i % 2 === 0 ? LONG_RAY : SHORT_RAY}
+                              fill={url('ray')}
+                              style={{ animationDuration: `${1.5 + (i % 3) * 0.45}s`, animationDelay: `${-i * 0.37}s` }}
+                            />
+                          </g>
+                        ))}
+                      </g>
+                    </g>
+                  </motion.g>
+
+                  <g className="sunny-arm sunny-arm--l">
+                    <ellipse cx="-61" cy="26" rx="12" ry="8.5" transform="rotate(-28 -61 26)" fill={url('arm')} />
+                  </g>
+                  <g className="sunny-arm sunny-arm--r">
+                    <ellipse cx="61" cy="26" rx="12" ry="8.5" transform="rotate(28 61 26)" fill={url('arm')} />
+                  </g>
+
+                  <circle r="62" fill={url('body')} />
+                  <circle r="62" fill={url('shade')} />
+                  <circle className="sunny-ambient" r="62" />
+                  <rect
+                    x="-62"
+                    y="-62"
+                    width="124"
+                    height="124"
+                    clipPath={url('body-clip')}
+                    filter={url('felt')}
+                    opacity="0.5"
                   />
-                </filter>
-                <clipPath id={ref('body-clip')}>
-                  <circle r="62" />
-                </clipPath>
-              </defs>
-
-              <circle className="sunny-halo" r="114" fill={url('halo')} />
-
-              <g className="sunny-orbit">
-                <circle r="108" fill="none" stroke={url('orbit')} strokeWidth="1.5" />
-                <circle className="sunny-orbit-dot" cx="0" cy="-108" r="3.6" />
-              </g>
-
-              <g className="sunny-glow-rays">
-                {Array.from({ length: 10 }, (_, i) => (
-                  <ellipse key={i} cx="0" cy="-80" rx="2.4" ry="15" transform={`rotate(${i * 36 + 18})`} />
-                ))}
-              </g>
-
-              <g className="sunny-rays-breathe">
-                <g className="sunny-rays">
-                  {Array.from({ length: 10 }, (_, i) => (
-                    <path
-                      key={i}
-                      d={i % 2 === 0 ? LONG_RAY : SHORT_RAY}
-                      transform={`rotate(${i * 36})`}
-                      fill={url('ray')}
+                  <circle r="60.6" fill="none" stroke={url('rim')} strokeWidth="2.2" />
+                  <motion.g style={{ x: glossX, y: glossY }}>
+                    <ellipse
+                      cx="-25"
+                      cy="-33"
+                      rx="21"
+                      ry="11"
+                      transform="rotate(-32 -25 -33)"
+                      fill="#fff"
+                      opacity="0.62"
+                      filter={url('blur-s')}
                     />
-                  ))}
-                </g>
-              </g>
+                  </motion.g>
 
-              <g className="sunny-arm sunny-arm--l">
-                <ellipse cx="-61" cy="26" rx="12" ry="8.5" transform="rotate(-28 -61 26)" fill={url('arm')} />
-              </g>
-              <g className="sunny-arm sunny-arm--r">
-                <ellipse cx="61" cy="26" rx="12" ry="8.5" transform="rotate(28 61 26)" fill={url('arm')} />
-              </g>
+                  <circle className="sunny-frost" r="62" fill={url('frost')} />
 
-              <circle r="62" fill={url('body')} />
-              <circle r="62" fill={url('shade')} />
-              <rect
-                x="-62"
-                y="-62"
-                width="124"
-                height="124"
-                clipPath={url('body-clip')}
-                filter={url('felt')}
-                opacity="0.5"
-              />
-              <circle r="60.6" fill="none" stroke={url('rim')} strokeWidth="2.2" />
-              <ellipse
-                cx="-25"
-                cy="-33"
-                rx="21"
-                ry="11"
-                transform="rotate(-32 -25 -33)"
-                fill="#fff"
-                opacity="0.62"
-                filter={url('blur-s')}
-              />
+                  <motion.g style={{ x: cheekX, y: faceY }}>
+                    <g className="sunny-cheeks" filter={url('blur-s')}>
+                      <ellipse cx="-33" cy="15" rx="11" ry="7" fill={BLUSH} />
+                      <ellipse cx="33" cy="15" rx="11" ry="7" fill={BLUSH} />
+                    </g>
+                  </motion.g>
 
-              <circle className="sunny-frost" r="62" fill={url('frost')} />
-
-              <g className="sunny-cheeks" filter={url('blur-s')}>
-                <ellipse cx="-33" cy="15" rx="11" ry="7" fill={BLUSH} />
-                <ellipse cx="33" cy="15" rx="11" ry="7" fill={BLUSH} />
-              </g>
-
-              {/* Keyed by expression: the new face pops in at once, so a fast run of touches never leaves Sunny blank. */}
-              <motion.g
-                key={face}
-                initial={{ scale: 0.88 }}
-                animate={{ scale: 1 }}
-                transition={{ type: 'spring', stiffness: 700, damping: 18 }}
-                style={{ transformBox: 'fill-box', transformOrigin: 'center' }}
-              >
-                {FACES[face](url)}
-              </motion.g>
-            </svg>
+                  {/* Keyed by expression: the new face pops in at once, so a fast run of touches never leaves Sunny blank. */}
+                  <motion.g
+                    style={{
+                      x: faceX,
+                      y: faceY,
+                      scaleX: faceTurn,
+                      transformBox: 'fill-box',
+                      transformOrigin: 'center',
+                    }}
+                  >
+                    <motion.g
+                      key={face}
+                      initial={{ scale: 0.88 }}
+                      animate={{ scale: 1 }}
+                      transition={{ type: 'spring', stiffness: 700, damping: 18 }}
+                      style={{ transformBox: 'fill-box', transformOrigin: 'center' }}
+                    >
+                      {FACES[face](url)}
+                    </motion.g>
+                  </motion.g>
+                </svg>
+              </div>
+            </motion.div>
           </div>
-        </div>
+        </motion.div>
       </div>
-      <div className="sunny-shadow" />
+      <motion.div className="sunny-shadow-wrap" style={{ x: shadowX }}>
+        <div className="sunny-shadow" />
+      </motion.div>
     </motion.button>
   )
 }
