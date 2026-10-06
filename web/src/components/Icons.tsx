@@ -1,4 +1,4 @@
-import type { SVGProps } from 'react'
+import { useId, type SVGProps } from 'react'
 
 type IconProps = SVGProps<SVGSVGElement> & { size?: number }
 
@@ -86,6 +86,52 @@ export function SunMark({ size = 22 }: { size?: number }) {
       <circle cx="-2.1" cy="-0.6" r="0.9" fill="#3A2114" />
       <circle cx="2.1" cy="-0.6" r="0.9" fill="#3A2114" />
       <path d="M-1.8 1.8 Q0 3.2 1.8 1.8" stroke="#3A2114" strokeWidth="0.8" fill="none" strokeLinecap="round" />
+    </svg>
+  )
+}
+
+export const ExternalIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M8 16 16 8M9.5 8H16v6.5" />
+  </Icon>
+)
+
+export const CheckIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="m5 12.5 4.2 4.2L19 7" />
+  </Icon>
+)
+
+export const AlertIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M12 3.5 2.8 19.5h18.4z" />
+    <path d="M12 10v4.2M12 17.2v.1" />
+  </Icon>
+)
+
+export const MoonIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M19.5 14.5A8 8 0 0 1 9.5 4.5a8 8 0 1 0 10 10Z" />
+  </Icon>
+)
+
+/** Solana's three-bar mark in the purple-to-green gradient. */
+export function SolanaMark({ size = 16 }: { size?: number }) {
+  const id = `sol-${useId().replace(/[^a-zA-Z0-9]/g, '')}`
+  return (
+    <svg width={size} height={size * 0.88} viewBox="0 0 25 22" aria-hidden="true" className="solana-mark">
+      <defs>
+        <linearGradient id={id} x1="2" y1="21" x2="23" y2="1" gradientUnits="userSpaceOnUse">
+          <stop offset="0" stopColor="#9945FF" />
+          <stop offset="0.55" stopColor="#43B4CA" />
+          <stop offset="1" stopColor="#14F195" />
+        </linearGradient>
+      </defs>
+      <g fill={`url(#${id})`}>
+        <path d="M4.6 1h19.2a.6.6 0 0 1 .43 1.02L20.4 5.8a1.2 1.2 0 0 1-.85.35H.35A.35.35 0 0 1 .1 5.55L3.75 1.35A1.2 1.2 0 0 1 4.6 1Z" />
+        <path d="M4.6 15.85h19.2a.6.6 0 0 1 .43 1.02l-3.83 3.78a1.2 1.2 0 0 1-.85.35H.35a.35.35 0 0 1-.25-.6l3.65-4.2a1.2 1.2 0 0 1 .85-.35Z" />
+        <path d="M20.4 8.42a1.2 1.2 0 0 0-.85-.35H.35a.35.35 0 0 0-.25.6l3.65 3.78c.22.23.53.35.85.35h19.2a.6.6 0 0 0 .43-1.02Z" />
+      </g>
     </svg>
   )
 }
