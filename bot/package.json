@@ -7,7 +7,7 @@
     "dev": "node --env-file=../.env --import tsx src/index.ts",
     "build": "esbuild src/index.ts --bundle --platform=node --target=node20 --format=esm --keep-names --outfile=dist/bot.mjs --banner:js=\"import { createRequire } from 'module'; const require = createRequire(import.meta.url);\"",
     "typecheck": "tsc --noEmit",
-    "test": "node --env-file=../.env --import tsx --test test/sign-check.test.ts test/guard.test.ts",
+    "test": "node --env-file=../.env --import tsx --test test/sign-check.test.ts test/guard.test.ts test/news.test.ts",
     "devnet-setup": "node --env-file=../.env --import tsx scripts/devnet-setup.ts --fund"
   },
   "dependencies": {
