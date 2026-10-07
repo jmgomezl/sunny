@@ -64,7 +64,14 @@ export async function inspect(input: string, watched: string | null = null): Pro
     return { kind: 'link', link }
   }
 
-  // Anything short and word-like is treated as a token symbol or name.
-  if (/^\$?[\w .-]{2,32}$/.test(text)) return { kind: 'token', ...(await lookupToken(text)) }
+  // Anything short and word-like is treated as a token symbol or name. Several words that
+  // don't name a token exactly ("hello there") aren't a token, whatever the search returns.
+  if (/^\$?[\w .-]{2,32}$/.test(text)) {
+    const found = await lookupToken(text)
+    if (found.found && !found.details.exact_match && /\s/.test(text.trim())) {
+      return { kind: 'unknown', message: `I couldn’t find a token called “${text}”. Try its symbol, its mint address or a link.` }
+    }
+    return { kind: 'token', ...found }
+  }
   return { kind: 'unknown', message: 'I couldn’t tell what that is. Try a wallet address, a token address or a link.' }
 }
