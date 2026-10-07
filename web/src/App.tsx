@@ -637,6 +637,25 @@ export default function App() {
       : (demo?.status ?? home?.status ?? { tone: 'info', text: 'Checking the sky…' }))
   // Pocket money goes on-chain next; until then the card shows a preview allowance.
   const pocketLeft = toppedUp ? POCKET_LIMIT : (demo?.pocketLeft ?? 7.2)
+  // The status line leads somewhere: watch a wallet, ask why it's stormy, or warm Sunny up.
+  const needsWatch = !demo && !statusOverride && !frozen && Boolean(home) && home!.wallets.length === 0
+  const statusTap = demo
+    ? undefined
+    : statusOverride
+      ? undefined
+      : needsWatch
+        ? () => openScan('link')
+        : frozen
+          ? () => {
+              window.scrollTo({ top: 0, behavior: 'smooth' })
+              setPocketSheet({ open: true, intent: 'unfreeze' })
+            }
+          : status.tone === 'warn'
+            ? () => askFromScan('Why is my wallet weather stormy, and what should I do?')
+            : home
+              ? () => document.querySelector('.forecast')?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+              : undefined
+
   const pocketView: PocketView = demo
     ? { kind: 'live', left: pocketLeft, daily: POCKET_LIMIT, perTx: POCKET_PER_TX, frozen, cluster: 'devnet' }
     : !pocket
@@ -733,7 +752,7 @@ export default function App() {
           <Particles items={particles} onDone={(id) => setParticles((prev) => prev.filter((p) => p.id !== id))} />
         </div>
 
-        <GuardianStatus status={status} />
+        <GuardianStatus status={status} onTap={statusTap} watchPrompt={needsWatch} />
         <CloudBank />
       </section>
 
@@ -820,23 +839,52 @@ export default function App() {
   )
 }
 
-function GuardianStatus({ status }: { status: Status }) {
-  const IconCmp = status.tone === 'warn' ? AlertIcon : status.tone === 'info' ? MoonIcon : CheckIcon
+type GuardianProps = { status: Status; onTap?: () => void; watchPrompt?: boolean }
+
+/** Sunny's one-line status. When there's an obvious next step, tapping it takes you there. */
+function GuardianStatus({ status, onTap, watchPrompt }: GuardianProps) {
+  const IconCmp = watchPrompt
+    ? EyeIcon
+    : status.tone === 'warn'
+      ? AlertIcon
+      : status.tone === 'info'
+        ? MoonIcon
+        : CheckIcon
+  const content = (
+    <>
+      <span className="guardian-icon">
+        <IconCmp size={14} strokeWidth={2.4} />
+      </span>
+      {status.text}
+      {onTap && (
+        <span className="guardian-go" aria-hidden="true">
+          ›
+        </span>
+      )}
+    </>
+  )
+  const motionProps = {
+    initial: { opacity: 0, y: 6 },
+    animate: { opacity: 1, y: 0 },
+    transition: { type: 'spring' as const, stiffness: 480, damping: 30 },
+  }
   return (
     <div className="guardian-slot">
-      <motion.div
-        key={status.text}
-        className={`guardian guardian--${status.tone}`}
-        role="status"
-        initial={{ opacity: 0, y: 6 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ type: 'spring', stiffness: 480, damping: 30 }}
-      >
-        <span className="guardian-icon">
-          <IconCmp size={14} strokeWidth={2.4} />
-        </span>
-        {status.text}
-      </motion.div>
+      {onTap ? (
+        <motion.button
+          key={status.text}
+          type="button"
+          className={`guardian guardian--${status.tone} guardian--tap`}
+          onClick={onTap}
+          {...motionProps}
+        >
+          {content}
+        </motion.button>
+      ) : (
+        <motion.div key={status.text} className={`guardian guardian--${status.tone}`} role="status" {...motionProps}>
+          {content}
+        </motion.div>
+      )}
     </div>
   )
 }
