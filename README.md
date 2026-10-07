@@ -45,6 +45,7 @@ Everything runs on **devnet with test USDC**. It speaks English and Spanish.
 - **Links:** checks domains against the MetaMask and Phantom phishing lists and spots lookalikes of known brands.
 - **Wallets:** value, holdings, transaction history and age, and **token approvals** (another program that can move your tokens). Scan a QR with Telegram's own scanner or paste an address.
 - **Price alerts:** *"tell me if BONK drops 10%"*. Checked every minute and delivered as a Telegram message.
+- **News and warnings:** every 15 minutes Sunny reads free public sources, filtered for Solana. A fresh Solana hack, exploit or scam reaches you in Telegram with what to do (`/news off` to stop). Launches and upgrades are shared as news, always with "not financial advice".
 
 **Lives with you**
 - **Wallet weather:** Sunny's mood and sky come from real data. A clear sky means all is well, a golden hour means you're up today, and a storm warning means something risky turned up. At night Sunny sleeps under the stars.
@@ -126,8 +127,8 @@ Sunny has to act while you sleep, so its key per owner is derived on the server 
 
 ### Sunny's brain and guardrails
 
-Sunny is an LLM (`anthropic/claude-haiku-4.5` through OpenRouter, swappable in `.env`) in a short tool loop with 13 tools:
-- **Live data:** tokens, the market, links, any wallet, your own wallets and your pocket.
+Sunny is an LLM (`anthropic/claude-haiku-4.5` through OpenRouter, swappable in `.env`) in a short tool loop with 14 tools:
+- **Live data:** tokens, the market, news, links, any wallet, your own wallets and your pocket.
 - **Actions:** price alerts, watched wallets, pocket draws and paid deep scans.
 
 An action only counts when a tool confirms it in that turn.
@@ -141,7 +142,10 @@ Guardrails ([`bot/src/guard.ts`](bot/src/guard.ts)) keep it a Solana guardian:
 
 ### Data sources
 
-Jupiter (Ultra holdings, Price v3, Tokens v2), RugCheck, MetaMask's and Phantom's phishing lists, alternative.me's Fear & Greed index, and Solana RPC: devnet for the pocket and your Sunny wallet, mainnet for watched wallets.
+- **Market and tokens:** Jupiter (Ultra holdings, Price v3, Tokens v2), RugCheck (summary and full report), alternative.me's Fear & Greed index.
+- **Scam links:** MetaMask's and Phantom's phishing lists.
+- **News:** Cointelegraph, Decrypt, The Block, Solana's blog, SlowMist and DeFiLlama's hack tracker.
+- **Solana RPC:** devnet for the pocket and your Sunny wallet, mainnet for watched wallets.
 
 ## Tests
 

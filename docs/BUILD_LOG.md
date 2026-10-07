@@ -70,6 +70,15 @@ The first real devnet run failed: a brand-new wallet has 0 SOL and couldn't pay 
 | `ff6975c` | Deep scan card in the chat, and a "Deep scan · $0.10" button in Scan & check |
 | `4515210` | More memory headroom for the bot (the SDK added about 25 MB) |
 
+## Oct 7, 11:10–12:20 · News and warnings
+
+| Commit | What |
+|---|---|
+| `7ec08d1` | A news desk: six free sources every 15 minutes, labeled security, opportunity or news, flagged for Solana, deduped across feeds |
+| `e4a2889` | Fresh Solana hacks and scams reach people in Telegram, with what to do; `/news`, `/news off`, `/news on`. Nobody gets old news on the first run |
+| `092eb7c` | Sunny reads the news in chat: security first, opportunities without hype and always "not financial advice" |
+| `c2f47a7` | A "What's happening" card on the home screen |
+
 ## Decisions, and why
 
 - **Money rules live in a program, not in the prompt.** A model can be talked into things; a program can't. Sunny is told to always *try* the draw you ask for, because watching Solana refuse a $500 draw is the whole point.
@@ -80,6 +89,7 @@ The first real devnet run failed: a brand-new wallet has 0 SOL and couldn't pay 
 - **Claude Haiku 4.5 through OpenRouter.** It's fast and cheap, and reliable at tool calls. The model is one line in `.env`.
 - **x402 with the official SDK, settled in-process.** Sunny's server is the resource server and its own facilitator, so it can verify, run the scan and only then settle. That means a failed scan costs nothing, and it works with our devnet test USDC. Any standard x402 client can pay the same endpoint.
 - **Every purchase goes through the pocket.** Before paying an API, Sunny draws the price from your pocket, so the program's limits and freeze cover what it buys, not just what it takes.
+- **Warn loudly, suggest softly.** A story is labeled security if the headline *or* its teaser mentions a hack or scam, because missing one is worse than a false alarm. It's only called an opportunity if the headline itself says so, and Sunny always adds that it's news, not advice.
 - **Gentle guardrails.** Blocked attempts get a friendly refusal and only a short break, because curious people (and judges) will poke at it.
 
 ## Problems I hit, and the fixes
@@ -118,7 +128,6 @@ The first real devnet run failed: a brand-new wallet has 0 SOL and couldn't pay 
 
 ## Still to do before Oct 12
 
-- News and security alerts from free sources (in progress).
 - A morning brief, and one-tap revoke of risky approvals.
 - First testers.
 - The pitch and demo videos, then submission.
