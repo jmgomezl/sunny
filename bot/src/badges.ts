@@ -114,7 +114,9 @@ async function earned(userId: number, owner: string | null): Promise<Set<BadgeId
   if (habits.deepScan) got.add('deep-diver')
   if (watchedOf(userId).length) got.add('wallet-watcher')
   if (streakOf(userId) >= STREAK_DAYS) got.add('sunny-streak')
-  if (owner && hasChain() && (await pocketState(owner).catch(() => null))?.exists) got.add('pocket-parent')
+  // "Give Sunny its first pocket money": an open pocket isn't enough, money has to arrive.
+  const ps = owner && hasChain() ? await pocketState(owner).catch(() => null) : null
+  if (ps?.exists && (ps.vault > 0 || ps.totalDrawn > 0)) got.add('pocket-parent')
   return got
 }
 
