@@ -119,6 +119,16 @@ Every finding was checked against the code before fixing.
 | `a63b38c` | x402: CORS preflight for browser clients, and a 400 (not a 500) for incomplete payments |
 | `d5bbe3f` `a006931` `92315c4` | **Mini App polish:** honest loading and error states, token tiles, Telegram colors that follow the sky, password forms, an "Open in Telegram" button for web visitors, contrast and accessibility |
 
+## Oct 7 evening · Three ideas from the QA round
+
+The visual reviewer suggested three ways to make Sunny more lovable. All three were built:
+
+| Commit | What |
+|---|---|
+| `89028f1` `3331fb3` | **Feed Sunny by hand:** drag a honey coin onto Sunny. It opens wide as the coin comes close, munches, and the top-up is ready to sign. Opening a new pocket and its first money are one transaction, one signature (tested on devnet in the e2e run) |
+| `07e8bd5` `2484166` | **Story cards that match the moment:** Sunny's pose is captured from the real character for each moment (alarmed with its shield, detective squint, sheepish blush, munching, frozen), and on-chain moments carry a Solana proof chip with the transaction's short id |
+| `07e8bd5` `ffbc41a` `3331fb3` | **Bedtime:** Sunny dozes at night holding a little lantern, wakes to a warning with a yawn first, and the first visit of the morning opens with *While you slept* |
+
 ## Decisions, and why
 
 - **Money rules live in a program, not in the prompt.** A model can be talked into things; a program can't. Sunny is told to always *try* the draw you ask for, because watching Solana refuse a $500 draw is the whole point.

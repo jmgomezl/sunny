@@ -51,17 +51,19 @@ Everything runs on **devnet with test USDC**. It speaks English and Spanish.
 - **News and warnings:** every 15 minutes Sunny reads free public sources, filtered for Solana. A fresh Solana hack, exploit or scam reaches you in Telegram with what to do (`/news off` to stop). Launches and upgrades are shared as news, always with "not financial advice".
 
 **Lives with you**
-- **Wallet weather:** Sunny's mood and sky come from real data. A clear sky means all is well, a golden hour means you're up today, and a storm warning means something risky turned up. At night Sunny sleeps under the stars.
+- **Wallet weather:** Sunny's mood and sky come from real data. A clear sky means all is well, a golden hour means you're up today, and a storm warning means something risky turned up.
+- **Bedtime:** at night Sunny dozes under the stars holding a little lantern, still on watch. A warning wakes it with a yawn, then the alarm. The first visit of the morning opens with *While you slept*: how your wallets moved overnight, any security news, alerts that fired, and your streak.
 - **Care like a pet:** Energy (the pocket money left today), Mood (wallet health) and Bond (how much you play). It reacts to boops, pets, spins and too many taps.
 - **One conversation:** the Telegram chat and the Mini App chat share the same memory.
 - **Good-morning ritual:** each morning a short note in your language with your wallets' weather, pocket money left, one headline and one safety tip. Visiting Sunny builds a streak, shown on its Bond meter (`/morning` to preview, `/morning off` to stop).
 - **Stickers:** a Telegram sticker pack drawn from the real character ([t.me/addstickers/sunny_by_SunnySolBot](https://t.me/addstickers/sunny_by_SunnySolBot)). Sunny sends them at the right moments too.
 - **Good-habit badges, on Solana:** six non-transferable Token-2022 badges (Key Keeper, Pocket Parent, Wallet Watcher, Scam Spotter, Deep Diver, Sunny Streak), minted to your Sunny wallet the first time you earn them. Sunny wears the matching accessories.
-- **Share the moment:** when Sunny catches a scam, Solana stops a draw, or a deep scan comes back, share a story-sized card to your Telegram Story or send it to a friend.
+- **Share the moment:** when Sunny catches a scam, Solana stops a draw, a deep scan comes back, or you feed or freeze its pocket, share a story-sized card to your Telegram Story or send it to a friend. Sunny strikes the pose of the moment, and on-chain moments carry a small proof chip with the transaction.
 
 **Spends safely**
 - **Sunny wallet:** a self-custodial wallet made inside Telegram and locked with your password.
 - **Pocket money:** an on-chain allowance. Sunny's agent key can draw only within your per-payment and daily limits, only into its own account, and nothing while frozen. You can top up, change limits, freeze or take everything back at any time.
+- **Feed Sunny by hand:** drag the honey coin beside Sunny onto it. Sunny opens wide, munches, and the top-up is ready to sign on your phone. For a new pocket, opening it and the first money are a single signature.
 - **Watched wallets:** up to five of your other wallets, read-only, combined into one wallet weather.
 - **Pays for tools over x402:** a deep token scan costs $0.10, paid per request from the pocket. That means the program's limits and freeze apply to everything Sunny buys.
 
@@ -174,9 +176,10 @@ cd onchain && cargo test -p sunny_pocket
 cd bot && pnpm test
 ```
 
-8 tests:
-- **Transaction verifier:** plain-language summaries; it refuses a SOL transfer and refuses another wallet's transaction.
-- **Guardrails:** attacks in English and Spanish and, just as carefully, ordinary questions that must pass.
+23 tests, including:
+- **Transaction verifier:** plain-language summaries (opening a pocket with its first money is one signature); it refuses a SOL transfer, another wallet's transaction, and a top-up into someone else's pocket.
+- **Guardrails:** attacks in English and Spanish, pasted seed phrases and private keys and, just as carefully, ordinary questions that must pass.
+- **News, groups, streaks and the Blink reader.**
 
 ```bash
 cd bot && E2E_API=https://sunny.aivylabs.xyz/api node --env-file=../.env --import tsx scripts/e2e-devnet.ts
@@ -184,7 +187,7 @@ cd bot && E2E_API=https://sunny.aivylabs.xyz/api node --env-file=../.env --impor
 
 The full flow against the live server on devnet, as a fresh Telegram user:
 1. Wallet and faucet.
-2. Open the pocket and top up.
+2. Open the pocket with its first $5 (one signature), then top up.
 3. Draws inside and over the limits.
 4. Freeze, unfreeze and withdraw.
 5. A deep scan paid over x402, then *"what happened in my wallet?"*, read back from the chain.
@@ -226,7 +229,6 @@ To build the program yourself: `cd onchain && anchor build --arch v0`. Anchor 1.
 ## What's next
 
 - **More x402 tools:** more paid APIs Sunny can buy from its pocket, and listing its deep scan in the x402 Bazaar so other agents can find it.
-- **Morning brief:** a daily note on your wallets' weather.
 - **One-tap revoke** for risky token approvals.
 - **Mainnet** with an audited program and spending categories.
 
