@@ -38,8 +38,8 @@ bot() {
   pnpm --dir "$ROOT/bot" build
   rsync -az "$ROOT/bot/dist/bot.mjs" "$HOST:/opt/sunny/bot.mjs"
   rsync -az "$ROOT/brand/sunny-avatar-640.png" "$HOST:/opt/sunny/sunny-avatar.png"
-  rsync -az --chmod=F600 "$ROOT/.env" "$HOST:/opt/sunny/.env"
-  ssh "$HOST" 'cd /opt/sunny && if pm2 describe sunny-bot >/dev/null 2>&1; then pm2 restart sunny-bot; else \
+  rsync -az "$ROOT/.env" "$HOST:/opt/sunny/.env"
+  ssh "$HOST" 'chmod 600 /opt/sunny/.env && cd /opt/sunny && if pm2 describe sunny-bot >/dev/null 2>&1; then pm2 restart sunny-bot; else \
     pm2 start bot.mjs --name sunny-bot --node-args="--env-file=/opt/sunny/.env" --max-memory-restart 160M; fi \
     && pm2 save >/dev/null && sleep 3 && pm2 logs sunny-bot --lines 5 --nostream'
 }

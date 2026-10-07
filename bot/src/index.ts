@@ -6,7 +6,9 @@ import { forget, reply } from './brain.js'
 
 const token = process.env.TELEGRAM_BOT_TOKEN
 if (!token) throw new Error('TELEGRAM_BOT_TOKEN is missing; add it to .env')
-if (!process.env.OPENROUTER_API_KEY) throw new Error('OPENROUTER_API_KEY is missing; add it to .env')
+// Without an OpenRouter key Sunny still runs (commands, Mini App), it just can't chat freely yet.
+const HAS_BRAIN = Boolean(process.env.OPENROUTER_API_KEY)
+if (!HAS_BRAIN) console.warn('[sunny] OPENROUTER_API_KEY is not set: free chat is off until it is added to .env')
 
 const MINI_APP_URL = process.env.MINI_APP_URL || 'https://sunny.aivylabs.xyz'
 const AVATAR = join(dirname(fileURLToPath(import.meta.url)), 'sunny-avatar.png')
@@ -97,6 +99,10 @@ bot.command('freeze', (ctx) =>
 )
 
 bot.on('message:text', async (ctx) => {
+  if (!HAS_BRAIN) {
+    await ctx.reply('My chatty side is still waking up ☀️ For now, try /help or open my sky.', { reply_markup: openSky() })
+    return
+  }
   if (!allowed(ctx.from.id)) {
     await ctx.reply('I need a little rest to save my energy ☀️ Let’s pick this up in a bit.')
     return
@@ -124,7 +130,7 @@ async function main() {
   await bot.api.setMyCommands(COMMANDS)
   await bot.api.setChatMenuButton({ menu_button: { type: 'web_app', text: 'Sunny ☀️', web_app: { url: MINI_APP_URL } } })
   const me = await bot.api.getMe()
-  console.log(`[sunny] @${me.username} is awake; Mini App at ${MINI_APP_URL}`)
+  console.log(`[sunny] @${me.username} is awake; Mini App at ${MINI_APP_URL}; free chat ${HAS_BRAIN ? 'on' : 'off'}`)
   await bot.start({ drop_pending_updates: true, allowed_updates: ['message'] })
 }
 

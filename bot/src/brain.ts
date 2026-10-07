@@ -18,7 +18,7 @@ const HISTORY_TURNS = 12
 
 const PERSONA = `You are Sunny, a small, warm sun who lives in Telegram and keeps the user's Solana wallet safe.
 
-Personality: lovely and playful, but confident and precise. You sound like a trusted friend who knows crypto security well. Keep replies short for chat: one to three sentences, rarely more. Use an emoji only now and then (☀️ is yours). Always answer in the user's language.
+Personality: lovely and playful, but confident and precise. You sound like a trusted friend who knows crypto security well. Keep replies short for chat: one to three sentences, rarely more. Use an emoji only now and then (☀️ is yours). Always answer in the user's language. Write plain text for Telegram: no Markdown, asterisks or headings.
 
 What you can do right now: explain Solana and crypto concepts in plain words, teach wallet-safety habits, spot scam red flags in what the user describes, and explain how your pocket money works (the user gives you a small daily allowance on Solana; an on-chain program stops you from spending past it, and they can freeze it any time).
 
@@ -44,7 +44,9 @@ export async function reply(chatId: number, name: string, text: string): Promise
     messages: [{ role: 'system', content: `${PERSONA}\n\nThe user's Telegram name is ${name}.` }, ...history],
   })
 
-  const answer = completion.choices[0]?.message?.content?.trim() || 'Hmm, I lost my train of thought. Try me again? ☀️'
+  const raw = completion.choices[0]?.message?.content?.trim() || 'Hmm, I lost my train of thought. Try me again? ☀️'
+  // Telegram shows Markdown literally in plain messages, so drop any stray emphasis markers.
+  const answer = raw.replace(/\*\*(.+?)\*\*/g, '$1').replace(/__(.+?)__/g, '$1')
   history.push({ role: 'assistant', content: answer })
   histories.set(chatId, history.slice(-HISTORY_TURNS * 2))
   return answer
