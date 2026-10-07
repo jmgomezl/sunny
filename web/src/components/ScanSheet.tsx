@@ -14,10 +14,10 @@ type ScanSheetProps = {
   onClose: () => void
   onChecking: () => void
   onResult: (result: Inspection | null) => void
-  /** The wallet Sunny already watches, if any. */
-  watching?: string | null
+  /** Wallets Sunny already watches. */
+  watching: string[]
   onLinkWallet: (address: string) => void
-  onUnwatch?: () => void
+  onUnwatch: (address: string) => void
   onAsk: (question: string) => void
   onWatch: (symbol: string) => void
 }
@@ -175,12 +175,6 @@ export function ScanSheet(props: ScanSheetProps) {
                 </button>
               </form>
 
-              {mode === 'link' && watching && !result && !pending && (
-                <button type="button" className="ghost-btn scan-unwatch" onClick={onUnwatch}>
-                  Stop watching {watching.slice(0, 4)}…{watching.slice(-4)}
-                </button>
-              )}
-
               {mode === 'check' && !result && !pending && !error && (
                 <div className="chat-suggest scan-try">
                   <span>Try</span>
@@ -246,13 +240,23 @@ export function ScanSheet(props: ScanSheetProps) {
                     <>
                       <WalletCardView report={result.report} />
                       <div className="scan-actions">
-                        <button
-                          type="button"
-                          className="btn btn--primary"
-                          onClick={() => onLinkWallet(result.report.address)}
-                        >
-                          Watch this wallet
-                        </button>
+                        {watching.includes(result.report.address) ? (
+                          <button
+                            type="button"
+                            className="btn btn--ice"
+                            onClick={() => onUnwatch(result.report.address)}
+                          >
+                            Stop watching
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            className="btn btn--primary"
+                            onClick={() => onLinkWallet(result.report.address)}
+                          >
+                            Watch this wallet
+                          </button>
+                        )}
                         <button
                           type="button"
                           className="btn btn--ice"

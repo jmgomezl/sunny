@@ -9,7 +9,15 @@ import { PocketSheet, type PocketEventKind } from './components/PocketSheet'
 import { fetchPocket, PROGRAM_URL, type PocketState } from './lib/pocket'
 import { inTelegram as insideTelegram } from './lib/api'
 import { askSunny, inTelegram } from './lib/chat'
-import { fetchHome, type ActivityItem, type Home, type Inspection, type WatchToken } from './lib/home'
+import {
+  fetchHome,
+  type ActivityItem,
+  type Home,
+  type Inspection,
+  type WatchChange,
+  type WatchedWallet,
+  type WatchToken,
+} from './lib/home'
 import type { Weather } from './components/Sky'
 import { haptic, type Haptic } from './lib/haptics'
 import {
@@ -177,6 +185,8 @@ function greeting() {
 
 // The mood picker is a demo tool: shown with ?demo, and keys 1–5 switch moods for recordings.
 const DEMO = new URLSearchParams(window.location.search).has('demo')
+// Matches the server's limit on watched wallets.
+const MAX_WATCHED = 5
 
 // If someone says "later" to making a wallet, Sunny asks again the next day, not every visit.
 const HELLO_LATER = 'sunny.hello.later'
@@ -236,9 +246,9 @@ export default function App() {
   const demo = demoMood ? SCENES[demoMood] : null
   const weather = MOOD_WEATHER[mood]
 
-  const refreshHome = useCallback(async (wallet?: string | null) => {
+  const refreshHome = useCallback(async () => {
     try {
-      const h = await fetchHome(wallet)
+      const h = await fetchHome()
       setHome(h)
       return h
     } catch (err) {
@@ -433,13 +443,25 @@ export default function App() {
     play({ reaction: 'giggle', particles: ['sparkle', 4], haptic: 'light', ms: 1000, bond: 1 })
   }
 
-  const linkWallet = async (address: string) => {
+  /** Watches or unwatches a wallet; Sunny says why if it can't (e.g. already watching five). */
+  const changeWatch = async (change: WatchChange) => {
+    try {
+      setHome(await fetchHome(change))
+      return true
+    } catch (err) {
+      const why = err instanceof Error ? err.message : 'I couldn’t read that wallet. Try again?'
+      play({ reaction: 'blush', line: why, ms: 1600 })
+      return false
+    }
+  }
+
+  const watchWallet = async (address: string) => {
     closeScan()
     setStatusOverride({ tone: 'info', text: 'Getting to know this wallet…' })
     play({ reaction: 'scan', ms: 15_000 })
-    const h = await refreshHome(address)
+    const ok = await changeWatch({ watch: address })
     setStatusOverride(null)
-    if (!h) return play({ reaction: 'blush', line: 'I couldn’t read that wallet. Try again?', ms: 1200 })
+    if (!ok) return
     play({
       reaction: 'giggle',
       line: `Got it! I’m watching ${short(address)} now. ☀️`,
@@ -450,10 +472,11 @@ export default function App() {
     })
   }
 
-  const unwatch = async () => {
+  const unwatch = async (address: string) => {
     closeScan()
-    const h = await refreshHome(null)
-    if (h) play({ reaction: 'pat', line: 'Okay, I stopped watching that wallet.', haptic: 'light', ms: 1000 })
+    if (await changeWatch({ unwatch: address })) {
+      play({ reaction: 'pat', line: `Okay, I stopped watching ${short(address)}.`, haptic: 'light', ms: 1000 })
+    }
   }
 
   const sunnySays = (text: string, error = false): ChatMessage => ({ id: chatIds++, from: 'sunny', text, error })
@@ -493,9 +516,10 @@ export default function App() {
     setChatPending(true)
     setDozing(false)
     try {
-      const { reply, cards, links, alerts, pocket: draws, mine, wallets, live } = await askSunny(text)
+      const { reply, cards, links, alerts, pocket: draws, mine, wallets, watchChanged, live } = await askSunny(text)
       setChat((prev) => [...prev, { ...sunnySays(reply), cards, links, alerts, pocket: draws, mine, wallets, live }])
       if (draws.length) void loadPocket()
+      if (watchChanged) void refreshHome()
       const risky = cards.find((c) => c.risk !== 'low')
       const scam = links.find((l) => l.verdict === 'known_scam' || l.verdict === 'suspicious')
       const stopped = draws.find((d) => !d.ok)
@@ -700,10 +724,15 @@ export default function App() {
 
       <main className="content">
         <CareCard wellbeing={WELLBEING[mood]} bond={bond} pocket={pocketView} onPocket={managePocket} />
-        <ForecastCard home={home} demo={demoMood} onWatch={() => openScan('link')} />
+        <ForecastCard
+          home={home}
+          demo={demoMood}
+          onWatch={() => openScan('link')}
+          onOpen={(address) => openScan('check', address)}
+        />
         <Watchlist
           tokens={demo ? WATCHLIST.map(demoToken) : (home?.tokens ?? [])}
-          linked={Boolean(home?.wallet)}
+          linked={Boolean(home?.wallets.length)}
           loading={!home && !demo}
           onSelect={(mint) => openScan('check', mint)}
           onAdd={() => openChat('watch')}
@@ -744,9 +773,9 @@ export default function App() {
         onClose={closeScan}
         onChecking={() => play({ reaction: 'scan', ms: 15_000 })}
         onResult={onScanResult}
-        watching={home?.wallet ?? null}
-        onLinkWallet={(a) => void linkWallet(a)}
-        onUnwatch={() => void unwatch()}
+        watching={home?.wallets.map((w) => w.address) ?? []}
+        onLinkWallet={(a) => void watchWallet(a)}
+        onUnwatch={(a) => void unwatch(a)}
         onAsk={askFromScan}
         onWatch={(symbol) => openChat('watch', symbol)}
       />
@@ -945,6 +974,38 @@ function subscript(n: number) {
   return String(n).replace(/\d/g, (d) => '₀₁₂₃₄₅₆₇₈₉'[Number(d)])
 }
 
+type WatchedProps = { wallets: WatchedWallet[]; onAdd: () => void; onOpen: (address: string) => void }
+
+/** The wallets Sunny watches, read-only. Tap one for its report; add up to five. */
+function WatchedWallets({ wallets, onAdd, onOpen }: WatchedProps) {
+  return (
+    <div className="watched">
+      <div className="watched-head">
+        <span>
+          <EyeIcon size={14} /> Watching {wallets.length === 1 ? '1 wallet' : `${wallets.length} wallets`}
+        </span>
+        {wallets.length < MAX_WATCHED && (
+          <button type="button" onClick={onAdd}>
+            <PlusIcon size={14} /> Add
+          </button>
+        )}
+      </div>
+      <ul>
+        {wallets.map((w) => (
+          <li key={w.address}>
+            <button type="button" onClick={() => onOpen(w.address)} aria-label={`Wallet ${w.address}, ${w.risk} risk`}>
+              <span className={`watched-dot watched-dot--${w.risk}`} aria-hidden="true" />
+              <span className="watched-addr">{short(w.address)}</span>
+              <span className="watched-value">{w.value === null ? 'Can’t read now' : usd(w.value)}</span>
+              {w.change24h !== null && w.value ? <Delta value={w.change24h} /> : <span />}
+            </button>
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
 function Delta({ value }: { value: number }) {
   const dir = value > 0.05 ? 'up' : value < -0.05 ? 'down' : 'flat'
   const glyph = dir === 'up' ? '▲' : dir === 'down' ? '▼' : '•'
@@ -963,12 +1024,17 @@ function ago(iso: string) {
   return `${Math.round(min / 1440)} d`
 }
 
-type ForecastProps = { home: Home | null; demo: Mood | null; onWatch: () => void }
+type ForecastProps = {
+  home: Home | null
+  demo: Mood | null
+  onWatch: () => void
+  onOpen: (address: string) => void
+}
 
-/** Wallet weather: the real value and 24h curve of a wallet Sunny watches, or Solana today. */
-function ForecastCard({ home, demo, onWatch }: ForecastProps) {
+/** Wallet weather: the wallets Sunny watches, together (value, 24h curve, risk), or Solana today. */
+function ForecastCard({ home, demo, onWatch, onOpen }: ForecastProps) {
   const scene = demo ? SCENES[demo] : null
-  const linked = Boolean(home?.wallet) || Boolean(scene)
+  const linked = Boolean(home?.wallets.length) || Boolean(scene)
   const value = scene ? scene.value : home?.value
   const change = scene ? scene.change : home?.change24h
   const spark = scene ? scene.spark : home?.spark
@@ -1019,10 +1085,8 @@ function ForecastCard({ home, demo, onWatch }: ForecastProps) {
             ? `Updated ${ago(home.updatedAt)} · Prices from Jupiter${home.fearGreed && linked ? ` · Market mood ${home.fearGreed.label.toLowerCase()}` : ''}`
             : 'Checking the sky…'}
       </p>
-      {home?.wallet && !scene && (
-        <button type="button" className="forecast-watching" onClick={onWatch}>
-          <EyeIcon size={14} /> Watching {short(home.wallet)} · Change
-        </button>
+      {home && home.wallets.length > 0 && !scene && (
+        <WatchedWallets wallets={home.wallets} onAdd={onWatch} onOpen={onOpen} />
       )}
     </section>
   )

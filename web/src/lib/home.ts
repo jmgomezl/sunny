@@ -15,9 +15,19 @@ export type WatchToken = {
 
 export type ActivityItem = { kind: 'check' | 'scam' | 'alert' | 'wallet' | 'watch'; text: string; meta: string; at: string }
 
-/** Sunny's home screen, built on the server from the linked wallet and live data. */
+/** A wallet Sunny watches (read-only), as listed under the wallet weather. */
+export type WatchedWallet = {
+  address: string
+  /** Null when it couldn't be read this time. */
+  value: number | null
+  change24h: number | null
+  risk: 'low' | 'medium' | 'high'
+  approvals: number
+}
+
+/** Sunny's home screen, built on the server from the watched wallets and live data. */
 export type Home = {
-  wallet: string | null
+  wallets: WatchedWallet[]
   value: number | null
   change24h: number | null
   spark: number[]
@@ -37,8 +47,10 @@ export type Home = {
   guest: boolean
 }
 
-/** Loads the home screen; pass a wallet to link it, or null to unlink. */
-export const fetchHome = (wallet?: string | null) => post<Home>('/api/home', wallet === undefined ? {} : { wallet })
+export type WatchChange = { watch: string } | { unwatch: string }
+
+/** Loads the home screen, optionally watching or unwatching a wallet first. */
+export const fetchHome = (change?: WatchChange) => post<Home>('/api/home', change ?? {})
 
 export type WalletReport = {
   address: string

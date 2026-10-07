@@ -57,6 +57,8 @@ export type ChatReply = {
   pocket: PocketEvent[]
   mine: MyWallet | null
   wallets: WalletReport[]
+  /** Sunny started or stopped watching a wallet, so the home should reload. */
+  watchChanged: boolean
   live: boolean
   guest: boolean
 }
@@ -74,6 +76,7 @@ export async function askSunny(message: string): Promise<ChatReply> {
     pocket: data.pocket ?? [],
     mine: data.mine ?? null,
     wallets: data.wallets ?? [],
+    watchChanged: Boolean(data.watchChanged),
     live: Boolean(data.live),
     guest: Boolean(data.guest),
   }
