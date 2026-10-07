@@ -33,8 +33,9 @@ Built solo for Colosseum's **Crypto World's Fair** hackathon (Solana track). Eve
 4. Open the chat and ask: *"take $500 from your pocket"*. Sunny tries, and **Solana refuses**: it's over the per-payment limit. Ask for *"$2 for a safety report"* and it goes through, with a transaction link.
 5. Tap the ❄ under Sunny's energy to freeze the pocket, then ask again.
 6. Ask *"what happened in my wallet?"* to get your transactions read back from the chain in plain words.
-7. Ask for a *"deep scan of BONK"*. Sunny pays $0.10 from its pocket to a paid scan API over **x402**, then shows who holds the token, with both transactions linked.
-8. Try **Scan & check**: paste `raydlum.io`, `BONK` or any wallet address, or scan a QR code. **Watch a wallet** to add your real Phantom wallet (read-only) to Sunny's wallet weather.
+7. Ask *"should I sign this? https://sunny.aivylabs.xyz/api/blinks/free-airdrop"*. That's Sunny's harmless scam-demo Blink: Sunny reads its transaction, simulates it against your watched wallet, and says **don't sign**: it would take almost all of your SOL and hand your token accounts to another wallet.
+8. Ask for a *"deep scan of BONK"*. Sunny pays $0.10 from its pocket to a paid scan API over **x402**, then shows who holds the token, with both transactions linked.
+9. Try **Scan & check**: paste `raydlum.io`, `BONK` or any wallet address, or scan a QR code. **Watch a wallet** to add your real Phantom wallet (read-only) to Sunny's wallet weather.
 
 Everything runs on **devnet with test USDC**. It speaks English and Spanish.
 
@@ -44,6 +45,7 @@ Everything runs on **devnet with test USDC**. It speaks English and Spanish.
 - **Tokens:** risk level from Jupiter's token data and RugCheck (holder concentration, mint and freeze authority, liquidity, copycat symbols), explained in plain words.
 - **Links:** checks domains against the MetaMask and Phantom phishing lists and spots lookalikes of known brands.
 - **Wallets:** value, holdings, transaction history and age, and **token approvals** (another program that can move your tokens). Scan a QR with Telegram's own scanner or paste an address.
+- **"Should I sign this?":** paste a Blink (a Solana Action, like a "claim your airdrop" button). Sunny asks the site for the transaction it wants signed, reads every instruction and simulates it on mainnet against your watched wallet. It catches wallet and token-account takeovers, unlimited approvals, extra signers, drains and transactions that would fail, and checks Dialect's registry. It never signs anything.
 - **Price alerts:** *"tell me if BONK drops 10%"*. Checked every minute and delivered as a Telegram message.
 - **Group guardian:** add Sunny to any Telegram group. It stays quiet, but replies when someone posts a phishing link, a fake airdrop page or a token with serious red flags, and anyone can ask `/check BONK`. Only deterministic checks run there, never the AI, so nobody in a group can steer it.
 - **News and warnings:** every 15 minutes Sunny reads free public sources, filtered for Solana. A fresh Solana hack, exploit or scam reaches you in Telegram with what to do (`/news off` to stop). Launches and upgrades are shared as news, always with "not financial advice".
@@ -53,6 +55,8 @@ Everything runs on **devnet with test USDC**. It speaks English and Spanish.
 - **Care like a pet:** Energy (the pocket money left today), Mood (wallet health) and Bond (how much you play). It reacts to boops, pets, spins and too many taps.
 - **One conversation:** the Telegram chat and the Mini App chat share the same memory.
 - **Good-morning ritual:** each morning a short note in your language with your wallets' weather, pocket money left, one headline and one safety tip. Visiting Sunny builds a streak, shown on its Bond meter (`/morning` to preview, `/morning off` to stop).
+- **Stickers:** a Telegram sticker pack drawn from the real character ([t.me/addstickers/sunny_by_SunnySolBot](https://t.me/addstickers/sunny_by_SunnySolBot)). Sunny sends them at the right moments too.
+- **Good-habit badges, on Solana:** six non-transferable Token-2022 badges (Key Keeper, Pocket Parent, Wallet Watcher, Scam Spotter, Deep Diver, Sunny Streak), minted to your Sunny wallet the first time you earn them. Sunny wears the matching accessories.
 - **Share the moment:** when Sunny catches a scam, Solana stops a draw, or a deep scan comes back, share a story-sized card to your Telegram Story or send it to a friend.
 
 **Spends safely**
@@ -124,14 +128,22 @@ When you ask Sunny for a deep scan:
 
 What the deep scan adds over the free check: who holds the token (top holders, insiders, insider networks), the creator's stake, mint and freeze authority, mutable metadata, transfer fees, the LP lock on the deepest market, and every risk RugCheck lists.
 
+### "Should I sign this?" for Blinks
+
+[`bot/src/blink.ts`](bot/src/blink.ts) opens a Blink the way a wallet would. It finds the Action behind the link (`solana-action:`, a `?action=` interstitial, or a site's `actions.json`) and checks the host in [Dialect's registry](https://actions-registry.dial.to/all) and the phishing lists. Then it POSTs your watched wallet to get the real transaction and:
+- **Reads every instruction** for takeovers: `Assign` of your wallet, `SetAuthority` on your token accounts, unlimited `Approve`, closing your accounts, or a second required signer.
+- **Simulates it on mainnet** (`sigVerify: false`) with your accounts' before and after states, to show exactly what you'd send and receive, flag drains, and say when it would fail.
+
+Nothing is signed or sent. [`bot/src/demoblink.ts`](bot/src/demoblink.ts) serves a harmless drainer-shaped demo Blink. It can never be completed, because it needs a signature that is never given.
+
 ### Sunny's agent key
 
 Sunny has to act while you sleep, so its key per owner is derived on the server (`HMAC-SHA256(server seed, owner)`). That's the honest trade-off, and it's why the pocket exists: a stolen or confused agent key can draw at most your per-payment limit, at most your daily limit, only into its own account, and nothing at all once you freeze it.
 
 ### Sunny's brain and guardrails
 
-Sunny is an LLM (`anthropic/claude-haiku-4.5` through OpenRouter, swappable in `.env`) in a short tool loop with 14 tools:
-- **Live data:** tokens, the market, news, links, any wallet, your own wallets and your pocket.
+Sunny is an LLM (`anthropic/claude-haiku-4.5` through OpenRouter, swappable in `.env`) in a short tool loop with 15 tools:
+- **Live data:** tokens, the market, news, links, Blinks, any wallet, your own wallets and your pocket.
 - **Actions:** price alerts, watched wallets, pocket draws and paid deep scans.
 
 An action only counts when a tool confirms it in that turn.
