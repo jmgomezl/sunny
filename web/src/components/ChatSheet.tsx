@@ -1,8 +1,16 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
-import { SunMark } from './Icons'
+import { SolanaMark, SunMark } from './Icons'
+import type { TokenCard } from '../lib/chat'
 
-export type ChatMessage = { id: number; from: 'sunny' | 'you'; text: string; error?: boolean }
+export type ChatMessage = {
+  id: number
+  from: 'sunny' | 'you'
+  text: string
+  error?: boolean
+  cards?: TokenCard[]
+  live?: boolean
+}
 
 type ChatSheetProps = {
   open: boolean
@@ -109,7 +117,17 @@ export function ChatSheet({ open, messages, pending, suggestions, sameAsTelegram
                       <SunMark size={18} />
                     </span>
                   )}
-                  <p>{m.text}</p>
+                  <div className="chat-body">
+                    <p>{m.text}</p>
+                    {m.cards?.map((c) => (
+                      <TokenCardView key={c.mint} card={c} />
+                    ))}
+                    {m.live && (
+                      <span className="chat-live">
+                        <span className="chat-live-dot" /> Live from Jupiter
+                      </span>
+                    )}
+                  </div>
                 </motion.div>
               ))}
               {pending && (
@@ -163,5 +181,83 @@ export function ChatSheet({ open, messages, pending, suggestions, sameAsTelegram
         </>
       )}
     </AnimatePresence>
+  )
+}
+
+const RISK_LABEL = { low: 'Low risk', medium: 'Medium risk', high: 'High risk' } as const
+
+function formatUsd(n: number) {
+  if (n >= 1) return n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 })
+  return `$${n.toPrecision(3)}`
+}
+
+function compact(n: number) {
+  return n.toLocaleString('en-US', { notation: 'compact', maximumFractionDigits: 1 })
+}
+
+/** Live token card: price, 24h move and the safety audit, straight from Jupiter. */
+function TokenCardView({ card }: { card: TokenCard }) {
+  const [iconFailed, setIconFailed] = useState(false)
+  const dir = (card.change24h ?? 0) > 0 ? 'up' : (card.change24h ?? 0) < 0 ? 'down' : 'flat'
+  return (
+    <div className={`token-card token-card--${card.risk}`}>
+      <div className="token-card-top">
+        {card.icon && !iconFailed ? (
+          <img
+            src={card.icon}
+            alt=""
+            width={30}
+            height={30}
+            loading="lazy"
+            referrerPolicy="no-referrer"
+            onError={() => setIconFailed(true)}
+          />
+        ) : (
+          <span className="token-card-letter">{card.symbol[0]}</span>
+        )}
+        <div className="token-card-id">
+          <strong>
+            {card.symbol}
+            {card.verified && (
+              <span className="token-card-verified" title="Verified on Jupiter">
+                ✓
+              </span>
+            )}
+          </strong>
+          <small>{card.name}</small>
+        </div>
+        <div className="token-card-price">
+          <strong>{card.price !== null ? formatUsd(card.price) : '—'}</strong>
+          {card.change24h !== null && (
+            <small className={`delta delta--${dir}`}>
+              {dir === 'up' ? '▲' : dir === 'down' ? '▼' : '•'} {Math.abs(card.change24h)}% 24h
+            </small>
+          )}
+        </div>
+      </div>
+      <div className="token-card-meta">
+        <span className={`risk-pill risk-pill--${card.risk}`}>{RISK_LABEL[card.risk]}</span>
+        {card.liquidity !== null && <span>Liquidity ${compact(card.liquidity)}</span>}
+        {card.holders !== null && <span>{compact(card.holders)} holders</span>}
+      </div>
+      {card.flags.length > 0 && (
+        <ul className="token-card-flags">
+          {card.flags.slice(0, 3).map((f) => (
+            <li key={f.text} data-level={f.level}>
+              {f.text}
+            </li>
+          ))}
+        </ul>
+      )}
+      <a
+        className="token-card-mint"
+        href={`https://solscan.io/token/${card.mint}`}
+        target="_blank"
+        rel="noreferrer"
+        title={card.mint}
+      >
+        <SolanaMark size={11} /> {card.mint.slice(0, 4)}…{card.mint.slice(-4)}
+      </a>
+    </div>
   )
 }

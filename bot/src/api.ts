@@ -113,7 +113,7 @@ async function chat(req: IncomingMessage, res: ServerResponse, botToken: string)
   const ip = String(req.headers['x-real-ip'] ?? req.socket.remoteAddress ?? 'unknown')
   const person = identify(body, botToken, ip)
   const answer = await reply(person.id, person.name, message)
-  send(res, 200, { reply: answer, guest: person.guest })
+  send(res, 200, { reply: answer.text, cards: answer.cards, live: answer.live, guest: person.guest })
 }
 
 export function startApi(port: number, botToken: string) {

@@ -107,7 +107,7 @@ bot.on('message:text', async (ctx) => {
   await ctx.replyWithChatAction('typing')
   try {
     const answer = await reply(ctx.chat.id, ctx.from.first_name, ctx.message.text)
-    await ctx.reply(answer)
+    await ctx.reply(answer.live ? `${answer.text}\n\n📡 Live from Jupiter` : answer.text)
   } catch (err) {
     console.error('[sunny] brain error', err)
     await ctx.reply('My thoughts got cloudy for a second. Try me again? ☁️')

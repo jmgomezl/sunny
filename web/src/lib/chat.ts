@@ -1,4 +1,21 @@
-export type ChatReply = { reply: string; guest: boolean }
+export type TokenFlag = { level: 'high' | 'medium'; text: string }
+
+/** A live token card from Jupiter, drawn under Sunny's reply. */
+export type TokenCard = {
+  symbol: string
+  name: string
+  mint: string
+  icon?: string
+  price: number | null
+  change24h: number | null
+  liquidity: number | null
+  holders: number | null
+  verified: boolean
+  risk: 'low' | 'medium' | 'high'
+  flags: TokenFlag[]
+}
+
+export type ChatReply = { reply: string; cards: TokenCard[]; live: boolean; guest: boolean }
 
 const FALLBACK_ERROR = 'My thoughts got cloudy for a second. Try me again? ☁️'
 
@@ -35,5 +52,5 @@ export async function askSunny(message: string): Promise<ChatReply> {
   }
   const data = (await res.json().catch(() => ({}))) as Partial<ChatReply> & { error?: string }
   if (!res.ok || !data.reply) throw new Error(data.error || FALLBACK_ERROR)
-  return { reply: data.reply, guest: Boolean(data.guest) }
+  return { reply: data.reply, cards: data.cards ?? [], live: Boolean(data.live), guest: Boolean(data.guest) }
 }

@@ -341,9 +341,19 @@ export default function App() {
     setChatPending(true)
     setDozing(false)
     try {
-      const { reply } = await askSunny(text)
-      setChat((prev) => [...prev, sunnySays(reply)])
-      play({ reaction: 'giggle', particles: ['sparkle', 3], haptic: 'light', ms: 900, bond: 1 })
+      const { reply, cards, live } = await askSunny(text)
+      setChat((prev) => [...prev, { ...sunnySays(reply), cards, live }])
+      const risky = cards.find((c) => c.risk !== 'low')
+      if (risky) {
+        play({ reaction: 'alarm', haptic: 'warning', ms: 1600, bond: 1 })
+        setStatusOverride({
+          tone: 'warn',
+          text: `${risky.risk === 'high' ? 'High' : 'Medium'} risk · $${risky.symbol}`,
+        })
+        later(() => setStatusOverride(null), 8000)
+      } else {
+        play({ reaction: 'giggle', particles: ['sparkle', 3], haptic: 'light', ms: 900, bond: 1 })
+      }
     } catch (err) {
       setChat((prev) => [...prev, sunnySays(err instanceof Error ? err.message : String(err), true)])
       haptic('warning')

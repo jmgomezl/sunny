@@ -1,0 +1,210 @@
+// Live Solana market data for Sunny, from Jupiter's public API (no key needed).
+// Every function returns compact, already-interpreted data so the model never has
+// to guess numbers or compute risk itself.
+
+const JUP = 'https://lite-api.jup.ag'
+const SOL_MINT = 'So11111111111111111111111111111111111111112'
+const CACHE_MS = 30_000
+const TIMEOUT_MS = 8_000
+
+type Stats = { priceChange?: number; buyVolume?: number; sellVolume?: number }
+
+type JupToken = {
+  id: string
+  name: string
+  symbol: string
+  icon?: string
+  usdPrice?: number
+  mcap?: number
+  liquidity?: number
+  holderCount?: number
+  stats1h?: Stats
+  stats24h?: Stats
+  firstPool?: { createdAt?: string }
+  audit?: {
+    mintAuthorityDisabled?: boolean
+    freezeAuthorityDisabled?: boolean
+    topHoldersPercentage?: number
+    devBalancePercentage?: number
+  }
+  organicScoreLabel?: string
+  isVerified?: boolean
+  tags?: string[]
+}
+
+export type Flag = { level: 'high' | 'medium'; text: string }
+
+/** What the Mini App draws under Sunny's reply: one live token card. */
+export type TokenCard = {
+  symbol: string
+  name: string
+  mint: string
+  icon?: string
+  price: number | null
+  change24h: number | null
+  liquidity: number | null
+  holders: number | null
+  verified: boolean
+  risk: 'low' | 'medium' | 'high'
+  flags: Flag[]
+}
+
+const cache = new Map<string, { at: number; data: unknown }>()
+
+async function getJson<T>(path: string): Promise<T> {
+  const url = `${JUP}${path}`
+  const hit = cache.get(url)
+  if (hit && Date.now() - hit.at < CACHE_MS) return hit.data as T
+  const res = await fetch(url, { signal: globalThis.AbortSignal.timeout(TIMEOUT_MS) })
+  if (!res.ok) throw new Error(`Jupiter ${res.status} for ${path}`)
+  const data = (await res.json()) as T
+  cache.set(url, { at: Date.now(), data })
+  return data
+}
+
+const round = (n: number | undefined, digits = 2) =>
+  n === undefined || !Number.isFinite(n) ? null : Number(n.toFixed(digits))
+
+/** Keeps meaningful digits for tiny prices like BONK's 0.0000035. */
+const price = (n: number | undefined) =>
+  n === undefined || !Number.isFinite(n) ? null : Number(n.toPrecision(n < 1 ? 4 : 6))
+
+function ageDays(t: JupToken) {
+  const created = t.firstPool?.createdAt ? Date.parse(t.firstPool.createdAt) : NaN
+  return Number.isFinite(created) ? Math.floor((Date.now() - created) / 86_400_000) : null
+}
+
+/** Plain-language red flags from Jupiter's audit and market stats. */
+export function redFlags(t: JupToken): Flag[] {
+  const flags: Flag[] = []
+  const a = t.audit ?? {}
+  if (a.mintAuthorityDisabled === false) flags.push({ level: 'high', text: 'Mint is still open: the creator can print more tokens' })
+  if (a.freezeAuthorityDisabled === false) flags.push({ level: 'high', text: 'Freeze authority is on: holders’ tokens can be frozen' })
+  const top = a.topHoldersPercentage
+  if (top !== undefined && top > 50) flags.push({ level: 'high', text: `Top holders own ${Math.round(top)}% of the supply` })
+  else if (top !== undefined && top > 30) flags.push({ level: 'medium', text: `Top holders own ${Math.round(top)}% of the supply` })
+  if ((a.devBalancePercentage ?? 0) > 5) flags.push({ level: 'medium', text: `The creator still holds ${Math.round(a.devBalancePercentage!)}%` })
+  const liq = t.liquidity
+  if (liq !== undefined && liq < 10_000) flags.push({ level: 'high', text: `Very low liquidity ($${Math.round(liq).toLocaleString('en-US')}): hard to sell` })
+  else if (liq !== undefined && liq < 75_000) flags.push({ level: 'medium', text: `Low liquidity ($${Math.round(liq).toLocaleString('en-US')})` })
+  const age = ageDays(t)
+  if (age !== null && age < 7) flags.push({ level: 'medium', text: `Very new: first pool ${age === 0 ? 'today' : `${age} day${age === 1 ? '' : 's'} ago`}` })
+  if (!t.isVerified) flags.push({ level: 'medium', text: 'Not verified on Jupiter' })
+  if (t.organicScoreLabel === 'low') flags.push({ level: 'medium', text: 'Trading looks mostly automated, not real people' })
+  return flags
+}
+
+function riskOf(flags: Flag[]): TokenCard['risk'] {
+  if (flags.some((f) => f.level === 'high')) return 'high'
+  return flags.length >= 2 ? 'medium' : 'low'
+}
+
+export function toCard(t: JupToken): TokenCard {
+  const flags = redFlags(t)
+  return {
+    symbol: t.symbol,
+    name: t.name,
+    mint: t.id,
+    icon: t.icon,
+    price: price(t.usdPrice),
+    change24h: round(t.stats24h?.priceChange, 1),
+    liquidity: round(t.liquidity, 0),
+    holders: t.holderCount ?? null,
+    verified: Boolean(t.isVerified),
+    risk: riskOf(flags),
+    flags,
+  }
+}
+
+/** Looks up a token by symbol, name or mint address, preferring the real one over copycats. */
+export async function lookupToken(query: string) {
+  const q = query.trim().replace(/^\$/, '')
+  const results = await getJson<JupToken[]>(`/tokens/v2/search?query=${encodeURIComponent(q)}`)
+  if (!results.length) return { found: false as const, query: q }
+
+  const exact = results.filter((t) => t.symbol.toLowerCase() === q.toLowerCase() || t.id === q)
+  const pick =
+    exact.find((t) => t.isVerified) ??
+    [...exact].sort((a, b) => (b.liquidity ?? 0) - (a.liquidity ?? 0))[0] ??
+    results[0]
+  const card = toCard(pick)
+  const v24 = (pick.stats24h?.buyVolume ?? 0) + (pick.stats24h?.sellVolume ?? 0)
+
+  return {
+    found: true as const,
+    card,
+    details: {
+      exact_match: exact.length > 0,
+      other_tokens_with_same_symbol: Math.max(0, exact.length - 1),
+      market_cap_usd: round(pick.mcap, 0),
+      volume_24h_usd: round(v24, 0),
+      change_1h_pct: round(pick.stats1h?.priceChange, 1),
+      age_days: ageDays(pick),
+      organic_trading: pick.organicScoreLabel ?? 'unknown',
+      tags: (pick.tags ?? []).slice(0, 6),
+    },
+  }
+}
+
+const CATEGORIES = { trending: 'toptrending', top_traded: 'toptraded', top_organic: 'toporganicscore' } as const
+
+/** SOL's price plus the top tokens on Solana right now. */
+export async function marketOverview(category: keyof typeof CATEGORIES = 'trending') {
+  const [sol, tokens] = await Promise.all([
+    getJson<Record<string, { usdPrice: number; priceChange24h?: number }>>(`/price/v3?ids=${SOL_MINT}`),
+    getJson<JupToken[]>(`/tokens/v2/${CATEGORIES[category] ?? 'toptrending'}/24h?limit=8`),
+  ])
+  return {
+    sol: { price: price(sol[SOL_MINT]?.usdPrice), change_24h_pct: round(sol[SOL_MINT]?.priceChange24h, 1) },
+    category,
+    tokens: tokens.slice(0, 8).map((t) => ({
+      symbol: t.symbol,
+      price: price(t.usdPrice),
+      change_24h_pct: round(t.stats24h?.priceChange, 1),
+      market_cap_usd: round(t.mcap, 0),
+      verified: Boolean(t.isVerified),
+    })),
+  }
+}
+
+type Holdings = {
+  uiAmount?: number
+  tokens?: Record<string, { uiAmount?: number }[]>
+}
+
+/** Read-only snapshot of a public wallet: SOL plus its most valuable tokens. */
+export async function walletSnapshot(address: string) {
+  if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(address)) return { error: 'That doesn’t look like a Solana address.' }
+  const holdings = await getJson<Holdings>(`/ultra/v1/holdings/${address}`)
+  const amounts = Object.entries(holdings.tokens ?? {})
+    .map(([mint, accounts]) => [mint, accounts.reduce((s, a) => s + (a.uiAmount ?? 0), 0)] as const)
+    .filter(([, amount]) => amount > 0)
+    .slice(0, 40)
+
+  const mints = [SOL_MINT, ...amounts.map(([m]) => m)]
+  const [prices, infos] = await Promise.all([
+    getJson<Record<string, { usdPrice: number }>>(`/price/v3?ids=${mints.slice(0, 50).join(',')}`),
+    amounts.length ? getJson<JupToken[]>(`/tokens/v2/search?query=${amounts.map(([m]) => m).join(',')}`) : [],
+  ])
+  const symbol = new Map(infos.map((t) => [t.id, t.symbol]))
+
+  const solAmount = holdings.uiAmount ?? 0
+  const solValue = solAmount * (prices[SOL_MINT]?.usdPrice ?? 0)
+  const tokens = amounts
+    .map(([mint, amount]) => ({
+      symbol: symbol.get(mint) ?? `${mint.slice(0, 4)}…`,
+      amount: round(amount, 4),
+      value_usd: round(amount * (prices[mint]?.usdPrice ?? 0), 2) ?? 0,
+    }))
+    .sort((a, b) => b.value_usd - a.value_usd)
+
+  const total = solValue + tokens.reduce((s, t) => s + t.value_usd, 0)
+  const biggest = Math.max(solValue, tokens[0]?.value_usd ?? 0)
+  return {
+    sol: { amount: round(solAmount, 4), value_usd: round(solValue, 2) },
+    top_tokens: tokens.slice(0, 8),
+    token_count: tokens.length,
+    total_value_usd: round(total, 2),
+    largest_position_pct: total > 0 ? round((biggest / total) * 100, 0) : null,
+  }
+}

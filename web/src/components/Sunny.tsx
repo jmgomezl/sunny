@@ -3,7 +3,8 @@ import { motion, useAnimate, useMotionTemplate, useMotionValue, useSpring, useTr
 
 export type Mood = 'happy' | 'excited' | 'sleepy' | 'worried' | 'hungry'
 /** Short-lived expressions that play over the current mood. */
-export type Reaction = 'giggle' | 'love' | 'dizzy' | 'spin' | 'shiver' | 'yum' | 'scan' | 'pat' | 'blush' | 'boop'
+export type Reaction =
+  'giggle' | 'love' | 'dizzy' | 'spin' | 'shiver' | 'yum' | 'scan' | 'pat' | 'blush' | 'boop' | 'alarm'
 /** Where and how Sunny was touched. */
 export type Gesture = 'boop' | 'head' | 'cheek' | 'ray' | 'double' | 'pet' | 'dizzy'
 
@@ -497,6 +498,7 @@ function Spiral({ cx, cy }: { cx: number; cy: number }) {
 }
 
 const FACES: Record<Mood | Reaction, (url: (name: string) => string) => ReactNode> = {
+  alarm: (url) => FACES.worried(url),
   happy: () => (
     <>
       <path d="M -29 -21 Q -21 -25.5 -13 -22" {...stroke} strokeWidth={2.6} opacity={0.55} />
