@@ -231,6 +231,14 @@ export function ScanSheet(props: ScanSheetProps) {
                           Ask Sunny
                         </button>
                       </div>
+                      {/* Sunny buys it with pocket money, over x402; the request goes through the chat. */}
+                      <button
+                        type="button"
+                        className="ghost-btn scan-deep"
+                        onClick={() => onAsk(`Deep scan ${result.card.symbol} (${result.card.mint})`)}
+                      >
+                        Deep scan · $0.10 from my pocket
+                      </button>
                     </>
                   )}
                   {result.kind === 'token' && !result.found && (

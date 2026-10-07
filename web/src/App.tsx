@@ -516,9 +516,23 @@ export default function App() {
     setChatPending(true)
     setDozing(false)
     try {
-      const { reply, cards, links, alerts, pocket: draws, mine, wallets, watchChanged, live } = await askSunny(text)
-      setChat((prev) => [...prev, { ...sunnySays(reply), cards, links, alerts, pocket: draws, mine, wallets, live }])
-      if (draws.length) void loadPocket()
+      const {
+        reply,
+        cards,
+        links,
+        alerts,
+        pocket: draws,
+        mine,
+        wallets,
+        scans,
+        watchChanged,
+        live,
+      } = await askSunny(text)
+      setChat((prev) => [
+        ...prev,
+        { ...sunnySays(reply), cards, links, alerts, pocket: draws, mine, wallets, scans, live },
+      ])
+      if (draws.length || scans.length) void loadPocket()
       if (watchChanged) void refreshHome()
       const risky = cards.find((c) => c.risk !== 'low')
       const scam = links.find((l) => l.verdict === 'known_scam' || l.verdict === 'suspicious')

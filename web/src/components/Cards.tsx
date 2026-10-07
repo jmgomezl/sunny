@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { SolanaMark, SunMark } from './Icons'
-import type { AlertCard, LinkCheck, MyWallet, PocketEvent, TokenCard } from '../lib/chat'
+import type { AlertCard, DeepScan, LinkCheck, MyWallet, PocketEvent, TokenCard } from '../lib/chat'
 import type { WalletReport } from '../lib/home'
 
 // Result cards shared by the chat and the scanner: tokens, links, alerts and wallets.
@@ -276,6 +276,74 @@ export function MyWalletView({ wallet }: { wallet: MyWallet }) {
       >
         <SolanaMark size={11} /> View on Solscan
       </a>
+    </div>
+  )
+}
+
+const pct = (n: number | null) => (n === null ? '—' : `${n}%`)
+
+/** A deep scan Sunny bought over x402: who holds the token, what can still change, every risk. */
+export function DeepScanView({ scan }: { scan: DeepScan }) {
+  const h = scan.holders
+  const facts: [string, string, boolean][] = [
+    ['Top 10 hold', pct(h.top10Pct), (h.top10Pct ?? 0) > 50],
+    ['Holders', h.total === null ? '—' : compact(h.total), false],
+    [
+      'Insiders',
+      h.insiderNetworks ? `${h.insiderNetworks} network${h.insiderNetworks > 1 ? 's' : ''}` : 'None found',
+      h.insiderNetworks > 0,
+    ],
+    [
+      'Liquidity',
+      scan.liquidityUsd === null ? '—' : `$${compact(scan.liquidityUsd)}`,
+      (scan.liquidityUsd ?? 0) < 10_000,
+    ],
+    ['Mint authority', scan.mintAuthority ? 'On' : 'Off', scan.mintAuthority],
+    ['Freeze authority', scan.freezeAuthority ? 'On' : 'Off', scan.freezeAuthority],
+    ['Creator holds', pct(scan.creatorHoldsPct), (scan.creatorHoldsPct ?? 0) > 5],
+    ['LP locked', pct(scan.lpLockedPct), false],
+  ]
+  return (
+    <div className={`token-card deep-scan token-card--${scan.risk}`}>
+      <div className="token-card-top">
+        {scan.icon ? (
+          <img src={scan.icon} alt="" width={30} height={30} loading="lazy" referrerPolicy="no-referrer" />
+        ) : (
+          <span className="token-card-letter">{scan.symbol[0]}</span>
+        )}
+        <div className="token-card-id">
+          <strong>Deep scan · {scan.symbol}</strong>
+          <small>{scan.name}</small>
+        </div>
+        <span className={`risk-pill risk-pill--${scan.risk}`}>{RISK_LABEL[scan.risk]}</span>
+      </div>
+      <dl className="deep-scan-facts">
+        {facts.map(([label, value, bad]) => (
+          <div key={label} data-bad={bad || undefined}>
+            <dt>{label}</dt>
+            <dd>{value}</dd>
+          </div>
+        ))}
+      </dl>
+      {scan.risks.length > 0 && (
+        <ul className="token-card-flags">
+          {scan.risks.slice(0, 4).map((r) => (
+            <li key={r.name} data-level={r.level === 'danger' ? 'high' : 'medium'}>
+              {r.name}
+            </li>
+          ))}
+        </ul>
+      )}
+      <p className="deep-scan-paid">
+        <SolanaMark size={11} /> Paid ${scan.price.toFixed(2)} from my pocket over x402 ·{' '}
+        <a href={scan.paymentTx} target="_blank" rel="noreferrer">
+          Payment
+        </a>{' '}
+        ·{' '}
+        <a href={scan.drawTx} target="_blank" rel="noreferrer">
+          Pocket draw
+        </a>
+      </p>
     </div>
   )
 }
