@@ -1,6 +1,8 @@
 import { lookupToken, MAINNET_RPC } from './market.js'
 import { checkLink, type LinkCheck } from './scams.js'
 import { isAddress, walletReport, type WalletReport } from './wallet.js'
+import { checkBlink, looksLikeBlink, type BlinkReport } from './blink.js'
+import { feePayer, hasChain } from './solana.js'
 
 // "Scan or paste anything": works out whether the input is a token, a wallet or a link
 // (including Solana Pay QR codes and Solscan/Explorer links) and returns the right report.
@@ -11,6 +13,7 @@ export type Inspection =
   | ({ kind: 'token' } & Awaited<ReturnType<typeof lookupToken>>)
   | { kind: 'wallet'; report: WalletReport }
   | { kind: 'link'; link: LinkCheck }
+  | { kind: 'blink'; report: BlinkReport }
   | { kind: 'unknown'; message: string }
 
 /** Pulls an address out of QR payloads and explorer links. */
@@ -36,7 +39,14 @@ async function accountKind(address: string): Promise<'mint' | 'wallet'> {
   return value && TOKEN_PROGRAMS.has(value.owner) && value.data?.parsed?.type === 'mint' ? 'mint' : 'wallet'
 }
 
-export async function inspect(input: string): Promise<Inspection> {
+/**
+ * Without a wallet of yours to simulate with, a Blink is still read using a stand-in address
+ * (Sunny's fee wallet, which holds nothing on mainnet).
+ */
+const PROBE = () => (hasChain() ? feePayer().publicKey.toBase58() : '11111111111111111111111111111112')
+
+/** `watched` is a wallet you watch: Blinks are simulated against its real balances. */
+export async function inspect(input: string, watched: string | null = null): Promise<Inspection> {
   const text = input.trim()
   if (!text) return { kind: 'unknown', message: 'Paste or scan something first ☀️' }
 
@@ -44,6 +54,11 @@ export async function inspect(input: string): Promise<Inspection> {
   if (address) {
     if ((await accountKind(address)) === 'mint') return { kind: 'token', ...(await lookupToken(address)) }
     return { kind: 'wallet', report: await walletReport(address) }
+  }
+
+  if (/^solana-action:/i.test(text) || ((/^https?:\/\//i.test(text) || /\./.test(text)) && (await looksLikeBlink(text)))) {
+    const report = await checkBlink(text, watched, PROBE()).catch(() => null)
+    if (report) return { kind: 'blink', report }
   }
 
   if (/^https?:\/\//i.test(text) || /^[a-z0-9-]+(\.[a-z0-9-]+)+(\/\S*)?$/i.test(text)) {

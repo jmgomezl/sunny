@@ -10,6 +10,7 @@ import { faucet, hasChain, pocketState, prepareOwnerTx, submitOwnerTx, type Owne
 import { saveVault, validRecord, vaultOf } from './vaults.js'
 import { DEEP_SCAN_PATH, deepScanRoute } from './x402.js'
 import { MAX_SHARE_BYTES, readShare, saveShare, startShareCleanup } from './shares.js'
+import { DEMO_BLINK_PATH, demoBlinkMeta, demoBlinkTransaction } from './demoblink.js'
 
 // Small HTTP API for the Mini App, served behind nginx at /api/.
 // Telegram users are identified from the signed initData, so chatting in the Mini App
@@ -181,7 +182,7 @@ async function inspectRoute(req: IncomingMessage, res: ServerResponse, botToken:
   const input = typeof body.input === 'string' ? body.input.trim().slice(0, 300) : ''
   if (!input) throw new ApiError(400, 'Paste or scan something first ☀️')
   const person = identify(body, botToken, clientIp(req), 'inspect')
-  const result = await inspect(input)
+  const result = await inspect(input, person.guest ? null : (watchedOf(person.id)[0] ?? null))
   if (result.kind === 'token' && result.found) {
     logActivity(person.id, 'check', `Checked $${result.card.symbol} · ${result.card.risk} risk`, 'Jupiter + RugCheck')
   } else if (result.kind === 'wallet') {
@@ -282,6 +283,35 @@ function shareImage(req: IncomingMessage, res: ServerResponse) {
   res.end(image)
 }
 
+// Solana Actions must answer CORS preflights and allow any origin (wallets and blink clients).
+const ACTION_HEADERS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET,POST,PUT,OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization, Content-Encoding, Accept-Encoding',
+  'Content-Type': 'application/json',
+}
+
+/** Sunny's harmless scam-demo Blink (see demoblink.ts). */
+async function demoBlinkRoute(req: IncomingMessage, res: ServerResponse) {
+  if (req.method === 'OPTIONS') {
+    res.writeHead(204, ACTION_HEADERS)
+    return res.end()
+  }
+  if (!allow(`blink-demo:${clientIp(req)}`, 120, HOUR)) return send(res, 429, { error: 'Too many requests' })
+  if (req.method === 'GET') {
+    res.writeHead(200, ACTION_HEADERS)
+    return res.end(JSON.stringify(demoBlinkMeta(PUBLIC_URL)))
+  }
+  if (req.method !== 'POST') return send(res, 405, { error: 'Method not allowed' })
+  const body = await readJson(req)
+  if (typeof body.account !== 'string' || !isAddress(body.account)) {
+    res.writeHead(400, ACTION_HEADERS)
+    return res.end(JSON.stringify({ message: 'Send the account that would sign.' }))
+  }
+  res.writeHead(200, ACTION_HEADERS)
+  res.end(JSON.stringify(await demoBlinkTransaction(body.account)))
+}
+
 export function startApi(port: number, botToken: string) {
   startShareCleanup()
   const server = createServer(async (req, res) => {
@@ -293,6 +323,7 @@ export function startApi(port: number, botToken: string) {
       if (req.method === 'POST' && req.url === '/api/vault') return await vaultRoute(req, res, botToken)
       if (req.method === 'POST' && req.url === '/api/pocket') return await pocketRoute(req, res, botToken)
       if (req.method === 'POST' && req.url === '/api/share') return await shareRoute(req, res, botToken)
+      if (req.url?.split('?')[0] === DEMO_BLINK_PATH) return await demoBlinkRoute(req, res)
       if (req.method === 'GET' && req.url?.startsWith('/api/share/')) return shareImage(req, res)
       // Public x402 API: anyone can pay for a deep scan, not just Sunny.
       if (req.method === 'GET' && req.url?.startsWith(DEEP_SCAN_PATH)) {
