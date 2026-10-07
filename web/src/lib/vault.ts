@@ -81,18 +81,47 @@ type CloudStorage = {
   setItem: (key: string, value: string, cb?: (err: string | null) => void) => void
 }
 
-const cloud = () => (window.Telegram?.WebApp as { CloudStorage?: CloudStorage } | undefined)?.CloudStorage
+// CloudStorage needs Telegram 6.9+; older clients (and browsers) throw WebAppMethodUnsupported.
+const cloud = () => {
+  const app = window.Telegram?.WebApp as
+    | { CloudStorage?: CloudStorage; isVersionAtLeast?: (v: string) => boolean }
+    | undefined
+  return app?.isVersionAtLeast?.('6.9') ? app.CloudStorage : undefined
+}
+
+// Some clients never answer CloudStorage calls; don't wait forever, the server backup covers it.
+const CLOUD_TIMEOUT_MS = 2000
+const withTimeout = <T,>(p: Promise<T>, fallback: T) =>
+  Promise.race([p, new Promise<T>((resolve) => setTimeout(() => resolve(fallback), CLOUD_TIMEOUT_MS))])
 
 function cloudGet(): Promise<string | null> {
   const cs = cloud()
   if (!cs) return Promise.resolve(null)
-  return new Promise((resolve) => cs.getItem(CLOUD_KEY, (err, v) => resolve(err || !v ? null : v)))
+  return withTimeout(
+    new Promise<string | null>((resolve) => {
+      try {
+        cs.getItem(CLOUD_KEY, (err, v) => resolve(err || !v ? null : v))
+      } catch {
+        resolve(null)
+      }
+    }),
+    null,
+  )
 }
 
 function cloudSet(value: string): Promise<void> {
   const cs = cloud()
   if (!cs) return Promise.resolve()
-  return new Promise((resolve, reject) => cs.setItem(CLOUD_KEY, value, (err) => (err ? reject(new Error(err)) : resolve())))
+  return withTimeout(
+    new Promise<void>((resolve) => {
+      try {
+        cs.setItem(CLOUD_KEY, value, () => resolve())
+      } catch {
+        resolve()
+      }
+    }),
+    undefined,
+  )
 }
 
 /** Loads the encrypted record from Telegram, falling back to the server backup. */

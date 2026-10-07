@@ -307,6 +307,9 @@ export default function App() {
   }
 
   const play = useCallback((p: Play) => {
+    // Anything Sunny reacts to counts as being together, so it won't doze off mid-chat.
+    lastTouch.current = performance.now()
+    setDozing(false)
     timers.current.forEach(clearTimeout)
     timers.current = []
     setReaction(p.reaction)
