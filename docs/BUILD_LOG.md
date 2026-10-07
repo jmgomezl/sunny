@@ -97,6 +97,28 @@ The first real devnet run failed: a brand-new wallet has 0 SOL and couldn't pay 
 | `ec96f10` `2ccdb05` | **Good-habit badges**: six non-transferable Token-2022 tokens with on-chain metadata, minted on devnet when earned (checked on the server), and accessories Sunny wears |
 | `837de62` | Fixed a 10-minute production crash loop the badge libraries caused, and made the deploy check catch crash loops |
 
+## Oct 7, 16:07–16:48 · A QA round with four AI testers
+
+Four Claude subagents tested Sunny in parallel, each from one angle, reporting only (no code changes):
+- A security and backend auditor read the server, the on-chain program and the payment flows.
+- A live tester sent edge cases to the production API, using test accounts only.
+- A visual reviewer screenshotted every screen, mood and theme at phone size.
+- A conversation tester ran 59 chats in English and Spanish.
+
+Every finding was checked against the code before fixing.
+
+| Commit | What |
+|---|---|
+| `567b35f` | **Remote crash:** one malformed account sent to the demo Blink could take the bot down. Fixed and deployed first |
+| `b1a06ed` | **The Blink checker could be aimed at the server itself (SSRF).** Now it uses https only, public addresses only (re-checked on every redirect), reads at most 512 KB, and caps the transaction size. A dial.to wrapper can no longer make an unknown Action look verified |
+| `b6a08c5` | **The phone's signing check now also verifies accounts, not just amounts.** A compromised server could have described a top-up honestly while sending the money to another pocket. A test reproduces the attack |
+| `c6e6a60` | A new Sunny wallet signs a proof that it holds its key, so nobody can claim someone else's address and its test money |
+| `0fb5b54` `97104c3` | **Wrong wallet data fixed:** a \$113k wallet read as \$506, a mistyped Token-2022 id, false alert bells, `$WIF`, and home and the wallet card disagreeing on risk |
+| `487e160` `e728d00` | **Link checks:** `jupiter.ag` is no longer "official", `t.me`/GitHub pages are no longer trusted blindly, look-alikes like `jupp.ag` are caught, Solana Pay requests get the signing check, and mints can't be watched as wallets |
+| `a169d45` `7912e2e` | **The brain:** Sunny never claims an action no tool confirmed. Real safety questions are no longer refused. A pasted seed phrase or private key never reaches the model. Answers are shorter and more honest |
+| `a63b38c` | x402: CORS preflight for browser clients, and a 400 (not a 500) for incomplete payments |
+| `d5bbe3f` `a006931` `92315c4` | **Mini App polish:** honest loading and error states, token tiles, Telegram colors that follow the sky, password forms, an "Open in Telegram" button for web visitors, contrast and accessibility |
+
 ## Decisions, and why
 
 - **Money rules live in a program, not in the prompt.** A model can be talked into things; a program can't. Sunny is told to always *try* the draw you ask for, because watching Solana refuse a $500 draw is the whole point.
@@ -140,9 +162,10 @@ The first real devnet run failed: a brand-new wallet has 0 SOL and couldn't pay 
 ## How it was tested
 
 - **Program:** 7 LiteSVM tests (`cargo test -p sunny_pocket`).
-- **Server:** 8 tests (`pnpm test`).
-  - The phone's transaction verifier, including what a compromised server might try.
-  - Guardrails, covering attacks and the ordinary questions that must still pass.
+- **Server:** 23 tests (`pnpm test`).
+  - The phone's transaction verifier, including what a compromised server might try (wrong wallet, foreign pocket).
+  - Guardrails, covering attacks, pasted seeds and keys, and the ordinary questions that must still pass.
+  - News, groups, streaks and the Blink reader.
 - **End to end:** `scripts/e2e-devnet.ts` runs against the live server on devnet as a fresh Telegram user:
   - Wallet and faucet.
   - Open the pocket and top up.
@@ -150,9 +173,10 @@ The first real devnet run failed: a brand-new wallet has 0 SOL and couldn't pay 
   - Freeze, unfreeze and withdraw.
   - Then "what happened in my wallet?".
 - **By hand:** each flow walked through in a phone-sized browser, signed in as a real Telegram user (signed `initData`), including red-team prompts against the live model.
+- **A QA round with four AI testers** (Oct 7, above): security review, live API probing, visual review and conversation testing, each finding verified before it was fixed.
 
 ## Still to do before Oct 12
 
-- A morning brief, and one-tap revoke of risky approvals.
+- One-tap revoke of risky approvals.
 - First testers.
 - The pitch and demo videos, then submission.
