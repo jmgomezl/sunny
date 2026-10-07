@@ -27,6 +27,7 @@ struct Env {
     owner: Keypair,
     agent: Keypair,
     stranger: Keypair,
+    sponsor: Keypair,
     pocket: Pubkey,
     vault: Pubkey,
 }
@@ -43,6 +44,8 @@ impl Env {
         let mint = CreateMint::new(&mut svm, &authority).decimals(6).send().unwrap();
 
         let (owner, agent, stranger) = (Keypair::new(), Keypair::new(), Keypair::new());
+        let sponsor = Keypair::new();
+        svm.airdrop(&sponsor.pubkey(), 1_000_000_000).unwrap();
         for k in [&owner, &agent, &stranger] {
             svm.airdrop(&k.pubkey(), 1_000_000_000).unwrap();
             let ata = CreateAssociatedTokenAccount::new(&mut svm, k, &mint).send().unwrap();
@@ -53,7 +56,7 @@ impl Env {
 
         let pocket = Pubkey::find_program_address(&[POCKET_SEED, owner.pubkey().as_ref()], &sunny_pocket::id()).0;
         let vault = Pubkey::find_program_address(&[VAULT_SEED, pocket.as_ref()], &sunny_pocket::id()).0;
-        Env { svm, mint, owner, agent, stranger, pocket, vault }
+        Env { svm, mint, owner, agent, stranger, sponsor, pocket, vault }
     }
 
     fn ata(&self, owner: &Pubkey) -> Pubkey {
@@ -77,6 +80,7 @@ impl Env {
             &sunny_pocket::instruction::OpenPocket { agent: self.agent.pubkey(), daily_limit: daily, per_tx_limit: per_tx }.data(),
             sunny_pocket::accounts::OpenPocket {
                 owner: owner.pubkey(),
+                payer: self.sponsor.pubkey(),
                 pocket: self.pocket,
                 mint: self.mint,
                 vault: self.vault,
@@ -85,7 +89,15 @@ impl Env {
             }
             .to_account_metas(None),
         );
-        self.send(ix, &owner)
+        // The sponsor pays rent and fees; the owner only signs.
+        let sponsor = self.sponsor.insecure_clone();
+        self.svm.expire_blockhash();
+        let msg = Message::new_with_blockhash(&[ix], Some(&sponsor.pubkey()), &self.svm.latest_blockhash());
+        let tx = VersionedTransaction::try_new(VersionedMessage::Legacy(msg), &[&sponsor, &owner]).unwrap();
+        self.svm
+            .send_transaction(tx)
+            .map(|_| ())
+            .map_err(|e| format!("{:?}\n{}", e.err, e.meta.logs.join("\n")))
     }
 
     fn top_up(&mut self, payer: &Keypair, amount: u64) -> Result<(), String> {
@@ -291,4 +303,16 @@ fn rejects_bad_limits_on_open() {
     assert_eq!(state.owner, env.owner.pubkey());
     assert_eq!(state.agent, env.agent.pubkey());
     assert!(!state.frozen);
+}
+
+#[test]
+fn owner_needs_no_sol_to_open() {
+    let mut env = Env::new();
+    // Drain the owner's SOL: the sponsor pays rent and fees, so opening still works.
+    let owner = env.owner.pubkey();
+    let mut account = env.svm.get_account(&owner).unwrap();
+    account.lamports = 0;
+    env.svm.set_account(owner, account).unwrap();
+    env.open(DAILY, PER_TX).unwrap();
+    assert_eq!(env.state().owner, owner);
 }

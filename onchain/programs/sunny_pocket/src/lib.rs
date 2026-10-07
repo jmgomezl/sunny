@@ -194,12 +194,16 @@ fn transfer<'info>(
 
 #[derive(Accounts)]
 pub struct OpenPocket<'info> {
-    #[account(mut)]
     pub owner: Signer<'info>,
+
+    /// Pays the rent for the pocket and vault, so the owner's wallet needs no SOL
+    /// (Sunny's fee wallet in practice).
+    #[account(mut)]
+    pub payer: Signer<'info>,
 
     #[account(
         init,
-        payer = owner,
+        payer = payer,
         space = 8 + Pocket::INIT_SPACE,
         seeds = [POCKET_SEED, owner.key().as_ref()],
         bump,
@@ -211,7 +215,7 @@ pub struct OpenPocket<'info> {
 
     #[account(
         init,
-        payer = owner,
+        payer = payer,
         seeds = [VAULT_SEED, pocket.key().as_ref()],
         bump,
         token::mint = mint,
