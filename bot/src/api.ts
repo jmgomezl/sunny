@@ -9,6 +9,7 @@ import { isAddress } from './wallet.js'
 import { faucet, hasChain, pocketState, prepareOwnerTx, submitOwnerTx, type OwnerAction } from './solana.js'
 import { saveVault, validRecord, vaultOf } from './vaults.js'
 import { DEEP_SCAN_PATH, deepScanRoute } from './x402.js'
+import { MAX_SHARE_BYTES, readShare, saveShare, startShareCleanup } from './shares.js'
 
 // Small HTTP API for the Mini App, served behind nginx at /api/.
 // Telegram users are identified from the signed initData, so chatting in the Mini App
@@ -67,7 +68,7 @@ export function verifyInitData(initData: string, botToken: string): { id: number
   }
 }
 
-type Route = 'chat' | 'home' | 'inspect' | 'wallet'
+type Route = 'chat' | 'home' | 'inspect' | 'wallet' | 'share'
 
 // Per-hour allowances. Chat spends model credits, so it is the tightest; the user's chat
 // key is shared with the Telegram chat ("u:<id>").
@@ -76,6 +77,7 @@ const LIMITS: Record<Route, { user: number; guest: number; ip: number }> = {
   home: { user: 240, guest: 120, ip: 400 },
   inspect: { user: 40, guest: 15, ip: 40 },
   wallet: { user: 120, guest: 30, ip: 120 },
+  share: { user: 30, guest: 1, ip: 60 },
 }
 
 const FAUCET_USD = 20
@@ -105,12 +107,12 @@ function identify(body: Record<string, unknown>, botToken: string, ip: string, r
   return { id, name: 'friend', lang: 'en', guest: true }
 }
 
-async function readJson(req: IncomingMessage): Promise<Record<string, unknown>> {
+async function readJson(req: IncomingMessage, maxBytes = MAX_BODY_BYTES): Promise<Record<string, unknown>> {
   let size = 0
   const chunks: Buffer[] = []
   for await (const chunk of req) {
     size += (chunk as Buffer).length
-    if (size > MAX_BODY_BYTES) throw new ApiError(413, 'That message is too long for me.')
+    if (size > maxBytes) throw new ApiError(413, 'That message is too long for me.')
     chunks.push(chunk as Buffer)
   }
   try {
@@ -260,7 +262,28 @@ async function pocketRoute(req: IncomingMessage, res: ServerResponse, botToken: 
   throw new ApiError(400, 'Unknown pocket request.')
 }
 
+const PUBLIC_URL = process.env.MINI_APP_URL || 'https://sunny.aivylabs.xyz'
+
+/** POST /api/share { image: base64 JPEG }: stores a share card and returns its public link. */
+async function shareRoute(req: IncomingMessage, res: ServerResponse, botToken: string) {
+  // Base64 adds a third, plus room for initData.
+  const body = await readJson(req, Math.ceil(MAX_SHARE_BYTES * 1.4) + 8 * 1024)
+  const person = identify(body, botToken, clientIp(req), 'share')
+  if (person.guest) throw new ApiError(401, 'Sharing works inside Telegram.')
+  const id = typeof body.image === 'string' ? saveShare(Buffer.from(body.image, 'base64')) : null
+  if (!id) throw new ApiError(400, 'That doesn’t look like a share card.')
+  send(res, 200, { url: `${PUBLIC_URL}/api/share/${id}.jpg` })
+}
+
+function shareImage(req: IncomingMessage, res: ServerResponse) {
+  const image = readShare(/^\/api\/share\/([a-f0-9]{32})\.jpg$/.exec(req.url ?? '')?.[1] ?? '')
+  if (!image) return send(res, 404, { error: 'Not found' })
+  res.writeHead(200, { 'Content-Type': 'image/jpeg', 'Cache-Control': 'public, max-age=604800, immutable' })
+  res.end(image)
+}
+
 export function startApi(port: number, botToken: string) {
+  startShareCleanup()
   const server = createServer(async (req, res) => {
     try {
       if (req.method === 'GET' && req.url === '/api/health') return send(res, 200, { ok: true, brain: hasBrain() })
@@ -269,6 +292,8 @@ export function startApi(port: number, botToken: string) {
       if (req.method === 'POST' && req.url === '/api/inspect') return await inspectRoute(req, res, botToken)
       if (req.method === 'POST' && req.url === '/api/vault') return await vaultRoute(req, res, botToken)
       if (req.method === 'POST' && req.url === '/api/pocket') return await pocketRoute(req, res, botToken)
+      if (req.method === 'POST' && req.url === '/api/share') return await shareRoute(req, res, botToken)
+      if (req.method === 'GET' && req.url?.startsWith('/api/share/')) return shareImage(req, res)
       // Public x402 API: anyone can pay for a deep scan, not just Sunny.
       if (req.method === 'GET' && req.url?.startsWith(DEEP_SCAN_PATH)) {
         if (!allow(`x402:${clientIp(req)}`, 120, HOUR)) return send(res, 429, { error: 'Too many scans. Try again later.' })

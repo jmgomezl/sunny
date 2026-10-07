@@ -10,6 +10,16 @@ server {
     root /var/www/sunny;
     index index.html;
 
+    # Share cards: the Mini App uploads a story-sized image, Telegram fetches it by link.
+    location /api/share {
+        proxy_pass http://127.0.0.1:8820;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        client_max_body_size 1400k;
+    }
+
     # Sunny's chat API (the sunny-bot process). Replies come from the model, so allow time.
     location /api/ {
         proxy_pass http://127.0.0.1:8820;
