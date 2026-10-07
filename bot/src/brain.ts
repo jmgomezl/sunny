@@ -2,7 +2,7 @@ import OpenAI from 'openai'
 import { activeFor, cancelAlerts, createAlert, triggerPrice, type Alert } from './alerts.js'
 import { currentPrices, lookupToken, marketOverview, walletSnapshot, type TokenCard } from './market.js'
 import { checkLink, type LinkCheck } from './scams.js'
-import { logActivity, MAX_WATCHED, unwatchWallet, watchedOf, watchWallet } from './users.js'
+import { logActivity, MAX_WATCHED, noteHabit, unwatchWallet, watchedOf, watchWallet } from './users.js'
 import { agentDraw, hasChain, pocketState, walletHistory, type WalletEvent } from './solana.js'
 import { vaultOf } from './vaults.js'
 import { isAddress, walletReport, type WalletReport } from './wallet.js'
@@ -415,6 +415,7 @@ async function deepScan(query: string, ctx: Ctx) {
   try {
     const paid = await sunnyBuysDeepScan(wallet, found.card.mint)
     ctx.scans.push({ ...paid.report, price: paid.price, paymentTx: paid.paymentTx, drawTx: paid.drawTx })
+    noteHabit(ctx.userId, 'deepScan')
     logActivity(ctx.userId, 'check', `Deep scan of $${paid.report.symbol} · ${paid.report.risk} risk`, `Paid $${paid.price.toFixed(2)} over x402`)
     return { paid_usd: paid.price, paid_with: 'x402, from your pocket money', report: summarize(paid.report) }
   } catch (err) {
@@ -498,6 +499,7 @@ async function runTool(name: string, rawArgs: string, ctx: Ctx): Promise<unknown
         const report = await checkBlink(String(args.link ?? ''), watchedOf(ctx.userId)[0] ?? null, probeAccount())
         if (!report) return { not_a_blink: true, hint: 'This isn’t a Blink; use check_link for an ordinary link.' }
         if (ctx.blinks.length < 2) ctx.blinks.push(report)
+        if (report.verdict === 'danger') noteHabit(ctx.userId, 'scamCaught')
         logActivity(
           ctx.userId,
           report.verdict === 'danger' ? 'scam' : 'check',
@@ -535,6 +537,7 @@ async function runTool(name: string, rawArgs: string, ctx: Ctx): Promise<unknown
         if (!('error' in result) && ctx.links.length < 2) ctx.links.push(result)
         if (!('error' in result)) {
           const bad = result.verdict === 'known_scam' || result.verdict === 'suspicious'
+          if (bad) noteHabit(ctx.userId, 'scamCaught')
           logActivity(ctx.userId, bad ? 'scam' : 'check', `${bad ? 'Flagged' : 'Checked'} ${result.domain}`, result.verdict.replace('_', ' '))
         }
         return result

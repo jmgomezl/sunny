@@ -11,6 +11,7 @@ const MAX_USERS = 5000
 export const MAX_WATCHED = 5
 
 export type ActivityKind = 'check' | 'scam' | 'alert' | 'wallet' | 'watch'
+export type Habit = 'keyBackup' | 'scamCaught' | 'deepScan'
 export type ActivityItem = { kind: ActivityKind; text: string; meta: string; at: string }
 type UserState = {
   /** Wallets Sunny watches, read-only. Their own Sunny wallet lives in vaults.ts. */
@@ -28,6 +29,10 @@ type UserState = {
   morning?: boolean
   /** UTC day of the last morning note, so it goes out once a day. */
   briefDay?: string
+  /** Good habits Sunny noticed (backed up the key, a scam caught, a deep scan bought). */
+  flags?: Partial<Record<Habit, true>>
+  /** Badges already minted to the person's Sunny wallet, with their transaction. */
+  badges?: Record<string, { tx: string; at: string }>
   /** Before multiple watched wallets there was just one; migrated on first read. */
   wallet?: string | null
   linkedAt?: string | null
@@ -151,6 +156,22 @@ export function unwatchWallet(id: number, address: string) {
 
 export function unwatchAll(id: number) {
   get(id).wallets = []
+  scheduleSave()
+}
+
+export function noteHabit(id: number, habit: Habit) {
+  const u = get(id)
+  if (u.flags?.[habit]) return
+  u.flags = { ...u.flags, [habit]: true }
+  scheduleSave()
+}
+
+export const habitsOf = (id: number) => get(id).flags ?? {}
+export const badgesOf = (id: number) => get(id).badges ?? {}
+
+export function recordBadge(id: number, badge: string, tx: string) {
+  const u = get(id)
+  u.badges = { ...u.badges, [badge]: { tx, at: new Date().toISOString() } }
   scheduleSave()
 }
 

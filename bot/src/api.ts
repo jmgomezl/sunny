@@ -4,7 +4,8 @@ import { hasBrain, reply } from './brain.js'
 import { buildHome } from './home.js'
 import { inspect } from './inspect.js'
 import { allow, DAY, HOUR } from './limits.js'
-import { logActivity, MAX_WATCHED, touch, unwatchAll, unwatchWallet, watchedOf, watchWallet } from './users.js'
+import { logActivity, MAX_WATCHED, noteHabit, touch, unwatchAll, unwatchWallet, watchedOf, watchWallet } from './users.js'
+import { syncBadges } from './badges.js'
 import { isAddress } from './wallet.js'
 import { faucet, hasChain, pocketState, prepareOwnerTx, submitOwnerTx, type OwnerAction } from './solana.js'
 import { saveVault, validRecord, vaultOf } from './vaults.js'
@@ -69,7 +70,7 @@ export function verifyInitData(initData: string, botToken: string): { id: number
   }
 }
 
-type Route = 'chat' | 'home' | 'inspect' | 'wallet' | 'share'
+type Route = 'chat' | 'home' | 'inspect' | 'wallet' | 'share' | 'badges'
 
 // Per-hour allowances. Chat spends model credits, so it is the tightest; the user's chat
 // key is shared with the Telegram chat ("u:<id>").
@@ -79,6 +80,7 @@ const LIMITS: Record<Route, { user: number; guest: number; ip: number }> = {
   inspect: { user: 40, guest: 15, ip: 40 },
   wallet: { user: 120, guest: 30, ip: 120 },
   share: { user: 30, guest: 1, ip: 60 },
+  badges: { user: 120, guest: 30, ip: 240 },
 }
 
 const FAUCET_USD = 20
@@ -184,6 +186,10 @@ async function inspectRoute(req: IncomingMessage, res: ServerResponse, botToken:
   if (!input) throw new ApiError(400, 'Paste or scan something first ☀️')
   const person = identify(body, botToken, clientIp(req), 'inspect')
   const result = await inspect(input, person.guest ? null : (watchedOf(person.id)[0] ?? null))
+  const caught =
+    (result.kind === 'link' && (result.link.verdict === 'known_scam' || result.link.verdict === 'suspicious')) ||
+    (result.kind === 'blink' && result.report.verdict === 'danger')
+  if (caught && !person.guest) noteHabit(person.id, 'scamCaught')
   if (result.kind === 'token' && result.found) {
     logActivity(person.id, 'check', `Checked $${result.card.symbol} · ${result.card.risk} risk`, 'Jupiter + RugCheck')
   } else if (result.kind === 'wallet') {
@@ -266,6 +272,14 @@ async function pocketRoute(req: IncomingMessage, res: ServerResponse, botToken: 
 
 const PUBLIC_URL = process.env.MINI_APP_URL || 'https://sunny.aivylabs.xyz'
 
+/** POST /api/badges { op: 'sync' | 'backup' }: mints earned badges and returns every badge's status. */
+async function badgesRoute(req: IncomingMessage, res: ServerResponse, botToken: string) {
+  const body = await readJson(req)
+  const person = identify(body, botToken, clientIp(req), 'badges')
+  if (body.op === 'backup' && !person.guest) noteHabit(person.id, 'keyBackup')
+  send(res, 200, await syncBadges(person.id))
+}
+
 /** POST /api/share { image: base64 JPEG }: stores a share card and returns its public link. */
 async function shareRoute(req: IncomingMessage, res: ServerResponse, botToken: string) {
   // Base64 adds a third, plus room for initData.
@@ -324,6 +338,7 @@ export function startApi(port: number, botToken: string) {
       if (req.method === 'POST' && req.url === '/api/vault') return await vaultRoute(req, res, botToken)
       if (req.method === 'POST' && req.url === '/api/pocket') return await pocketRoute(req, res, botToken)
       if (req.method === 'POST' && req.url === '/api/share') return await shareRoute(req, res, botToken)
+      if (req.method === 'POST' && req.url === '/api/badges') return await badgesRoute(req, res, botToken)
       if (req.url?.split('?')[0] === DEMO_BLINK_PATH) return await demoBlinkRoute(req, res)
       if (req.method === 'GET' && req.url?.startsWith('/api/share/')) return shareImage(req, res)
       // Public x402 API: anyone can pay for a deep scan, not just Sunny.
