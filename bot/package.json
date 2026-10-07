@@ -6,9 +6,14 @@
   "scripts": {
     "dev": "node --env-file=../.env --import tsx src/index.ts",
     "build": "esbuild src/index.ts --bundle --platform=node --target=node20 --format=esm --keep-names --outfile=dist/bot.mjs --banner:js=\"import { createRequire } from 'module'; const require = createRequire(import.meta.url);\"",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "node --env-file=../.env --import tsx --test test/sign-check.test.ts",
+    "devnet-setup": "node --env-file=../.env --import tsx scripts/devnet-setup.ts --fund"
   },
   "dependencies": {
+    "@noble/curves": "^2.4.0",
+    "@scure/base": "^2.4.0",
+    "@solana/web3.js": "^1.99.0",
     "grammy": "^1.46.0",
     "openai": "^7.28.0"
   },

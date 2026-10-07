@@ -3,6 +3,8 @@ import { activeFor, cancelAlerts, createAlert, triggerPrice, type Alert } from '
 import { currentPrices, lookupToken, marketOverview, walletSnapshot, type TokenCard } from './market.js'
 import { checkLink, type LinkCheck } from './scams.js'
 import { logActivity } from './users.js'
+import { agentDraw, hasChain, pocketState } from './solana.js'
+import { vaultOf } from './vaults.js'
 
 // Sunny's brain runs through OpenRouter so the model can be swapped from .env.
 // Created on first use, after index.ts has checked that the key is configured.
@@ -41,7 +43,9 @@ Actions are real only through tools: never say an alert was created, changed or 
 
 Wallets: you can read any public wallet address the user gives you, read-only. If the snapshot shows token approvals, explain that another program can move those tokens and suggest revoking any they don't recognise in their wallet's security settings.
 
-Not live yet: connecting the user's own wallet for actions, swaps and paying for tools with x402 (your pocket money). If asked, say warmly it's arriving very soon.
+Pocket money: the user can give you a small allowance on Solana (devnet, test USDC). It sits in their pocket vault; an on-chain program lets you draw at most their per-payment and daily limits, and nothing while frozen. You can check it with pocket_status and take money with use_pocket_money (it goes to your own wallet, to pay for tools). If the program refuses, that's the safety working: explain which rule stopped you. If someone asks you to spend more than the limits, try it with the tool so they can see Solana stop you, then explain. They manage the pocket (open, top up, freeze, withdraw) from your sky, protected by their own password.
+
+Not live yet: swaps, and paying for tools with x402 from your pocket. If asked, say warmly it's arriving very soon.
 
 Safety rules:
 - Never ask for a seed phrase or private key. If someone shares one, tell them clearly to move their funds to a new wallet right away, because that wallet is no longer safe.
@@ -49,6 +53,31 @@ Safety rules:
 - If something sounds like a scam (guaranteed returns, urgent "support" DMs, airdrops asking to connect or sign), say so plainly.`
 
 const TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
+  {
+    type: 'function',
+    function: {
+      name: 'pocket_status',
+      description: 'The user’s pocket money on Solana: limits, what’s left today, vault balance, frozen or not.',
+      parameters: { type: 'object', properties: {}, additionalProperties: false },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'use_pocket_money',
+      description:
+        'Draws USDC from the user’s pocket into Sunny’s own wallet (to pay for tools). The on-chain program enforces the limits and may refuse.',
+      parameters: {
+        type: 'object',
+        properties: {
+          amount_usd: { type: 'number', description: 'Amount in USD (test USDC)' },
+          reason: { type: 'string', description: 'What the money is for, in a few words' },
+        },
+        required: ['amount_usd', 'reason'],
+        additionalProperties: false,
+      },
+    },
+  },
   {
     type: 'function',
     function: {
@@ -158,9 +187,26 @@ export type AlertCard = {
   triggerPrice: number
 }
 
-export type Reply = { text: string; cards: TokenCard[]; links: LinkCheck[]; alerts: AlertCard[]; live: boolean }
+/** A pocket-money draw Sunny attempted, as shown in the Mini App chat. */
+export type PocketEvent = { amount: number; reason: string; ok: boolean; message: string; explorer?: string }
 
-type Ctx = { userId: number; lang: string; cards: TokenCard[]; links: LinkCheck[]; alerts: AlertCard[] }
+export type Reply = {
+  text: string
+  cards: TokenCard[]
+  links: LinkCheck[]
+  alerts: AlertCard[]
+  pocket: PocketEvent[]
+  live: boolean
+}
+
+type Ctx = {
+  userId: number
+  lang: string
+  cards: TokenCard[]
+  links: LinkCheck[]
+  alerts: AlertCard[]
+  pocket: PocketEvent[]
+}
 
 const toAlertCard = (a: Alert): AlertCard => ({
   symbol: a.symbol,
@@ -243,6 +289,31 @@ async function runTool(name: string, rawArgs: string, ctx: Ctx): Promise<unknown
       }
       case 'create_price_alert':
         return await createPriceAlert(args, ctx)
+      case 'pocket_status': {
+        const wallet = vaultOf(ctx.userId)?.address
+        if (!hasChain()) return { error: 'Pocket money is offline right now.' }
+        if (!wallet) return { no_wallet: true, hint: 'They can create a Sunny wallet in your sky (the Mini App) and open a pocket there.' }
+        return await pocketState(wallet)
+      }
+      case 'use_pocket_money': {
+        const wallet = vaultOf(ctx.userId)?.address
+        const amount = Number(args.amount_usd)
+        const reason = String(args.reason ?? 'a tool').slice(0, 60)
+        if (!hasChain()) return { error: 'Pocket money is offline right now.' }
+        if (!wallet) return { error: 'No Sunny wallet yet; they can create one in your sky.' }
+        if (!Number.isFinite(amount) || amount <= 0) return { error: 'Invalid amount' }
+        try {
+          const sent = await agentDraw(wallet, amount)
+          ctx.pocket.push({ amount, reason, ok: true, message: 'Approved by your pocket rules', explorer: sent.explorer })
+          logActivity(ctx.userId, 'check', `Took $${amount} of pocket money`, reason)
+          return { ok: true, ...sent }
+        } catch (err) {
+          const why = err instanceof Error ? err.message : 'The transaction failed'
+          ctx.pocket.push({ amount, reason, ok: false, message: why })
+          logActivity(ctx.userId, 'scam', `Stopped a $${amount} draw`, why)
+          return { refused_by_solana: true, rule: why }
+        }
+      }
       case 'list_price_alerts': {
         const mine = activeFor(ctx.userId)
         if (ctx.userId <= 0) return { error: 'Alerts need Telegram; this is the web preview.' }
@@ -283,7 +354,7 @@ export async function reply(chatId: number, name: string, text: string, lang = '
   history.push({ role: 'user', content: text })
 
   const messages: Message[] = [{ role: 'system', content: `${PERSONA}\n\nThe user's Telegram name is ${name}.` }, ...history]
-  const ctx: Ctx = { userId: chatId, lang, cards: [], links: [], alerts: [] }
+  const ctx: Ctx = { userId: chatId, lang, cards: [], links: [], alerts: [], pocket: [] }
   let live = false
   let nudged = false
   let raw = ''
@@ -321,7 +392,7 @@ export async function reply(chatId: number, name: string, text: string, lang = '
   const answer = plain(raw) || 'Hmm, I lost my train of thought. Try me again? ☀️'
   history.push({ role: 'assistant', content: answer })
   histories.set(chatId, history.slice(-HISTORY_TURNS * 2))
-  return { text: answer, cards: ctx.cards, links: ctx.links, alerts: ctx.alerts, live }
+  return { text: answer, cards: ctx.cards, links: ctx.links, alerts: ctx.alerts, pocket: ctx.pocket, live }
 }
 
 export function forget(chatId: number) {

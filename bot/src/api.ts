@@ -6,6 +6,8 @@ import { inspect } from './inspect.js'
 import { allow, DAY, HOUR } from './limits.js'
 import { logActivity, setWallet, walletOf } from './users.js'
 import { isAddress } from './wallet.js'
+import { faucet, hasChain, pocketState, prepareOwnerTx, submitOwnerTx, type OwnerAction } from './solana.js'
+import { saveVault, validRecord, vaultOf } from './vaults.js'
 
 // Small HTTP API for the Mini App, served behind nginx at /api/.
 // Telegram users are identified from the signed initData, so chatting in the Mini App
@@ -64,7 +66,7 @@ export function verifyInitData(initData: string, botToken: string): { id: number
   }
 }
 
-type Route = 'chat' | 'home' | 'inspect'
+type Route = 'chat' | 'home' | 'inspect' | 'wallet'
 
 // Per-hour allowances. Chat spends model credits, so it is the tightest; the user's chat
 // key is shared with the Telegram chat ("u:<id>").
@@ -72,7 +74,11 @@ const LIMITS: Record<Route, { user: number; guest: number; ip: number }> = {
   chat: { user: USER_PER_HOUR, guest: GUEST_PER_HOUR, ip: IP_PER_HOUR },
   home: { user: 240, guest: 120, ip: 400 },
   inspect: { user: 40, guest: 15, ip: 40 },
+  wallet: { user: 120, guest: 30, ip: 120 },
 }
+
+const FAUCET_USD = 20
+const FAUCET_EVERY_MS = 3 * HOUR
 
 function identify(body: Record<string, unknown>, botToken: string, ip: string, route: Route): Person {
   const limit = LIMITS[route]
@@ -133,6 +139,7 @@ async function chat(req: IncomingMessage, res: ServerResponse, botToken: string)
     cards: answer.cards,
     links: answer.links,
     alerts: answer.alerts,
+    pocket: answer.pocket,
     live: answer.live,
     guest: person.guest,
   })
@@ -175,6 +182,73 @@ async function inspectRoute(req: IncomingMessage, res: ServerResponse, botToken:
 
 const short = (a: string) => `${a.slice(0, 4)}…${a.slice(-4)}`
 
+/** The encrypted Sunny wallet backup. Telegram users only: the wallet needs a verified identity. */
+async function vaultRoute(req: IncomingMessage, res: ServerResponse, botToken: string) {
+  const body = await readJson(req)
+  const person = identify(body, botToken, clientIp(req), 'wallet')
+  if (person.guest) throw new ApiError(403, 'Your Sunny wallet lives in Telegram. Open me from @SunnySolBot.')
+  if (body.op === 'get') return send(res, 200, { record: vaultOf(person.id) })
+  if (body.op === 'put') {
+    if (!validRecord(body.record)) throw new ApiError(400, 'That wallet record doesn’t look right.')
+    const existing = vaultOf(person.id)
+    if (existing && existing.address !== body.record.address) {
+      throw new ApiError(409, 'You already have a Sunny wallet. Unlock it instead of creating a new one.')
+    }
+    saveVault(person.id, body.record)
+    if (!existing) logActivity(person.id, 'wallet', `Created your Sunny wallet ${short(body.record.address)}`, 'Locked with your password')
+    return send(res, 200, { ok: true })
+  }
+  throw new ApiError(400, 'Unknown vault request.')
+}
+
+const ACTIONS = new Set(['open', 'topup', 'withdraw', 'limits', 'freeze', 'unfreeze'])
+
+/** Pocket money: read the on-chain state, prepare owner transactions, submit signed ones, faucet. */
+async function pocketRoute(req: IncomingMessage, res: ServerResponse, botToken: string) {
+  if (!hasChain()) throw new ApiError(503, 'Pocket money is waking up. Try again soon ☀️')
+  const body = await readJson(req)
+  const person = identify(body, botToken, clientIp(req), 'wallet')
+  const wallet = vaultOf(person.id)?.address
+  if (body.op === 'state') return send(res, 200, { wallet: wallet ?? null, state: wallet ? await pocketState(wallet) : null })
+  if (person.guest || !wallet) throw new ApiError(403, 'Create your Sunny wallet first.')
+
+  if (body.op === 'prepare') {
+    const action = String(body.action)
+    if (!ACTIONS.has(action)) throw new ApiError(400, 'Unknown pocket action.')
+    const num = (v: unknown, max: number) => {
+      const n = Number(v)
+      if (!Number.isFinite(n) || n <= 0 || n > max) throw new ApiError(400, 'That amount doesn’t look right.')
+      return n
+    }
+    const a = (
+      action === 'open' || action === 'limits'
+        ? { action, daily: num(body.daily, 1000), perTx: num(body.perTx, 1000) }
+        : action === 'topup' || action === 'withdraw'
+          ? { action, amount: num(body.amount, 10_000) }
+          : { action }
+    ) as OwnerAction
+    return send(res, 200, await prepareOwnerTx(wallet, a))
+  }
+
+  if (body.op === 'submit') {
+    if (typeof body.id !== 'string' || typeof body.signature !== 'string') throw new ApiError(400, 'Missing signature.')
+    try {
+      const sent = await submitOwnerTx(body.id, wallet, body.signature)
+      return send(res, 200, { ...sent, state: await pocketState(wallet) })
+    } catch (err) {
+      throw new ApiError(400, err instanceof Error ? err.message : 'The transaction failed')
+    }
+  }
+
+  if (body.op === 'faucet') {
+    if (!allow(`faucet:${person.id}`, 1, FAUCET_EVERY_MS)) throw new ApiError(429, 'You got test USDC recently. Try again in a few hours.')
+    const sent = await faucet(wallet, FAUCET_USD)
+    logActivity(person.id, 'wallet', `Got ${FAUCET_USD} test USDC`, 'Devnet faucet')
+    return send(res, 200, { ...sent, amount: FAUCET_USD, state: await pocketState(wallet) })
+  }
+  throw new ApiError(400, 'Unknown pocket request.')
+}
+
 export function startApi(port: number, botToken: string) {
   const server = createServer(async (req, res) => {
     try {
@@ -182,6 +256,8 @@ export function startApi(port: number, botToken: string) {
       if (req.method === 'POST' && req.url === '/api/chat') return await chat(req, res, botToken)
       if (req.method === 'POST' && req.url === '/api/home') return await home(req, res, botToken)
       if (req.method === 'POST' && req.url === '/api/inspect') return await inspectRoute(req, res, botToken)
+      if (req.method === 'POST' && req.url === '/api/vault') return await vaultRoute(req, res, botToken)
+      if (req.method === 'POST' && req.url === '/api/pocket') return await pocketRoute(req, res, botToken)
       send(res, 404, { error: 'Not found' })
     } catch (err) {
       if (err instanceof ApiError) return send(res, err.status, { error: err.message })

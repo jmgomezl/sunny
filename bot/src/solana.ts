@@ -1,0 +1,322 @@
+import { createHash, createHmac, randomUUID } from 'node:crypto'
+import { ed25519 } from '@noble/curves/ed25519.js'
+import { base58 } from '@scure/base'
+import {
+  Connection,
+  Keypair,
+  PublicKey,
+  SendTransactionError,
+  SystemProgram,
+  Transaction,
+  TransactionInstruction,
+} from '@solana/web3.js'
+
+// Sunny on Solana (devnet): the pocket program, Sunny's fee wallet (pays network fees
+// and runs the test-USDC faucet) and the per-user agent keys that draw pocket money.
+//
+// Agent keys are derived from a server secret per pocket owner, because Sunny must act
+// while you sleep. That's safe by design: the pocket program caps what any agent key can
+// ever draw. The owner's key never touches this server (see web/src/lib/vault.ts).
+
+export const POCKET_PROGRAM = new PublicKey('7RhPyrf1C4t3QDce8hW19i6FK5wevEEPgBMne8Pt4wvy')
+const TOKEN_PROGRAM = new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')
+const ATA_PROGRAM = new PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL')
+const DECIMALS = 6
+export const USD = 10 ** DECIMALS
+
+const RPC = process.env.SOLANA_RPC_URL || 'https://api.devnet.solana.com'
+export const connection = new Connection(RPC, 'confirmed')
+export const CLUSTER = RPC.includes('devnet') ? 'devnet' : RPC.includes('mainnet') ? 'mainnet-beta' : 'custom'
+
+export const hasChain = () =>
+  Boolean(process.env.SUNNY_FEE_PAYER && process.env.SUNNY_AGENT_SEED && process.env.SUNNY_USDC_MINT)
+
+let feePayerCache: Keypair | undefined
+export const feePayer = () => (feePayerCache ??= Keypair.fromSecretKey(base58.decode(process.env.SUNNY_FEE_PAYER!)))
+export const usdcMint = () => new PublicKey(process.env.SUNNY_USDC_MINT!)
+
+/** Sunny's agent key for one pocket owner, derived from the server secret. */
+export function agentFor(owner: PublicKey): Keypair {
+  const seed = createHmac('sha256', Buffer.from(process.env.SUNNY_AGENT_SEED!, 'hex'))
+    .update(`sunny-agent:${owner.toBase58()}`)
+    .digest()
+  return Keypair.fromSeed(seed)
+}
+
+export const pocketPda = (owner: PublicKey) =>
+  PublicKey.findProgramAddressSync([Buffer.from('pocket'), owner.toBuffer()], POCKET_PROGRAM)[0]
+export const vaultPda = (pocket: PublicKey) =>
+  PublicKey.findProgramAddressSync([Buffer.from('vault'), pocket.toBuffer()], POCKET_PROGRAM)[0]
+export const ata = (owner: PublicKey, mint = usdcMint()) =>
+  PublicKey.findProgramAddressSync([owner.toBuffer(), TOKEN_PROGRAM.toBuffer(), mint.toBuffer()], ATA_PROGRAM)[0]
+
+const disc = (name: string) => createHash('sha256').update(`global:${name}`).digest().subarray(0, 8)
+const u64 = (n: bigint | number) => {
+  const b = Buffer.alloc(8)
+  b.writeBigUInt64LE(BigInt(n))
+  return b
+}
+
+function createAtaIdempotent(owner: PublicKey, payer: PublicKey, mint = usdcMint()) {
+  return new TransactionInstruction({
+    programId: ATA_PROGRAM,
+    keys: [
+      { pubkey: payer, isSigner: true, isWritable: true },
+      { pubkey: ata(owner, mint), isSigner: false, isWritable: true },
+      { pubkey: owner, isSigner: false, isWritable: false },
+      { pubkey: mint, isSigner: false, isWritable: false },
+      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+      { pubkey: TOKEN_PROGRAM, isSigner: false, isWritable: false },
+    ],
+    data: Buffer.from([1]),
+  })
+}
+
+// ── Reading a pocket ────────────────────────────────────────────────────────
+
+export type PocketState = {
+  owner: string
+  pocket: string
+  exists: boolean
+  agent: string
+  dailyLimit: number
+  perTxLimit: number
+  spentToday: number
+  leftToday: number
+  vault: number
+  ownerUsdc: number
+  agentUsdc: number
+  frozen: boolean
+  totalDrawn: number
+  cluster: string
+}
+
+async function tokenBalance(account: PublicKey) {
+  try {
+    const b = await connection.getTokenAccountBalance(account)
+    return Number(b.value.amount) / USD
+  } catch {
+    return 0
+  }
+}
+
+export async function pocketState(ownerAddress: string): Promise<PocketState> {
+  const owner = new PublicKey(ownerAddress)
+  const pocket = pocketPda(owner)
+  const agent = agentFor(owner).publicKey
+  const [info, vault, ownerUsdc, agentUsdc] = await Promise.all([
+    connection.getAccountInfo(pocket),
+    tokenBalance(vaultPda(pocket)),
+    tokenBalance(ata(owner)),
+    tokenBalance(ata(agent)),
+  ])
+  const base = { owner: ownerAddress, pocket: pocket.toBase58(), agent: agent.toBase58(), vault, ownerUsdc, agentUsdc, cluster: CLUSTER }
+  if (!info) {
+    return { ...base, exists: false, dailyLimit: 0, perTxLimit: 0, spentToday: 0, leftToday: 0, frozen: false, totalDrawn: 0 }
+  }
+  // Anchor layout: 8-byte discriminator, then owner, agent, mint (32 each), then the fields.
+  const d = info.data
+  const at = 8 + 32 * 3
+  const daily = Number(d.readBigUInt64LE(at)) / USD
+  const perTx = Number(d.readBigUInt64LE(at + 8)) / USD
+  const spent = Number(d.readBigUInt64LE(at + 16)) / USD
+  const day = Number(d.readBigInt64LE(at + 24))
+  const spentToday = day === Math.floor(Date.now() / 1000 / 86_400) ? spent : 0
+  return {
+    ...base,
+    agent: new PublicKey(d.subarray(8 + 32, 8 + 64)).toBase58(),
+    exists: true,
+    dailyLimit: daily,
+    perTxLimit: perTx,
+    spentToday,
+    leftToday: Math.max(0, Math.min(daily - spentToday, vault)),
+    frozen: d[at + 32] === 1,
+    totalDrawn: Number(d.readBigUInt64LE(at + 33)) / USD,
+  }
+}
+
+// ── Owner actions: prepared here, signed on the owner's device ──────────────
+
+export type OwnerAction =
+  | { action: 'open'; daily: number; perTx: number }
+  | { action: 'topup'; amount: number }
+  | { action: 'withdraw'; amount: number }
+  | { action: 'limits'; daily: number; perTx: number }
+  | { action: 'freeze' }
+  | { action: 'unfreeze' }
+
+const pending = new Map<string, { tx: Transaction; owner: string; expires: number }>()
+
+const toBase = (usd: number) => BigInt(Math.round(usd * USD))
+
+function ownerInstructions(owner: PublicKey, a: OwnerAction): TransactionInstruction[] {
+  const pocket = pocketPda(owner)
+  const vault = vaultPda(pocket)
+  const mint = usdcMint()
+  const meta = (pubkey: PublicKey, isSigner: boolean, isWritable: boolean) => ({ pubkey, isSigner, isWritable })
+  switch (a.action) {
+    case 'open':
+      return [
+        new TransactionInstruction({
+          programId: POCKET_PROGRAM,
+          keys: [
+            meta(owner, true, true),
+            meta(pocket, false, true),
+            meta(mint, false, false),
+            meta(vault, false, true),
+            meta(TOKEN_PROGRAM, false, false),
+            meta(SystemProgram.programId, false, false),
+          ],
+          data: Buffer.concat([disc('open_pocket'), agentFor(owner).publicKey.toBuffer(), u64(toBase(a.daily)), u64(toBase(a.perTx))]),
+        }),
+      ]
+    case 'topup':
+      return [
+        new TransactionInstruction({
+          programId: POCKET_PROGRAM,
+          keys: [meta(owner, true, false), meta(pocket, false, false), meta(vault, false, true), meta(mint, false, false), meta(ata(owner), false, true), meta(TOKEN_PROGRAM, false, false)],
+          data: Buffer.concat([disc('top_up'), u64(toBase(a.amount))]),
+        }),
+      ]
+    case 'withdraw':
+      return [
+        createAtaIdempotent(owner, feePayer().publicKey),
+        new TransactionInstruction({
+          programId: POCKET_PROGRAM,
+          keys: [meta(owner, true, false), meta(pocket, false, false), meta(vault, false, true), meta(mint, false, false), meta(ata(owner), false, true), meta(TOKEN_PROGRAM, false, false)],
+          data: Buffer.concat([disc('withdraw'), u64(toBase(a.amount))]),
+        }),
+      ]
+    case 'limits':
+      return [
+        new TransactionInstruction({
+          programId: POCKET_PROGRAM,
+          keys: [meta(owner, true, false), meta(pocket, false, true)],
+          data: Buffer.concat([disc('set_limits'), u64(toBase(a.daily)), u64(toBase(a.perTx))]),
+        }),
+      ]
+    case 'freeze':
+    case 'unfreeze':
+      return [
+        new TransactionInstruction({
+          programId: POCKET_PROGRAM,
+          keys: [meta(owner, true, false), meta(pocket, false, true)],
+          data: Buffer.concat([disc('set_frozen'), Buffer.from([a.action === 'freeze' ? 1 : 0])]),
+        }),
+      ]
+  }
+}
+
+/** Builds an owner transaction (Sunny pays the fee) and returns the message to sign. */
+export async function prepareOwnerTx(ownerAddress: string, a: OwnerAction) {
+  const owner = new PublicKey(ownerAddress)
+  const tx = new Transaction({ feePayer: feePayer().publicKey })
+  tx.add(...ownerInstructions(owner, a))
+  tx.recentBlockhash = (await connection.getLatestBlockhash()).blockhash
+  const id = randomUUID()
+  pending.set(id, { tx, owner: ownerAddress, expires: Date.now() + 90_000 })
+  for (const [k, v] of pending) if (v.expires < Date.now()) pending.delete(k)
+  return { id, message: tx.serializeMessage().toString('base64') }
+}
+
+/** Adds the owner's signature (checked here) and Sunny's fee signature, then sends. */
+export async function submitOwnerTx(id: string, ownerAddress: string, signatureBase64: string) {
+  const p = pending.get(id)
+  if (!p || p.owner !== ownerAddress || p.expires < Date.now()) throw new Error('That request expired. Try again.')
+  pending.delete(id)
+  const sig = Buffer.from(signatureBase64, 'base64')
+  const message = p.tx.serializeMessage()
+  if (!ed25519.verify(sig, message, new PublicKey(ownerAddress).toBytes())) throw new Error('Signature doesn’t match your wallet.')
+  p.tx.addSignature(new PublicKey(ownerAddress), sig)
+  p.tx.partialSign(feePayer())
+  return send(p.tx)
+}
+
+// ── Sunny's side: drawing pocket money, and the test-USDC faucet ────────────
+
+const ERRORS: Record<number, string> = {
+  6000: 'Those limits aren’t valid',
+  6001: 'Amount must be above zero',
+  6002: 'The pocket is frozen',
+  6003: 'That’s over the per-payment limit',
+  6004: 'That’s over today’s limit',
+  6005: 'Only Sunny’s agent key can draw',
+  6006: 'Only the owner can do that',
+}
+
+/** Turns a failed transaction into the pocket rule that stopped it. */
+function explain(err: unknown): string {
+  const logs = err instanceof SendTransactionError ? (err.logs ?? []) : []
+  const text = `${err instanceof Error ? err.message : String(err)} ${logs.join(' ')}`
+  const code = text.match(/custom program error: 0x([0-9a-f]+)/i)?.[1] ?? text.match(/Error Number: (\d+)/)?.[1]
+  if (code) {
+    const n = code.length > 4 || /[a-f]/i.test(code) ? parseInt(code, 16) : Number(code)
+    if (ERRORS[n]) return ERRORS[n]
+  }
+  if (/insufficient funds/i.test(text)) return 'There isn’t enough in the pocket'
+  return 'The transaction failed'
+}
+
+async function send(tx: Transaction) {
+  try {
+    const signature = await connection.sendRawTransaction(tx.serialize(), { skipPreflight: false })
+    await connection.confirmTransaction(signature, 'confirmed')
+    return { signature, explorer: `https://solscan.io/tx/${signature}?cluster=${CLUSTER}` }
+  } catch (err) {
+    throw Object.assign(new Error(explain(err)), { cause: err })
+  }
+}
+
+/** Sunny draws pocket money into its own wallet. The program enforces the owner's limits. */
+export async function agentDraw(ownerAddress: string, usd: number) {
+  const owner = new PublicKey(ownerAddress)
+  const agent = agentFor(owner)
+  const pocket = pocketPda(owner)
+  const tx = new Transaction({ feePayer: feePayer().publicKey })
+  tx.add(
+    createAtaIdempotent(agent.publicKey, feePayer().publicKey),
+    new TransactionInstruction({
+      programId: POCKET_PROGRAM,
+      keys: [
+        { pubkey: agent.publicKey, isSigner: true, isWritable: false },
+        { pubkey: pocket, isSigner: false, isWritable: true },
+        { pubkey: vaultPda(pocket), isSigner: false, isWritable: true },
+        { pubkey: usdcMint(), isSigner: false, isWritable: false },
+        { pubkey: ata(agent.publicKey), isSigner: false, isWritable: true },
+        { pubkey: TOKEN_PROGRAM, isSigner: false, isWritable: false },
+      ],
+      data: Buffer.concat([disc('draw'), u64(toBase(usd))]),
+    }),
+  )
+  tx.recentBlockhash = (await connection.getLatestBlockhash()).blockhash
+  tx.sign(feePayer(), agent)
+  return send(tx)
+}
+
+/** Mints test USDC (devnet only) to a wallet so people can try the pocket. */
+export async function faucet(ownerAddress: string, usd: number) {
+  if (CLUSTER === 'mainnet-beta') throw new Error('No faucet on mainnet')
+  const owner = new PublicKey(ownerAddress)
+  const mintTo = new TransactionInstruction({
+    programId: TOKEN_PROGRAM,
+    keys: [
+      { pubkey: usdcMint(), isSigner: false, isWritable: true },
+      { pubkey: ata(owner), isSigner: false, isWritable: true },
+      { pubkey: feePayer().publicKey, isSigner: true, isWritable: false },
+    ],
+    // SPL Token MintTo = instruction 7, amount u64.
+    data: Buffer.concat([Buffer.from([7]), u64(toBase(usd))]),
+  })
+  const tx = new Transaction({ feePayer: feePayer().publicKey }).add(createAtaIdempotent(owner, feePayer().publicKey), mintTo)
+  tx.recentBlockhash = (await connection.getLatestBlockhash()).blockhash
+  tx.sign(feePayer())
+  return send(tx)
+}
+
+export const isSolanaAddress = (s: string) => {
+  try {
+    return base58.decode(s).length === 32
+  } catch {
+    return false
+  }
+}
