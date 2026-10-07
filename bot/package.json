@@ -13,6 +13,7 @@
   "dependencies": {
     "@noble/curves": "^2.4.0",
     "@scure/base": "^2.4.0",
+    "@scure/bip39": "^2.4.0",
     "@solana/kit": "^8.4.0",
     "@solana/spl-token": "^0.4.15",
     "@solana/spl-token-metadata": "^0.1.6",

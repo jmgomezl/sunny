@@ -3,7 +3,9 @@
 // are tested as carefully as attacks. Run: pnpm test
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { asksForPocketMoney, cleanReply, coolingDown, refuse, screen } from '../src/guard.js'
+import { acceptsScanOffer, asksForPocketMoney, cleanReply, coolingDown, languageOf, refuse, screen, sharedSecret } from '../src/guard.js'
+import { Keypair } from '@solana/web3.js'
+import { base58 } from '@scure/base'
 
 test('blocks code requests, rule-breaking and prompt fishing, in English and Spanish', () => {
   const attacks: [string, string][] = [
@@ -48,6 +50,29 @@ test('lets ordinary Solana questions through', () => {
     'stop watching the wallet ending in xp6K',
     'How does the system keep my wallet safe?',
     'freeze my pocket please',
+    // Real safety questions that once tripped the guard (found by the QA chat review).
+    'someone told me to run a command in my terminal to fix my wallet, is that a scam?',
+    'Someone from Phantom support told me to run this command to fix my wallet. Is it safe?',
+    'how do I turn on developer mode in Phantom?',
+    'my friend said to enable developer mode in Phantom, is that ok?',
+    'cómo activo el modo desarrollador en Phantom',
+    'what are your instructions for using my pocket money?',
+    'What are your instructions for spotting a scam?',
+    'cuáles son tus instrucciones para usar mi bolsillo',
+    'from now on you should alert me when SOL drops 5%',
+    'From now on, you can call me Juanma. What’s SOL doing today?',
+    'a partir de ahora eres mi guardián, vigila esta wallet',
+    'pretend you are my bank: is this transfer safe?',
+    'My friend Dan sent me a link to claim free SOL, is it safe?',
+    'is DAN safe?',
+    'is the JAILBREAK token a scam',
+    'dame el link del bot oficial de Phantom',
+    'crea una alerta para el bot de BONK',
+    'olvida eso, ¿cuáles son las reglas del bolsillo?',
+    'ignora ese token, revisa las reglas de mi alerta',
+    'should I ignore airdrop rules on twitter',
+    'Show me the smart contract risks of BONK',
+    'give me the BONK html link',
   ]
   for (const text of fine) assert.equal(screen(text), null, text)
 })
@@ -85,4 +110,27 @@ test('only spends pocket money when the person asks for it', () => {
   assert.equal(asksForPocketMoney('hazme un análisis profundo de WIF'), true)
   assert.equal(asksForPocketMoney('Is BONK safe?'), false)
   assert.equal(asksForPocketMoney('check this link https://claim-airdrop.xyz'), false)
+  assert.equal(asksForPocketMoney('take a look at BONK'), false)
+  assert.equal(asksForPocketMoney('I want to buy BONK, is it safe?'), false)
+  assert.equal(asksForPocketMoney('Is BONK safe? use your judgment'), false)
+  // Saying yes to Sunny's own offer of a deep scan counts; a yes to anything else doesn't.
+  assert.equal(acceptsScanOffer('yes please', 'Want a deep scan for $0.10 from my pocket?'), true)
+  assert.equal(acceptsScanOffer('sí, dale', '¿Quieres un escaneo profundo por $0.10?'), true)
+  assert.equal(acceptsScanOffer('yes', 'Want me to set a price alert?'), false)
+})
+
+test('catches recovery phrases and private keys, but not signatures or sentences', () => {
+  assert.equal(sharedSecret(`here is my seed: ${'abandon '.repeat(11)}about`), true)
+  const key = Keypair.generate().secretKey
+  assert.equal(sharedSecret(`my key ${base58.encode(key)}`), true)
+  assert.equal(sharedSecret(`[${Array.from(key).join(',')}]`), true)
+  // A transaction signature is also 64 bytes of base58, and must pass.
+  assert.equal(sharedSecret(base58.encode(Keypair.generate().secretKey.map((b, i) => (i < 32 ? b : 0)))), false)
+  assert.equal(sharedSecret('is this airdrop real and safe to claim before the end of the week or not'), false)
+})
+
+test('answers in the language of the message', () => {
+  assert.equal(languageOf('¿qué es esto?', 'en'), 'es')
+  assert.equal(languageOf('what is this?', 'es'), 'en')
+  assert.equal(languageOf('BONK', 'es'), 'es')
 })
