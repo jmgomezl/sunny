@@ -91,25 +91,23 @@ export type PocketState = {
   cluster: string
 }
 
-async function tokenBalance(account: PublicKey) {
-  try {
-    const b = await connection.getTokenAccountBalance(account)
-    return Number(b.value.amount) / USD
-  } catch {
-    return 0
-  }
-}
+// SPL token account layout: mint (32), owner (32), amount (u64) at byte 64.
+const tokenAmount = (data?: Buffer | null) => (data && data.length >= 72 ? Number(data.readBigUInt64LE(64)) / USD : 0)
 
 export async function pocketState(ownerAddress: string): Promise<PocketState> {
   const owner = new PublicKey(ownerAddress)
   const pocket = pocketPda(owner)
   const agent = agentFor(owner).publicKey
-  const [info, vault, ownerUsdc, agentUsdc] = await Promise.all([
-    connection.getAccountInfo(pocket),
-    tokenBalance(vaultPda(pocket)),
-    tokenBalance(ata(owner)),
-    tokenBalance(ata(agent)),
+  // One RPC call for everything this view needs.
+  const [info, vaultInfo, ownerInfo, agentInfo] = await connection.getMultipleAccountsInfo([
+    pocket,
+    vaultPda(pocket),
+    ata(owner),
+    ata(agent),
   ])
+  const vault = tokenAmount(vaultInfo?.data)
+  const ownerUsdc = tokenAmount(ownerInfo?.data)
+  const agentUsdc = tokenAmount(agentInfo?.data)
   const base = { owner: ownerAddress, pocket: pocket.toBase58(), agent: agent.toBase58(), vault, ownerUsdc, agentUsdc, cluster: CLUSTER }
   if (!info) {
     return { ...base, exists: false, dailyLimit: 0, perTxLimit: 0, spentToday: 0, leftToday: 0, frozen: false, totalDrawn: 0 }
@@ -160,7 +158,9 @@ function ownerInstructions(owner: PublicKey, a: OwnerAction): TransactionInstruc
         new TransactionInstruction({
           programId: POCKET_PROGRAM,
           keys: [
-            meta(owner, true, true),
+            meta(owner, true, false),
+            // Sunny's fee wallet pays the rent, so the owner's wallet needs no SOL.
+            meta(feePayer().publicKey, true, true),
             meta(pocket, false, true),
             meta(mint, false, false),
             meta(vault, false, true),
@@ -248,11 +248,12 @@ const ERRORS: Record<number, string> = {
 function explain(err: unknown): string {
   const logs = err instanceof SendTransactionError ? (err.logs ?? []) : []
   const text = `${err instanceof Error ? err.message : String(err)} ${logs.join(' ')}`
-  const code = text.match(/custom program error: 0x([0-9a-f]+)/i)?.[1] ?? text.match(/Error Number: (\d+)/)?.[1]
-  if (code) {
-    const n = code.length > 4 || /[a-f]/i.test(code) ? parseInt(code, 16) : Number(code)
-    if (ERRORS[n]) return ERRORS[n]
-  }
+  // Program errors appear as hex in the runtime message ("custom program error: 0x1773")
+  // or as decimal in Anchor's log line ("Error Number: 6003").
+  const hex = text.match(/custom program error: 0x([0-9a-f]+)/i)?.[1]
+  const dec = text.match(/Error Number: (\d+)/)?.[1]
+  const n = hex ? parseInt(hex, 16) : dec ? Number(dec) : NaN
+  if (ERRORS[n]) return ERRORS[n]
   if (/insufficient funds/i.test(text)) return 'There isn’t enough in the pocket'
   return 'The transaction failed'
 }
