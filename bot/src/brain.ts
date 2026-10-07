@@ -2,6 +2,7 @@ import OpenAI from 'openai'
 import { activeFor, cancelAlerts, createAlert, triggerPrice, type Alert } from './alerts.js'
 import { currentPrices, lookupToken, marketOverview, walletSnapshot, type TokenCard } from './market.js'
 import { checkLink, type LinkCheck } from './scams.js'
+import { logActivity } from './users.js'
 
 // Sunny's brain runs through OpenRouter so the model can be swapped from .env.
 // Created on first use, after index.ts has checked that the key is configured.
@@ -195,6 +196,12 @@ async function createPriceAlert(args: Record<string, unknown>, ctx: Ctx) {
   })
   if ('error' in created) return created
   ctx.alerts.push(toAlertCard(created))
+  logActivity(
+    ctx.userId,
+    'alert',
+    `Watching ${created.symbol} for a ${created.percent !== null ? `${created.percent}% ` : ''}${created.direction}`,
+    'I’ll message you in Telegram',
+  )
   return {
     created: true,
     id: created.id,
@@ -218,6 +225,7 @@ async function runTool(name: string, rawArgs: string, ctx: Ctx): Promise<unknown
       case 'lookup_token': {
         const result = await lookupToken(String(args.query ?? ''))
         if (result.found && cards.length < 2) cards.push(result.card)
+        if (result.found) logActivity(ctx.userId, 'check', `Checked $${result.card.symbol} · ${result.card.risk} risk`, 'Jupiter + RugCheck')
         return result
       }
       case 'market_overview':
@@ -227,6 +235,10 @@ async function runTool(name: string, rawArgs: string, ctx: Ctx): Promise<unknown
       case 'check_link': {
         const result = checkLink(String(args.url ?? ''))
         if (!('error' in result) && ctx.links.length < 2) ctx.links.push(result)
+        if (!('error' in result)) {
+          const bad = result.verdict === 'known_scam' || result.verdict === 'suspicious'
+          logActivity(ctx.userId, bad ? 'scam' : 'check', `${bad ? 'Flagged' : 'Checked'} ${result.domain}`, result.verdict.replace('_', ' '))
+        }
         return result
       }
       case 'create_price_alert':

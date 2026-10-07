@@ -3,18 +3,19 @@
 // to guess numbers or compute risk itself.
 
 const JUP = 'https://lite-api.jup.ag'
+export const SOL_MINT_ADDRESS = 'So11111111111111111111111111111111111111112'
 const RUGCHECK = 'https://api.rugcheck.xyz/v1'
 const FEAR_GREED = 'https://api.alternative.me/fng/?limit=1'
 // Mainnet reads (approvals). Separate from SOLANA_RPC_URL, which points at devnet for Sunny's program.
-const MAINNET_RPC = process.env.SOLANA_MAINNET_RPC_URL || 'https://api.mainnet-beta.solana.com'
+export const MAINNET_RPC = process.env.SOLANA_MAINNET_RPC_URL || 'https://api.mainnet-beta.solana.com'
 const TOKEN_PROGRAMS = ['TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA', 'TokenzQdBNbLqP5VEhdkAS6EPFLC1PeqcWDAm9m3KXz8']
 const SOL_MINT = 'So11111111111111111111111111111111111111112'
 const CACHE_MS = 30_000
 const TIMEOUT_MS = 8_000
 
-type Stats = { priceChange?: number; buyVolume?: number; sellVolume?: number }
+export type Stats = { priceChange?: number; buyVolume?: number; sellVolume?: number }
 
-type JupToken = {
+export type JupToken = {
   id: string
   name: string
   symbol: string
@@ -23,7 +24,9 @@ type JupToken = {
   mcap?: number
   liquidity?: number
   holderCount?: number
+  stats5m?: Stats
   stats1h?: Stats
+  stats6h?: Stats
   stats24h?: Stats
   firstPool?: { createdAt?: string }
   audit?: {
@@ -56,7 +59,7 @@ export type TokenCard = {
 
 const cache = new Map<string, { at: number; data: unknown }>()
 
-async function getJson<T>(path: string): Promise<T> {
+export async function getJson<T>(path: string): Promise<T> {
   const url = path.startsWith('http') ? path : `${JUP}${path}`
   const hit = cache.get(url)
   if (hit && Date.now() - hit.at < CACHE_MS) return hit.data as T
@@ -99,7 +102,7 @@ export function redFlags(t: JupToken): Flag[] {
   return flags
 }
 
-function riskOf(flags: Flag[]): TokenCard['risk'] {
+export function riskOf(flags: Flag[]): TokenCard['risk'] {
   if (flags.some((f) => f.level === 'high')) return 'high'
   return flags.length >= 2 ? 'medium' : 'low'
 }
@@ -263,7 +266,7 @@ type ParsedAccount = {
 }
 
 /** Token accounts where the owner has approved someone else to spend (a classic drain risk). */
-async function tokenApprovals(address: string, symbol: Map<string, string>) {
+export async function tokenApprovals(address: string, symbol: Map<string, string>) {
   const found: { token: string; approved_to: string; amount: number | null }[] = []
   for (const programId of TOKEN_PROGRAMS) {
     const res = await fetch(MAINNET_RPC, {
