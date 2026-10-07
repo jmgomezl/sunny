@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { SolanaMark } from './Icons'
-import type { AlertCard, LinkCheck, TokenCard } from '../lib/chat'
+import type { AlertCard, LinkCheck, PocketEvent, TokenCard } from '../lib/chat'
 import type { WalletReport } from '../lib/home'
 
 // Result cards shared by the chat and the scanner: tokens, links, alerts and wallets.
@@ -213,6 +213,31 @@ export function WalletCardView({ report }: { report: WalletReport }) {
       >
         <SolanaMark size={11} /> View on Solscan
       </a>
+    </div>
+  )
+}
+
+/** A draw from Sunny's pocket: approved, or stopped by the on-chain rules. */
+export function PocketEventView({ event }: { event: PocketEvent }) {
+  return (
+    <div className={`pocket-event pocket-event--${event.ok ? 'ok' : 'stopped'}`}>
+      <span className="alert-card-bell" aria-hidden="true">
+        {event.ok ? '🪙' : '⛔'}
+      </span>
+      <div>
+        <strong>{event.ok ? `Took $${event.amount} of pocket money` : `Solana stopped a $${event.amount} draw`}</strong>
+        <small>
+          {event.ok ? `${event.reason} · ${event.message}` : event.message}
+          {event.explorer && (
+            <>
+              {' · '}
+              <a href={event.explorer} target="_blank" rel="noreferrer">
+                View tx
+              </a>
+            </>
+          )}
+        </small>
+      </div>
     </div>
   )
 }

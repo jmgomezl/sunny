@@ -10,6 +10,11 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@noble/ciphers": "^2.4.0",
+    "@noble/curves": "^2.4.0",
+    "@noble/hashes": "^2.4.0",
+    "@scure/base": "^2.4.0",
+    "hash-wasm": "^4.12.0",
     "motion": "^14.0.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8"

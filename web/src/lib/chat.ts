@@ -33,11 +33,15 @@ export type AlertCard = {
   triggerPrice: number
 }
 
+/** A pocket-money draw Sunny attempted; the Solana program approved or refused it. */
+export type PocketEvent = { amount: number; reason: string; ok: boolean; message: string; explorer?: string }
+
 export type ChatReply = {
   reply: string
   cards: TokenCard[]
   links: LinkCheck[]
   alerts: AlertCard[]
+  pocket: PocketEvent[]
   live: boolean
   guest: boolean
 }
@@ -52,6 +56,7 @@ export async function askSunny(message: string): Promise<ChatReply> {
     cards: data.cards ?? [],
     links: data.links ?? [],
     alerts: data.alerts ?? [],
+    pocket: data.pocket ?? [],
     live: Boolean(data.live),
     guest: Boolean(data.guest),
   }

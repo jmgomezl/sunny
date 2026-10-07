@@ -5,6 +5,9 @@ import { CloudBank, Sky } from './components/Sky'
 import { Particles, burst, type Particle, type ParticleKind } from './components/Particles'
 import { ChatSheet, type ChatMessage } from './components/ChatSheet'
 import { ScanSheet, type ScanMode } from './components/ScanSheet'
+import { PocketSheet, type PocketEventKind } from './components/PocketSheet'
+import { fetchPocket, PROGRAM_URL, type PocketState } from './lib/pocket'
+import { inTelegram as insideTelegram } from './lib/api'
 import { askSunny, inTelegram } from './lib/chat'
 import { fetchHome, type ActivityItem, type Home, type Inspection, type WatchToken } from './lib/home'
 import type { Weather } from './components/Sky'
@@ -185,7 +188,12 @@ export default function App() {
   // Opens with a hello that fades back to Sunny's status line.
   const [said, setSaid] = useState<string | null>(greeting)
   const [particles, setParticles] = useState<Particle[]>([])
-  const [frozen, setFrozen] = useState(false)
+  // Only used for ?demo recordings; real freezing lives on-chain in the pocket program.
+  const [demoFrozen, setFrozen] = useState(false)
+  const [pocket, setPocket] = useState<{ wallet: string | null; state: PocketState | null } | null>(null)
+  const [pocketSheet, setPocketSheet] = useState<{ open: boolean; intent?: 'topup' | 'freeze' | 'unfreeze' }>({
+    open: false,
+  })
   const [toppedUp, setToppedUp] = useState(false)
   const [statusOverride, setStatusOverride] = useState<Status | null>(null)
   const [bond, setBond] = useState(loadBond)
@@ -196,7 +204,18 @@ export default function App() {
   const [suggestions, setSuggestions] = useState<string[]>([])
   const timers = useRef<number[]>([])
   const lastTouch = useRef(0)
-  const liveMood: Mood = home ? (home.mood === 'happy' && isNight() ? 'sleepy' : home.mood) : 'happy'
+  const ps = pocket?.state
+  // Sunny gets hungry when its pocket can't cover a single payment.
+  const hungry = Boolean(ps?.exists && !ps.frozen && ps.vault < ps.perTxLimit)
+  const liveMood: Mood = home
+    ? home.mood === 'worried'
+      ? 'worried'
+      : hungry
+        ? 'hungry'
+        : home.mood === 'happy' && isNight()
+          ? 'sleepy'
+          : home.mood
+    : 'happy'
   const mood: Mood = demoMood ?? liveMood
   const demo = demoMood ? SCENES[demoMood] : null
   const weather = MOOD_WEATHER[mood]
@@ -211,6 +230,19 @@ export default function App() {
       return null
     }
   }, [])
+
+  const loadPocket = useCallback(async () => {
+    if (!insideTelegram()) return setPocket({ wallet: null, state: null })
+    try {
+      setPocket(await fetchPocket())
+    } catch (err) {
+      console.warn('[sunny] pocket failed', err)
+    }
+  }, [])
+
+  useEffect(() => {
+    void loadPocket()
+  }, [loadPocket])
 
   // Load the real home screen now and keep it fresh while the app is open.
   useEffect(() => {
@@ -348,6 +380,8 @@ export default function App() {
     haptic('light')
   }
 
+  const closePocket = useCallback(() => setPocketSheet({ open: false }), [])
+
   const closeScan = useCallback(() => setScan((s) => ({ ...s, open: false, input: undefined })), [])
 
   // Sunny reacts to whatever you scanned or pasted.
@@ -422,11 +456,20 @@ export default function App() {
     setChatPending(true)
     setDozing(false)
     try {
-      const { reply, cards, links, alerts, live } = await askSunny(text)
-      setChat((prev) => [...prev, { ...sunnySays(reply), cards, links, alerts, live }])
+      const { reply, cards, links, alerts, pocket: draws, live } = await askSunny(text)
+      setChat((prev) => [...prev, { ...sunnySays(reply), cards, links, alerts, pocket: draws, live }])
+      if (draws.length) void loadPocket()
       const risky = cards.find((c) => c.risk !== 'low')
       const scam = links.find((l) => l.verdict === 'known_scam' || l.verdict === 'suspicious')
-      if (scam) {
+      const stopped = draws.find((d) => !d.ok)
+      if (stopped) {
+        // The rules working is good news: Solana said no, exactly as designed.
+        play({ reaction: 'shiver', haptic: 'warning', ms: 1400, bond: 1 })
+        setStatusOverride({ tone: 'ok', text: `Solana stopped a $${stopped.amount} draw` })
+        later(() => setStatusOverride(null), 8000)
+      } else if (draws.length) {
+        play({ reaction: 'yum', particles: ['coin', 4], haptic: 'success', ms: 1300, bond: 1 })
+      } else if (scam) {
         play({ reaction: 'alarm', haptic: 'warning', ms: 1800, bond: 1 })
         setStatusOverride({
           tone: 'warn',
@@ -461,6 +504,55 @@ export default function App() {
     void sendChat(question)
   }
 
+  const POCKET_REACTIONS: Record<PocketEventKind, Play> = {
+    created: {
+      reaction: 'giggle',
+      line: 'Your Sunny wallet is ready! Only your password opens it.',
+      particles: ['heart', 6],
+      haptic: 'success',
+      bond: 3,
+    },
+    opened: {
+      reaction: 'yum',
+      line: 'Pocket open! I’ll always stay inside your limits.',
+      particles: ['coin', 6],
+      haptic: 'success',
+      ms: 1600,
+      bond: 3,
+    },
+    topup: {
+      reaction: 'yum',
+      line: 'Yum! Pocket topped up. Thank you!',
+      particles: ['coin', 6],
+      haptic: 'success',
+      ms: 1600,
+      bond: 2,
+    },
+    freeze: {
+      reaction: 'shiver',
+      line: 'Brrr! Frozen on Solana. I can’t spend a cent until you unfreeze me.',
+      particles: ['snow', 7],
+      haptic: 'warning',
+      ms: 1800,
+    },
+    unfreeze: {
+      reaction: 'giggle',
+      line: 'Warm again! Pocket unlocked.',
+      particles: ['sparkle', 5],
+      haptic: 'success',
+    },
+    withdraw: { reaction: 'pat', line: 'Done. The money is back in your wallet.', haptic: 'success' },
+    faucet: { reaction: 'yum', line: 'Test USDC arrived in your wallet!', particles: ['coin', 5], haptic: 'success' },
+    limits: { reaction: 'pat', line: 'New limits set on Solana.', haptic: 'success' },
+  }
+
+  const onPocketChanged = (state: PocketState | null, event: PocketEventKind) => {
+    setPocket((prev) => ({ wallet: state?.owner ?? prev?.wallet ?? null, state: state ?? prev?.state ?? null }))
+    if (event === 'created') void loadPocket()
+    play(POCKET_REACTIONS[event])
+  }
+
+  const frozen = demo ? demoFrozen : Boolean(ps?.frozen)
   const line = said ?? (dozing ? DOZE_LINE : (demo?.line ?? home?.line ?? 'Waking up… checking the sky for you.'))
   const status: Status =
     statusOverride ??
@@ -471,7 +563,7 @@ export default function App() {
   const pocketLeft = toppedUp ? POCKET_LIMIT : (demo?.pocketLeft ?? 7.2)
 
   return (
-    <div className="app" data-chat={chatOpen || scan.open ? 'open' : undefined}>
+    <div className="app" data-chat={chatOpen || scan.open || pocketSheet.open ? 'open' : undefined}>
       <section className="stage">
         <Sky weather={weather} />
 
@@ -542,7 +634,13 @@ export default function App() {
       </section>
 
       <main className="content">
-        <CareCard energy={(pocketLeft / POCKET_LIMIT) * 100} frozen={frozen} wellbeing={WELLBEING[mood]} bond={bond} />
+        <CareCard
+          energy={demo ? (pocketLeft / POCKET_LIMIT) * 100 : ps?.exists ? (ps.leftToday / ps.dailyLimit) * 100 : 0}
+          energyHint={demo || ps?.exists ? undefined : 'No pocket yet'}
+          frozen={frozen}
+          wellbeing={WELLBEING[mood]}
+          bond={bond}
+        />
         <ForecastCard home={home} demo={demoMood} onLink={() => openScan('link')} />
         <Watchlist
           tokens={demo ? WATCHLIST.map(demoToken) : (home?.tokens ?? [])}
@@ -551,7 +649,17 @@ export default function App() {
           onSelect={(mint) => openScan('check', mint)}
           onAdd={() => openChat('watch')}
         />
-        <PocketCard left={pocketLeft} frozen={frozen} onTopUp={onTopUp} onFreeze={onFreeze} />
+        {demo ? (
+          <PocketCard left={pocketLeft} frozen={frozen} onTopUp={onTopUp} onFreeze={onFreeze} />
+        ) : (
+          <LivePocketCard
+            pocket={pocket}
+            onManage={(intent) => {
+              window.scrollTo({ top: 0, behavior: 'smooth' })
+              setPocketSheet({ open: true, intent })
+            }}
+          />
+        )}
         <ActivityCard items={demo ? ACTIVITY.map(demoActivity) : (home?.activity ?? [])} />
         <div className="built-on">
           <SolanaMark size={14} /> Built on Solana
@@ -570,6 +678,15 @@ export default function App() {
         sameAsTelegram={inTelegram()}
         onSend={sendChat}
         onClose={closeChat}
+      />
+
+      <PocketSheet
+        open={pocketSheet.open}
+        state={ps ?? null}
+        intent={pocketSheet.intent}
+        onClose={closePocket}
+        onChanged={onPocketChanged}
+        onBusy={(busy) => busy && play({ reaction: 'scan', ms: 20_000 })}
       />
 
       <ScanSheet
@@ -623,9 +740,9 @@ function GuardianStatus({ status }: { status: Status }) {
   )
 }
 
-type CareProps = { energy: number; frozen: boolean; wellbeing: number; bond: number }
+type CareProps = { energy: number; energyHint?: string; frozen: boolean; wellbeing: number; bond: number }
 
-function CareCard({ energy, frozen, wellbeing, bond }: CareProps) {
+function CareCard({ energy, energyHint, frozen, wellbeing, bond }: CareProps) {
   const level = bondLevel(bond)
   const inLevel = level === BOND_LEVELS.length - 1 ? 100 : ((bond % 20) / 20) * 100
   return (
@@ -639,7 +756,7 @@ function CareCard({ energy, frozen, wellbeing, bond }: CareProps) {
       <div className="care-grid">
         <Meter
           label="Energy"
-          hint={frozen ? 'Frozen ❄' : 'Pocket money'}
+          hint={frozen ? 'Frozen ❄' : (energyHint ?? 'Pocket money')}
           value={energy}
           tone={frozen ? 'frozen' : 'energy'}
         />
@@ -976,6 +1093,136 @@ function PocketCard({ left, frozen, onTopUp, onFreeze }: PocketProps) {
       </div>
       <a className="verify" href="#" onClick={(e) => e.preventDefault()}>
         Rules live in program <code>{POCKET_PROGRAM}</code>
+        <ExternalIcon size={14} />
+      </a>
+    </section>
+  )
+}
+
+function refillIn() {
+  const now = Date.now()
+  const next = (Math.floor(now / 86_400_000) + 1) * 86_400_000
+  const min = Math.round((next - now) / 60_000)
+  return `${Math.floor(min / 60)} h ${min % 60} min`
+}
+
+type LivePocketProps = {
+  pocket: { wallet: string | null; state: PocketState | null } | null
+  onManage: (intent?: 'topup' | 'freeze' | 'unfreeze') => void
+}
+
+/** Pocket money, read from the Solana program: what Sunny may spend, enforced on-chain. */
+function LivePocketCard({ pocket, onManage }: LivePocketProps) {
+  const s = pocket?.state
+  if (!s?.exists) {
+    const hasWallet = Boolean(pocket?.wallet)
+    return (
+      <section className="card pocket pocket--empty">
+        <div className="card-head">
+          <span className="eyebrow">Pocket money</span>
+          <span className="chain-tag">
+            <SolanaMark size={13} /> <span className="sol-text">Enforced on Solana</span>
+          </span>
+        </div>
+        <p className="pocket-pitch">
+          {hasWallet
+            ? 'Give Sunny a small daily allowance. A Solana program makes sure Sunny can never spend more, and you can freeze it any time.'
+            : 'Create your Sunny wallet right here: no app to install, locked with your password. Then give Sunny a small allowance it can never overspend.'}
+        </p>
+        <button type="button" className="btn btn--primary" onClick={() => onManage()} disabled={pocket === null}>
+          <PlusIcon size={17} /> {hasWallet ? 'Give Sunny pocket money' : 'Create your Sunny wallet'}
+        </button>
+        <p className="source">Devnet · test USDC · fees paid by Sunny</p>
+      </section>
+    )
+  }
+
+  const pct = Math.max(0, Math.min(1, s.leftToday / s.dailyLimit))
+  const r = 38
+  const c = 2 * Math.PI * r
+  return (
+    <section className="card pocket" data-frozen={s.frozen}>
+      <div className="card-head">
+        <span className="eyebrow">Pocket money</span>
+        <span className="chain-tag">
+          {s.frozen ? (
+            <>
+              <SnowIcon size={13} strokeWidth={2.2} /> Frozen on Solana
+            </>
+          ) : (
+            <>
+              <SolanaMark size={13} /> <span className="sol-text">Enforced on Solana</span>
+            </>
+          )}
+        </span>
+      </div>
+      <div className="pocket-body">
+        <div className="ring">
+          <svg viewBox="0 0 100 100" aria-hidden="true">
+            <defs>
+              <linearGradient id="sol-ring" x1="0" y1="1" x2="1" y2="0">
+                <stop offset="0" stopColor="#9945FF" />
+                <stop offset="0.55" stopColor="#43B4CA" />
+                <stop offset="1" stopColor="#14F195" />
+              </linearGradient>
+            </defs>
+            <circle cx="50" cy="50" r={r} className="ring-track" />
+            <motion.circle
+              cx="50"
+              cy="50"
+              r={r}
+              className="ring-fill"
+              strokeDasharray={c}
+              initial={false}
+              animate={{ strokeDashoffset: c * (1 - pct) }}
+              transition={{ type: 'spring', stiffness: 90, damping: 18 }}
+            />
+          </svg>
+          <div className="ring-label">
+            <span className="ring-num">{usd(s.leftToday)}</span>
+            <span className="ring-sub">left of {usd(s.dailyLimit).replace('.00', '')}</span>
+          </div>
+        </div>
+        <ul className="rules">
+          <li>
+            <span className="rule-icon">
+              <StopIcon size={15} />
+            </span>
+            <span>
+              Max <b>{usd(s.perTxLimit)}</b> per payment
+            </span>
+          </li>
+          <li>
+            <span className="rule-icon">
+              <ShieldIcon size={15} />
+            </span>
+            <span>
+              <b>{usd(s.vault)}</b> in the vault · only you can take it out
+            </span>
+          </li>
+          <li>
+            <span className="rule-icon">
+              <ClockIcon size={15} />
+            </span>
+            <span>Refills in {refillIn()}</span>
+          </li>
+        </ul>
+      </div>
+      <div className="pocket-actions">
+        <button type="button" className="btn btn--primary" onClick={() => onManage('topup')}>
+          <PlusIcon size={17} /> Top up
+        </button>
+        <button
+          type="button"
+          className="btn btn--ice"
+          onClick={() => onManage(s.frozen ? 'unfreeze' : 'freeze')}
+          aria-pressed={s.frozen}
+        >
+          <SnowIcon size={17} /> {s.frozen ? 'Unfreeze' : 'Freeze'}
+        </button>
+      </div>
+      <a className="verify" href={PROGRAM_URL(s.cluster)} target="_blank" rel="noreferrer">
+        Rules live in program <code>7RhP…4wvy</code> · {s.cluster}
         <ExternalIcon size={14} />
       </a>
     </section>
