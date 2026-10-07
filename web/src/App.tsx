@@ -15,7 +15,7 @@ import { haptic, type Haptic } from './lib/haptics'
 import {
   AlertIcon,
   CheckIcon,
-  ClockIcon,
+  CoinIcon,
   ExternalIcon,
   EyeIcon,
   MoonIcon,
@@ -31,7 +31,6 @@ import {
   ACTIVITY,
   POCKET_LIMIT,
   POCKET_PER_TX,
-  POCKET_PROGRAM,
   SCENES,
   WATCHLIST,
   type Activity,
@@ -179,6 +178,23 @@ function greeting() {
 // The mood picker is a demo tool: shown with ?demo, and keys 1–5 switch moods for recordings.
 const DEMO = new URLSearchParams(window.location.search).has('demo')
 
+// If someone says "later" to making a wallet, Sunny asks again the next day, not every visit.
+const HELLO_LATER = 'sunny.hello.later'
+const helloSnoozed = () => {
+  try {
+    return Date.now() - Number(localStorage.getItem(HELLO_LATER) ?? 0) < 86_400_000
+  } catch {
+    return false
+  }
+}
+const snoozeHello = () => {
+  try {
+    localStorage.setItem(HELLO_LATER, String(Date.now()))
+  } catch {
+    // Private mode: Sunny will just say hello again next time.
+  }
+}
+
 export default function App() {
   // Real data drives Sunny's mood; in ?demo mode a picked mood overrides it with sample scenes.
   const [demoMood, setDemoMood] = useState<Mood | null>(null)
@@ -191,7 +207,7 @@ export default function App() {
   // Only used for ?demo recordings; real freezing lives on-chain in the pocket program.
   const [demoFrozen, setFrozen] = useState(false)
   const [pocket, setPocket] = useState<{ wallet: string | null; state: PocketState | null } | null>(null)
-  const [pocketSheet, setPocketSheet] = useState<{ open: boolean; intent?: 'topup' | 'freeze' | 'unfreeze' }>({
+  const [pocketSheet, setPocketSheet] = useState<{ open: boolean; intent?: PocketIntent | 'hello' }>({
     open: false,
   })
   const [toppedUp, setToppedUp] = useState(false)
@@ -232,16 +248,21 @@ export default function App() {
   }, [])
 
   const loadPocket = useCallback(async () => {
-    if (!insideTelegram()) return setPocket({ wallet: null, state: null })
-    try {
-      setPocket(await fetchPocket())
-    } catch (err) {
-      console.warn('[sunny] pocket failed', err)
-    }
+    const p = insideTelegram() ? await fetchPocket().catch((err) => console.warn('[sunny] pocket failed', err)) : null
+    const next = p ?? { wallet: null, state: null }
+    if (p || !insideTelegram()) setPocket(next)
+    return p ?? null
   }, [])
 
   useEffect(() => {
-    void loadPocket()
+    let t = 0
+    void loadPocket().then((p) => {
+      // First visit: once Sunny has said hi, it offers to make your wallet together.
+      if (p && !p.wallet && !DEMO && !helloSnoozed()) {
+        t = window.setTimeout(() => setPocketSheet((s) => (s.open ? s : { open: true, intent: 'hello' })), 1600)
+      }
+    })
+    return () => clearTimeout(t)
   }, [loadPocket])
 
   // Load the real home screen now and keep it fresh while the app is open.
@@ -383,7 +404,14 @@ export default function App() {
     haptic('light')
   }
 
-  const closePocket = useCallback(() => setPocketSheet({ open: false }), [])
+  const closePocket = useCallback(
+    () =>
+      setPocketSheet((s) => {
+        if (s.intent === 'hello') snoozeHello()
+        return { open: false }
+      }),
+    [],
+  )
 
   const closeScan = useCallback(() => setScan((s) => ({ ...s, open: false, input: undefined })), [])
 
@@ -407,11 +435,11 @@ export default function App() {
 
   const linkWallet = async (address: string) => {
     closeScan()
-    setStatusOverride({ tone: 'info', text: 'Linking your wallet…' })
+    setStatusOverride({ tone: 'info', text: 'Getting to know this wallet…' })
     play({ reaction: 'scan', ms: 15_000 })
     const h = await refreshHome(address)
     setStatusOverride(null)
-    if (!h) return play({ reaction: 'blush', line: 'I couldn’t link that wallet. Try again?', ms: 1200 })
+    if (!h) return play({ reaction: 'blush', line: 'I couldn’t read that wallet. Try again?', ms: 1200 })
     play({
       reaction: 'giggle',
       line: `Got it! I’m watching ${short(address)} now. ☀️`,
@@ -420,6 +448,12 @@ export default function App() {
       ms: 1400,
       bond: 3,
     })
+  }
+
+  const unwatch = async () => {
+    closeScan()
+    const h = await refreshHome(null)
+    if (h) play({ reaction: 'pat', line: 'Okay, I stopped watching that wallet.', haptic: 'light', ms: 1000 })
   }
 
   const sunnySays = (text: string, error = false): ChatMessage => ({ id: chatIds++, from: 'sunny', text, error })
@@ -459,8 +493,8 @@ export default function App() {
     setChatPending(true)
     setDozing(false)
     try {
-      const { reply, cards, links, alerts, pocket: draws, live } = await askSunny(text)
-      setChat((prev) => [...prev, { ...sunnySays(reply), cards, links, alerts, pocket: draws, live }])
+      const { reply, cards, links, alerts, pocket: draws, mine, wallets, live } = await askSunny(text)
+      setChat((prev) => [...prev, { ...sunnySays(reply), cards, links, alerts, pocket: draws, mine, wallets, live }])
       if (draws.length) void loadPocket()
       const risky = cards.find((c) => c.risk !== 'low')
       const scam = links.find((l) => l.verdict === 'known_scam' || l.verdict === 'suspicious')
@@ -564,6 +598,34 @@ export default function App() {
       : (demo?.status ?? home?.status ?? { tone: 'info', text: 'Checking the sky…' }))
   // Pocket money goes on-chain next; until then the card shows a preview allowance.
   const pocketLeft = toppedUp ? POCKET_LIMIT : (demo?.pocketLeft ?? 7.2)
+  const pocketView: PocketView = demo
+    ? { kind: 'live', left: pocketLeft, daily: POCKET_LIMIT, perTx: POCKET_PER_TX, frozen, cluster: 'devnet' }
+    : !pocket
+      ? { kind: 'loading' }
+      : !pocket.wallet
+        ? { kind: 'no-wallet' }
+        : !ps?.exists
+          ? { kind: 'empty' }
+          : {
+              kind: 'live',
+              left: ps.leftToday,
+              daily: ps.dailyLimit,
+              perTx: ps.perTxLimit,
+              frozen: ps.frozen,
+              cluster: ps.cluster,
+            }
+
+  const openWallet = () => {
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+    setPocketSheet({ open: true })
+  }
+
+  const managePocket = (intent?: PocketIntent) => {
+    // In ?demo recordings, tapping the pocket feeds Sunny and the snowflake freezes it.
+    if (demo) return intent === 'freeze' || intent === 'unfreeze' ? onFreeze() : onTopUp()
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+    setPocketSheet({ open: true, intent })
+  }
 
   return (
     <div className="app" data-chat={chatOpen || scan.open || pocketSheet.open ? 'open' : undefined}>
@@ -578,12 +640,12 @@ export default function App() {
           <button
             className="wallet-pill"
             type="button"
-            data-linked={home?.wallet ? 'true' : undefined}
-            onClick={() => openScan('link')}
-            aria-label={home?.wallet ? `Linked wallet ${home.wallet}. Tap to change.` : 'Link your wallet'}
+            data-linked={pocket?.wallet ? 'true' : undefined}
+            onClick={openWallet}
+            aria-label={pocket?.wallet ? `Your Sunny wallet ${pocket.wallet}` : 'Make your Sunny wallet'}
           >
             <SolanaMark size={15} />
-            {home?.wallet ? short(home.wallet) : 'Link wallet'}
+            {pocket?.wallet ? short(pocket.wallet) : pocket && insideTelegram() ? 'Make wallet' : 'My wallet'}
           </button>
         </header>
 
@@ -637,14 +699,8 @@ export default function App() {
       </section>
 
       <main className="content">
-        <CareCard
-          energy={demo ? (pocketLeft / POCKET_LIMIT) * 100 : ps?.exists ? (ps.leftToday / ps.dailyLimit) * 100 : 0}
-          energyHint={demo || ps?.exists ? undefined : 'No pocket yet'}
-          frozen={frozen}
-          wellbeing={WELLBEING[mood]}
-          bond={bond}
-        />
-        <ForecastCard home={home} demo={demoMood} onLink={() => openScan('link')} />
+        <CareCard wellbeing={WELLBEING[mood]} bond={bond} pocket={pocketView} onPocket={managePocket} />
+        <ForecastCard home={home} demo={demoMood} onWatch={() => openScan('link')} />
         <Watchlist
           tokens={demo ? WATCHLIST.map(demoToken) : (home?.tokens ?? [])}
           linked={Boolean(home?.wallet)}
@@ -652,17 +708,6 @@ export default function App() {
           onSelect={(mint) => openScan('check', mint)}
           onAdd={() => openChat('watch')}
         />
-        {demo ? (
-          <PocketCard left={pocketLeft} frozen={frozen} onTopUp={onTopUp} onFreeze={onFreeze} />
-        ) : (
-          <LivePocketCard
-            pocket={pocket}
-            onManage={(intent) => {
-              window.scrollTo({ top: 0, behavior: 'smooth' })
-              setPocketSheet({ open: true, intent })
-            }}
-          />
-        )}
         <ActivityCard items={demo ? ACTIVITY.map(demoActivity) : (home?.activity ?? [])} />
         <div className="built-on">
           <SolanaMark size={14} /> Built on Solana
@@ -699,7 +744,9 @@ export default function App() {
         onClose={closeScan}
         onChecking={() => play({ reaction: 'scan', ms: 15_000 })}
         onResult={onScanResult}
+        watching={home?.wallet ?? null}
         onLinkWallet={(a) => void linkWallet(a)}
+        onUnwatch={() => void unwatch()}
         onAsk={askFromScan}
         onWatch={(symbol) => openChat('watch', symbol)}
       />
@@ -743,13 +790,31 @@ function GuardianStatus({ status }: { status: Status }) {
   )
 }
 
-type CareProps = { energy: number; energyHint?: string; frozen: boolean; wellbeing: number; bond: number }
+/** What the care card shows about Sunny's pocket, from Solana or from a demo scene. */
+type PocketView =
+  | { kind: 'loading' }
+  | { kind: 'no-wallet' }
+  | { kind: 'empty' }
+  | { kind: 'live'; left: number; daily: number; perTx: number; frozen: boolean; cluster: string }
 
-function CareCard({ energy, energyHint, frozen, wellbeing, bond }: CareProps) {
+type PocketIntent = 'topup' | 'freeze' | 'unfreeze'
+
+type CareProps = {
+  wellbeing: number
+  bond: number
+  pocket: PocketView
+  onPocket: (intent?: PocketIntent) => void
+}
+
+/** Sunny's needs, like a pet's: its energy is the pocket money you give it, enforced on Solana. */
+function CareCard({ wellbeing, bond, pocket, onPocket }: CareProps) {
   const level = bondLevel(bond)
   const inLevel = level === BOND_LEVELS.length - 1 ? 100 : ((bond % 20) / 20) * 100
+  const live = pocket.kind === 'live' ? pocket : null
+  const frozen = Boolean(live?.frozen)
+  const whole = (n: number) => usd(n).replace('.00', '')
   return (
-    <section className="card care" aria-label="Sunny’s care">
+    <section className="card care" aria-label="Sunny’s care" data-frozen={frozen || undefined}>
       <div className="card-head">
         <span className="eyebrow">Sunny’s care</span>
         <span className="bond-title">
@@ -759,13 +824,81 @@ function CareCard({ energy, energyHint, frozen, wellbeing, bond }: CareProps) {
       <div className="care-grid">
         <Meter
           label="Energy"
-          hint={frozen ? 'Frozen ❄' : (energyHint ?? 'Pocket money')}
-          value={energy}
+          hint={frozen ? 'Frozen ❄' : live ? `${whole(live.left)} of ${whole(live.daily)}` : 'Needs a pocket'}
+          value={live ? (live.left / live.daily) * 100 : 0}
           tone={frozen ? 'frozen' : 'energy'}
         />
         <Meter label="Mood" hint="Wallet health" value={wellbeing} tone="mood" />
         <Meter label="Bond" hint="Play with me" value={inLevel} tone="bond" />
       </div>
+
+      <div className="care-pocket">
+        <button type="button" className="care-pocket-main" onClick={() => onPocket()}>
+          <span className="care-pocket-icon" aria-hidden="true">
+            {frozen ? <SnowIcon size={19} strokeWidth={2.1} /> : <CoinIcon size={20} />}
+          </span>
+          <span className="care-pocket-text">
+            {live ? (
+              frozen ? (
+                <>
+                  <strong>I’m frozen</strong>
+                  <small>I can’t spend a cent</small>
+                </>
+              ) : (
+                <>
+                  <strong>{usd(live.left)} left in my pocket</strong>
+                  <small>
+                    Max {whole(live.perTx)} each · refills in {refillIn()}
+                  </small>
+                </>
+              )
+            ) : pocket.kind === 'empty' ? (
+              <>
+                <strong>My pocket is empty</strong>
+                <small>Give me a small allowance</small>
+              </>
+            ) : pocket.kind === 'no-wallet' ? (
+              <>
+                <strong>Let’s make your wallet</strong>
+                <small>Locked by your password</small>
+              </>
+            ) : (
+              <>
+                <strong>Checking my pocket…</strong>
+                <small>Reading it from Solana</small>
+              </>
+            )}
+          </span>
+        </button>
+        <div className="care-pocket-actions">
+          {live && !frozen && (
+            <button
+              type="button"
+              className="btn btn--ice btn--icon"
+              onClick={() => onPocket('freeze')}
+              aria-label="Freeze my pocket"
+            >
+              <SnowIcon size={17} />
+            </button>
+          )}
+          {frozen && (
+            <button type="button" className="btn btn--primary" onClick={() => onPocket('unfreeze')}>
+              Warm up
+            </button>
+          )}
+          {(pocket.kind === 'empty' || pocket.kind === 'no-wallet') && (
+            <button type="button" className="btn btn--primary" onClick={() => onPocket()}>
+              {pocket.kind === 'empty' ? 'Give' : 'Start'}
+            </button>
+          )}
+        </div>
+      </div>
+      {live && (
+        <a className="verify care-verify" href={PROGRAM_URL(live.cluster)} target="_blank" rel="noreferrer">
+          <SolanaMark size={12} /> Limits enforced on Solana · {live.cluster}
+          <ExternalIcon size={13} />
+        </a>
+      )}
     </section>
   )
 }
@@ -830,10 +963,10 @@ function ago(iso: string) {
   return `${Math.round(min / 1440)} d`
 }
 
-type ForecastProps = { home: Home | null; demo: Mood | null; onLink: () => void }
+type ForecastProps = { home: Home | null; demo: Mood | null; onWatch: () => void }
 
-/** Wallet weather: the linked wallet's real value and 24h curve, or Solana today. */
-function ForecastCard({ home, demo, onLink }: ForecastProps) {
+/** Wallet weather: the real value and 24h curve of a wallet Sunny watches, or Solana today. */
+function ForecastCard({ home, demo, onWatch }: ForecastProps) {
   const scene = demo ? SCENES[demo] : null
   const linked = Boolean(home?.wallet) || Boolean(scene)
   const value = scene ? scene.value : home?.value
@@ -875,8 +1008,8 @@ function ForecastCard({ home, demo, onLink }: ForecastProps) {
         </div>
       </dl>
       {!linked && home && (
-        <button type="button" className="btn btn--primary forecast-link" onClick={onLink}>
-          <SolanaMark size={15} /> Link your wallet
+        <button type="button" className="btn btn--primary forecast-link" onClick={onWatch}>
+          <EyeIcon size={17} /> Watch a wallet
         </button>
       )}
       <p className="source">
@@ -886,6 +1019,11 @@ function ForecastCard({ home, demo, onLink }: ForecastProps) {
             ? `Updated ${ago(home.updatedAt)} · Prices from Jupiter${home.fearGreed && linked ? ` · Market mood ${home.fearGreed.label.toLowerCase()}` : ''}`
             : 'Checking the sky…'}
       </p>
+      {home?.wallet && !scene && (
+        <button type="button" className="forecast-watching" onClick={onWatch}>
+          <EyeIcon size={14} /> Watching {short(home.wallet)} · Change
+        </button>
+      )}
     </section>
   )
 }
@@ -1014,222 +1152,11 @@ function Watchlist({ tokens, linked, loading, onSelect, onAdd }: WatchlistProps)
   )
 }
 
-type PocketProps = { left: number; frozen: boolean; onTopUp: () => void; onFreeze: () => void }
-
-function PocketCard({ left, frozen, onTopUp, onFreeze }: PocketProps) {
-  const pct = Math.max(0, Math.min(1, left / POCKET_LIMIT))
-  const r = 38
-  const c = 2 * Math.PI * r
-  return (
-    <section className="card pocket" data-frozen={frozen}>
-      <div className="card-head">
-        <span className="eyebrow">Pocket money</span>
-        <span className="chain-tag">
-          {frozen ? (
-            <>
-              <SnowIcon size={13} strokeWidth={2.2} /> Frozen on Solana
-            </>
-          ) : (
-            <>
-              <SolanaMark size={13} /> <span className="sol-text">Enforced on Solana</span>
-            </>
-          )}
-        </span>
-      </div>
-      <div className="pocket-body">
-        <div className="ring">
-          <svg viewBox="0 0 100 100" aria-hidden="true">
-            <defs>
-              <linearGradient id="sol-ring" x1="0" y1="1" x2="1" y2="0">
-                <stop offset="0" stopColor="#9945FF" />
-                <stop offset="0.55" stopColor="#43B4CA" />
-                <stop offset="1" stopColor="#14F195" />
-              </linearGradient>
-            </defs>
-            <circle cx="50" cy="50" r={r} className="ring-track" />
-            <motion.circle
-              cx="50"
-              cy="50"
-              r={r}
-              className="ring-fill"
-              strokeDasharray={c}
-              initial={false}
-              animate={{ strokeDashoffset: c * (1 - pct) }}
-              transition={{ type: 'spring', stiffness: 90, damping: 18 }}
-            />
-          </svg>
-          <div className="ring-label">
-            <span className="ring-num">{usd(left)}</span>
-            <span className="ring-sub">left of ${POCKET_LIMIT}</span>
-          </div>
-        </div>
-        <ul className="rules">
-          <li>
-            <span className="rule-icon">
-              <StopIcon size={15} />
-            </span>
-            <span>
-              Max <b>{usd(POCKET_PER_TX)}</b> per payment
-            </span>
-          </li>
-          <li>
-            <span className="rule-icon">
-              <ShieldIcon size={15} />
-            </span>
-            <span>Only Jupiter swaps and x402 APIs</span>
-          </li>
-          <li>
-            <span className="rule-icon">
-              <ClockIcon size={15} />
-            </span>
-            <span>Refills in 6 h 12 min</span>
-          </li>
-        </ul>
-      </div>
-      <div className="pocket-actions">
-        <button type="button" className="btn btn--primary" onClick={onTopUp} disabled={frozen}>
-          <PlusIcon size={17} /> Top up
-        </button>
-        <button type="button" className="btn btn--ice" onClick={onFreeze} aria-pressed={frozen}>
-          <SnowIcon size={17} /> {frozen ? 'Unfreeze' : 'Freeze'}
-        </button>
-      </div>
-      <a className="verify" href="#" onClick={(e) => e.preventDefault()}>
-        Rules live in program <code>{POCKET_PROGRAM}</code>
-        <ExternalIcon size={14} />
-      </a>
-    </section>
-  )
-}
-
+/** Time until the pocket's daily limit resets at midnight UTC, as the program counts days. */
 function refillIn() {
   const now = Date.now()
-  const next = (Math.floor(now / 86_400_000) + 1) * 86_400_000
-  const min = Math.round((next - now) / 60_000)
-  return `${Math.floor(min / 60)} h ${min % 60} min`
-}
-
-type LivePocketProps = {
-  pocket: { wallet: string | null; state: PocketState | null } | null
-  onManage: (intent?: 'topup' | 'freeze' | 'unfreeze') => void
-}
-
-/** Pocket money, read from the Solana program: what Sunny may spend, enforced on-chain. */
-function LivePocketCard({ pocket, onManage }: LivePocketProps) {
-  const s = pocket?.state
-  if (!s?.exists) {
-    const hasWallet = Boolean(pocket?.wallet)
-    return (
-      <section className="card pocket pocket--empty">
-        <div className="card-head">
-          <span className="eyebrow">Pocket money</span>
-          <span className="chain-tag">
-            <SolanaMark size={13} /> <span className="sol-text">Enforced on Solana</span>
-          </span>
-        </div>
-        <p className="pocket-pitch">
-          {hasWallet
-            ? 'Give Sunny a small daily allowance. A Solana program makes sure Sunny can never spend more, and you can freeze it any time.'
-            : 'Create your Sunny wallet right here: no app to install, locked with your password. Then give Sunny a small allowance it can never overspend.'}
-        </p>
-        <button type="button" className="btn btn--primary" onClick={() => onManage()} disabled={pocket === null}>
-          <PlusIcon size={17} /> {hasWallet ? 'Give Sunny pocket money' : 'Create your Sunny wallet'}
-        </button>
-        <p className="source">Devnet · test USDC · fees paid by Sunny</p>
-      </section>
-    )
-  }
-
-  const pct = Math.max(0, Math.min(1, s.leftToday / s.dailyLimit))
-  const r = 38
-  const c = 2 * Math.PI * r
-  return (
-    <section className="card pocket" data-frozen={s.frozen}>
-      <div className="card-head">
-        <span className="eyebrow">Pocket money</span>
-        <span className="chain-tag">
-          {s.frozen ? (
-            <>
-              <SnowIcon size={13} strokeWidth={2.2} /> Frozen on Solana
-            </>
-          ) : (
-            <>
-              <SolanaMark size={13} /> <span className="sol-text">Enforced on Solana</span>
-            </>
-          )}
-        </span>
-      </div>
-      <div className="pocket-body">
-        <div className="ring">
-          <svg viewBox="0 0 100 100" aria-hidden="true">
-            <defs>
-              <linearGradient id="sol-ring" x1="0" y1="1" x2="1" y2="0">
-                <stop offset="0" stopColor="#9945FF" />
-                <stop offset="0.55" stopColor="#43B4CA" />
-                <stop offset="1" stopColor="#14F195" />
-              </linearGradient>
-            </defs>
-            <circle cx="50" cy="50" r={r} className="ring-track" />
-            <motion.circle
-              cx="50"
-              cy="50"
-              r={r}
-              className="ring-fill"
-              strokeDasharray={c}
-              initial={false}
-              animate={{ strokeDashoffset: c * (1 - pct) }}
-              transition={{ type: 'spring', stiffness: 90, damping: 18 }}
-            />
-          </svg>
-          <div className="ring-label">
-            <span className="ring-num">{usd(s.leftToday)}</span>
-            <span className="ring-sub">left of {usd(s.dailyLimit).replace('.00', '')}</span>
-          </div>
-        </div>
-        <ul className="rules">
-          <li>
-            <span className="rule-icon">
-              <StopIcon size={15} />
-            </span>
-            <span>
-              Max <b>{usd(s.perTxLimit)}</b> per payment
-            </span>
-          </li>
-          <li>
-            <span className="rule-icon">
-              <ShieldIcon size={15} />
-            </span>
-            <span>
-              <b>{usd(s.vault)}</b> in the vault · only you can take it out
-            </span>
-          </li>
-          <li>
-            <span className="rule-icon">
-              <ClockIcon size={15} />
-            </span>
-            <span>Refills in {refillIn()}</span>
-          </li>
-        </ul>
-      </div>
-      <div className="pocket-actions">
-        <button type="button" className="btn btn--primary" onClick={() => onManage('topup')}>
-          <PlusIcon size={17} /> Top up
-        </button>
-        <button
-          type="button"
-          className="btn btn--ice"
-          onClick={() => onManage(s.frozen ? 'unfreeze' : 'freeze')}
-          aria-pressed={s.frozen}
-        >
-          <SnowIcon size={17} /> {s.frozen ? 'Unfreeze' : 'Freeze'}
-        </button>
-      </div>
-      <a className="verify" href={PROGRAM_URL(s.cluster)} target="_blank" rel="noreferrer">
-        Rules live in program <code>7RhP…4wvy</code> · {s.cluster}
-        <ExternalIcon size={14} />
-      </a>
-    </section>
-  )
+  const min = Math.round(((Math.floor(now / 86_400_000) + 1) * 86_400_000 - now) / 60_000)
+  return min >= 60 ? `${Math.floor(min / 60)} h` : `${min} min`
 }
 
 const ACTIVITY_ICON: Record<ActivityItem['kind'], typeof ShieldIcon> = {

@@ -14,7 +14,10 @@ type ScanSheetProps = {
   onClose: () => void
   onChecking: () => void
   onResult: (result: Inspection | null) => void
+  /** The wallet Sunny already watches, if any. */
+  watching?: string | null
   onLinkWallet: (address: string) => void
+  onUnwatch?: () => void
   onAsk: (question: string) => void
   onWatch: (symbol: string) => void
 }
@@ -25,7 +28,8 @@ const canScan = () =>
 
 /** Scan a QR or paste anything (wallet, token, link) and Sunny tells you what it is. */
 export function ScanSheet(props: ScanSheetProps) {
-  const { open, mode, initialInput, onClose, onChecking, onResult, onLinkWallet, onAsk, onWatch } = props
+  const { open, mode, initialInput, watching, onClose, onChecking, onResult, onLinkWallet, onUnwatch, onAsk, onWatch } =
+    props
   const [draft, setDraft] = useState('')
   const [pending, setPending] = useState(false)
   const [result, setResult] = useState<Inspection | null>(null)
@@ -80,7 +84,7 @@ export function ScanSheet(props: ScanSheetProps) {
 
   const scan = () => {
     window.Telegram?.WebApp?.showScanQrPopup?.(
-      { text: mode === 'link' ? 'Scan your wallet’s QR code' : 'Scan a wallet, token or link' },
+      { text: mode === 'link' ? 'Scan the wallet’s QR code' : 'Scan a wallet, token or link' },
       (data) => {
         void check(data)
         return true
@@ -108,7 +112,7 @@ export function ScanSheet(props: ScanSheetProps) {
             className="chat-sheet scan-sheet"
             role="dialog"
             aria-modal="true"
-            aria-label={mode === 'link' ? 'Link your wallet' : 'Scan and check'}
+            aria-label={mode === 'link' ? 'Watch a wallet' : 'Scan and check'}
             initial={{ y: '100%' }}
             animate={{ y: 0 }}
             exit={{ y: '100%' }}
@@ -119,7 +123,7 @@ export function ScanSheet(props: ScanSheetProps) {
               <div className="chat-title">
                 <SunMark size={22} />
                 <div>
-                  <strong>{mode === 'link' ? 'Link your wallet' : 'Scan & check'}</strong>
+                  <strong>{mode === 'link' ? 'Watch a wallet' : 'Scan & check'}</strong>
                   <small>{mode === 'link' ? 'Read-only: I can watch, never spend' : 'Wallets, tokens or links'}</small>
                 </div>
               </div>
@@ -137,7 +141,9 @@ export function ScanSheet(props: ScanSheetProps) {
                   <span>
                     <strong>Scan a QR code</strong>
                     <small>
-                      {mode === 'link' ? 'Your wallet app’s receive QR' : 'From a wallet, a token page or a flyer'}
+                      {mode === 'link'
+                        ? 'The receive QR in Phantom or any wallet app'
+                        : 'From a wallet, a token page or a flyer'}
                     </small>
                   </span>
                 </button>
@@ -150,7 +156,7 @@ export function ScanSheet(props: ScanSheetProps) {
                   ref={inputRef}
                   value={draft}
                   onChange={(e) => setDraft(e.target.value.slice(0, 300))}
-                  placeholder={mode === 'link' ? 'Paste your wallet address' : 'Paste a wallet, token or link'}
+                  placeholder={mode === 'link' ? 'Paste a wallet address' : 'Paste a wallet, token or link'}
                   aria-label="Address, token or link"
                   enterKeyHint="go"
                   autoComplete="off"
@@ -168,6 +174,12 @@ export function ScanSheet(props: ScanSheetProps) {
                   </svg>
                 </button>
               </form>
+
+              {mode === 'link' && watching && !result && !pending && (
+                <button type="button" className="ghost-btn scan-unwatch" onClick={onUnwatch}>
+                  Stop watching {watching.slice(0, 4)}…{watching.slice(-4)}
+                </button>
+              )}
 
               {mode === 'check' && !result && !pending && !error && (
                 <div className="chat-suggest scan-try">
@@ -239,7 +251,7 @@ export function ScanSheet(props: ScanSheetProps) {
                           className="btn btn--primary"
                           onClick={() => onLinkWallet(result.report.address)}
                         >
-                          This is my wallet
+                          Watch this wallet
                         </button>
                         <button
                           type="button"

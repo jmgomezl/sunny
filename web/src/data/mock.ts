@@ -39,7 +39,6 @@ export type Scene = {
 
 export const POCKET_LIMIT = 10
 export const POCKET_PER_TX = 5
-export const POCKET_PROGRAM = 'PoCK…7Fxq'
 
 export const SCENES: Record<Mood, Scene> = {
   happy: {

@@ -35,6 +35,13 @@ export const EyeIcon = (p: IconProps) => (
   </Icon>
 )
 
+export const CoinIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <circle cx="12" cy="12" r="8.5" />
+    <path d="M14.6 9.3c-.5-.8-1.5-1.3-2.6-1.3-1.5 0-2.6.8-2.6 1.9 0 2.6 5.3 1.4 5.3 4.2 0 1.1-1.2 1.9-2.7 1.9-1.2 0-2.2-.5-2.7-1.3M12 6.5V8m0 8v1.5" />
+  </Icon>
+)
+
 export const SnowIcon = (p: IconProps) => (
   <Icon {...p}>
     <path d="M12 2.5v19M3.8 7.2l16.4 9.6M3.8 16.8l16.4-9.6" />
@@ -64,13 +71,6 @@ export const PlusIcon = (p: IconProps) => (
 export const BoltIcon = (p: IconProps) => (
   <Icon {...p}>
     <path d="M13 2.5 5 13.5h6l-1 8 8-11h-6z" />
-  </Icon>
-)
-
-export const ClockIcon = (p: IconProps) => (
-  <Icon {...p}>
-    <circle cx="12" cy="12" r="8.5" />
-    <path d="M12 7.5V12l3 2" />
   </Icon>
 )
 
