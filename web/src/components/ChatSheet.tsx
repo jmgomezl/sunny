@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
 import { SunMark } from './Icons'
-import { AlertCardView, LinkCardView, PocketEventView, TokenCardView } from './Cards'
-import type { AlertCard, LinkCheck, PocketEvent, TokenCard } from '../lib/chat'
+import { AlertCardView, LinkCardView, MyWalletView, PocketEventView, TokenCardView, WalletCardView } from './Cards'
+import type { AlertCard, LinkCheck, MyWallet, PocketEvent, TokenCard } from '../lib/chat'
+import type { WalletReport } from '../lib/home'
 
 export type ChatMessage = {
   id: number
@@ -13,6 +14,8 @@ export type ChatMessage = {
   links?: LinkCheck[]
   alerts?: AlertCard[]
   pocket?: PocketEvent[]
+  mine?: MyWallet | null
+  wallets?: WalletReport[]
   live?: boolean
 }
 
@@ -125,6 +128,10 @@ export function ChatSheet({ open, messages, pending, suggestions, sameAsTelegram
                     <p>{m.text}</p>
                     {m.links?.map((l) => (
                       <LinkCardView key={l.domain} link={l} />
+                    ))}
+                    {m.mine && <MyWalletView wallet={m.mine} />}
+                    {m.wallets?.map((w) => (
+                      <WalletCardView key={w.address} report={w} />
                     ))}
                     {m.pocket?.map((e, i) => (
                       <PocketEventView key={i} event={e} />

@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import { SolanaMark } from './Icons'
-import type { AlertCard, LinkCheck, PocketEvent, TokenCard } from '../lib/chat'
+import { SolanaMark, SunMark } from './Icons'
+import type { AlertCard, LinkCheck, MyWallet, PocketEvent, TokenCard } from '../lib/chat'
 import type { WalletReport } from '../lib/home'
 
 // Result cards shared by the chat and the scanner: tokens, links, alerts and wallets.
@@ -208,6 +208,69 @@ export function WalletCardView({ report }: { report: WalletReport }) {
       <a
         className="token-card-mint"
         href={`https://solscan.io/account/${report.address}`}
+        target="_blank"
+        rel="noreferrer"
+      >
+        <SolanaMark size={11} /> View on Solscan
+      </a>
+    </div>
+  )
+}
+
+function since(iso: string | null) {
+  if (!iso) return 'recently'
+  const min = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 60_000))
+  if (min < 1) return 'just now'
+  if (min < 60) return `${min} min ago`
+  if (min < 48 * 60) return `${Math.round(min / 60)} h ago`
+  return `${Math.round(min / 1440)} days ago`
+}
+
+/** The user's own Sunny wallet: balances and what happened lately, read from Solana. */
+export function MyWalletView({ wallet }: { wallet: MyWallet }) {
+  const p = wallet.pocket
+  return (
+    <div className="token-card my-wallet">
+      <div className="token-card-top">
+        <span className="wallet-card-icon my-wallet-icon" aria-hidden="true">
+          <SunMark size={18} />
+        </span>
+        <div className="token-card-id">
+          <strong>Your Sunny wallet</strong>
+          <small>
+            {wallet.address.slice(0, 4)}…{wallet.address.slice(-4)} · {wallet.cluster}
+          </small>
+        </div>
+        <div className="token-card-price">
+          <strong>{formatUsd(wallet.usdc)}</strong>
+          <small>test USDC</small>
+        </div>
+      </div>
+      <div className="token-card-meta">
+        {p ? (
+          <span>
+            {p.frozen ? 'Pocket frozen' : `${formatUsd(p.leftToday)} left today`} · {formatUsd(p.vault)} in my pocket
+          </span>
+        ) : (
+          <span>No pocket yet</span>
+        )}
+      </div>
+      {wallet.recent.length > 0 && (
+        <ul className="my-wallet-recent">
+          {wallet.recent.slice(0, 5).map((e) => (
+            <li key={e.explorer} data-failed={!e.ok || undefined}>
+              <span>{e.ok ? e.what : `${e.what} · failed`}</span>
+              {e.amount !== null && <b>{formatUsd(e.amount)}</b>}
+              <a href={e.explorer} target="_blank" rel="noreferrer">
+                {since(e.at)}
+              </a>
+            </li>
+          ))}
+        </ul>
+      )}
+      <a
+        className="token-card-mint"
+        href={`https://solscan.io/account/${wallet.address}?cluster=${wallet.cluster}`}
         target="_blank"
         rel="noreferrer"
       >

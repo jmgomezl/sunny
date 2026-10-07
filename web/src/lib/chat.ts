@@ -1,4 +1,5 @@
 import { post } from './api'
+import type { WalletReport } from './home'
 
 export type TokenFlag = { level: 'high' | 'medium'; text: string }
 
@@ -36,12 +37,26 @@ export type AlertCard = {
 /** A pocket-money draw Sunny attempted; the Solana program approved or refused it. */
 export type PocketEvent = { amount: number; reason: string; ok: boolean; message: string; explorer?: string }
 
+/** Something that happened in the user's Sunny wallet, described from the chain. */
+export type WalletEvent = { at: string | null; what: string; amount: number | null; ok: boolean; explorer: string }
+
+/** The user's own Sunny wallet, when they ask about "my wallet". */
+export type MyWallet = {
+  address: string
+  cluster: string
+  usdc: number
+  pocket: { vault: number; leftToday: number; dailyLimit: number; frozen: boolean } | null
+  recent: WalletEvent[]
+}
+
 export type ChatReply = {
   reply: string
   cards: TokenCard[]
   links: LinkCheck[]
   alerts: AlertCard[]
   pocket: PocketEvent[]
+  mine: MyWallet | null
+  wallets: WalletReport[]
   live: boolean
   guest: boolean
 }
@@ -57,6 +72,8 @@ export async function askSunny(message: string): Promise<ChatReply> {
     links: data.links ?? [],
     alerts: data.alerts ?? [],
     pocket: data.pocket ?? [],
+    mine: data.mine ?? null,
+    wallets: data.wallets ?? [],
     live: Boolean(data.live),
     guest: Boolean(data.guest),
   }
