@@ -1,11 +1,12 @@
 import {
-  type AddressLookupTableAccount,
   Connection,
   PublicKey,
   type TransactionInstruction,
   TransactionMessage,
   VersionedTransaction,
 } from '@solana/web3.js'
+import { lookup } from 'node:dns/promises'
+import { BlockList, isIP, isIPv4, isIPv6 } from 'node:net'
 import { MAINNET_RPC, SOL_MINT_ADDRESS } from './market.js'
 import { checkLink, type LinkCheck } from './scams.js'
 import { tokenInfo } from './wallet.js'
@@ -20,6 +21,8 @@ import { feePayer, hasChain } from './solana.js'
 const REGISTRY = 'https://actions-registry.dial.to/all'
 const REGISTRY_MS = 60 * 60_000
 const TIMEOUT_MS = 10_000
+const PACKET_SIZE = 1232
+const MAX_LOOKUP_TABLES = 8
 const SYSTEM = '11111111111111111111111111111111'
 const TOKEN = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA'
 const TOKEN_2022 = 'TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb'
@@ -34,14 +37,80 @@ const PROGRAM_NAMES: Record<string, string> = {
 }
 
 const mainnet = new Connection(MAINNET_RPC, 'confirmed')
-const json = async <T>(url: string, init?: RequestInit) => {
-  const res = await fetch(url, {
-    ...init,
-    headers: { Accept: 'application/json', 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
-    signal: globalThis.AbortSignal.timeout(TIMEOUT_MS),
-  })
-  const body = (await res.json().catch(() => null)) as T | null
-  return { ok: res.ok, status: res.status, body }
+
+// ── Fetching links strangers send ────────────────────────────────────────────
+// Sunny's server opens whatever link someone pastes, so it must never be pointed at itself
+// or its neighbours: only https, only public addresses (checked again on every redirect),
+// and only a small answer.
+
+const MAX_BODY = 512 * 1024
+const MAX_REDIRECTS = 3
+const PRIVATE = new BlockList()
+for (const [net, bits] of [
+  ['0.0.0.0', 8], ['10.0.0.0', 8], ['100.64.0.0', 10], ['127.0.0.0', 8], ['169.254.0.0', 16], ['172.16.0.0', 12],
+  ['192.0.0.0', 24], ['192.168.0.0', 16], ['198.18.0.0', 15], ['224.0.0.0', 4], ['240.0.0.0', 4],
+] as const) PRIVATE.addSubnet(net, bits, 'ipv4')
+for (const [net, bits] of [['::', 128], ['::1', 128], ['fc00::', 7], ['fe80::', 10], ['ff00::', 8]] as const) PRIVATE.addSubnet(net, bits, 'ipv6')
+// Local development only: lets the demo Blink be checked on http://127.0.0.1.
+const ALLOW_PRIVATE = process.env.SUNNY_ALLOW_PRIVATE_FETCH === '1'
+
+const isPrivate = (ip: string) => {
+  const v4 = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/i.exec(ip)?.[1]
+  if (v4 || isIPv4(ip)) return PRIVATE.check(v4 ?? ip, 'ipv4')
+  return isIPv6(ip) ? PRIVATE.check(ip, 'ipv6') : true
+}
+
+/** Throws unless `url` is an https link to a public address. */
+export async function assertPublic(url: URL) {
+  if (ALLOW_PRIVATE) return
+  if (url.protocol !== 'https:') throw new Error('Only https links can be checked.')
+  const host = url.hostname.replace(/^\[|\]$/g, '')
+  const addresses = isIP(host) ? [{ address: host }] : await lookup(host, { all: true })
+  if (!addresses.length || addresses.some((a) => isPrivate(a.address))) throw new Error('That link points somewhere private.')
+}
+
+async function readCapped(res: Response) {
+  const reader = res.body?.getReader()
+  if (!reader) return ''
+  const chunks: Uint8Array[] = []
+  let size = 0
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    size += value.length
+    if (size > MAX_BODY) {
+      await reader.cancel().catch(() => {})
+      throw new Error('The answer was too big.')
+    }
+    chunks.push(value)
+  }
+  return Buffer.concat(chunks).toString('utf8')
+}
+
+const json = async <T>(target: string, init?: RequestInit) => {
+  let url = new URL(target)
+  for (let hop = 0; ; hop++) {
+    await assertPublic(url)
+    const res = await fetch(url, {
+      ...init,
+      redirect: 'manual',
+      headers: { Accept: 'application/json', 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
+      signal: globalThis.AbortSignal.timeout(TIMEOUT_MS),
+    })
+    const next = res.status >= 300 && res.status < 400 ? res.headers.get('location') : null
+    if (next && hop < MAX_REDIRECTS) {
+      await res.body?.cancel().catch(() => {})
+      url = new URL(next, url)
+      continue
+    }
+    let body: T | null = null
+    try {
+      body = JSON.parse(await readCapped(res)) as T
+    } catch {
+      body = null
+    }
+    return { ok: res.ok, status: res.status, body }
+  }
 }
 
 /**
@@ -383,8 +452,9 @@ export async function checkBlink(link: string, watched: string | null, probe: st
     }
   })()
   const [reg, pageReg] = await Promise.all([registryState(host), registryState(pageHost)])
-  const registry: BlinkReport['registry'] =
-    reg === 'malicious' || pageReg === 'malicious' ? 'malicious' : reg === 'trusted' || pageReg === 'trusted' ? 'trusted' : 'unknown'
+  // Only the Action's own host can be trusted: a trusted page (like dial.to) can wrap any Action,
+  // so the page can make things look worse, never better.
+  const registry: BlinkReport['registry'] = reg === 'malicious' || pageReg === 'malicious' ? 'malicious' : reg
   const phish = checkLink(host)
   const phishing = 'error' in phish ? null : phish.verdict
 
@@ -433,12 +503,21 @@ export async function checkBlink(link: string, watched: string | null, probe: st
     })
   }
 
-  const tx = VersionedTransaction.deserialize(Buffer.from(posted.body.transaction, 'base64'))
-  const lookups: AddressLookupTableAccount[] = []
-  for (const l of tx.message.addressTableLookups) {
-    const table = (await mainnet.getAddressLookupTable(l.accountKey).catch(() => null))?.value
-    if (table) lookups.push(table)
+  // A real transaction fits in one Solana packet; anything bigger is junk (or an attempt to
+  // make Sunny look up thousands of tables).
+  const raw = Buffer.from(posted.body.transaction, 'base64')
+  let tx: VersionedTransaction | null = null
+  try {
+    if (raw.length <= PACKET_SIZE) tx = VersionedTransaction.deserialize(raw)
+  } catch {
+    tx = null
   }
+  if (!tx || tx.message.addressTableLookups.length > MAX_LOOKUP_TABLES) {
+    return finish({ ...base, outcome: 'unavailable', failReason: 'The site sent something that isn’t a valid Solana transaction.' })
+  }
+  const lookups = (
+    await Promise.all(tx.message.addressTableLookups.map((l) => mainnet.getAddressLookupTable(l.accountKey).catch(() => null)))
+  ).flatMap((r) => (r?.value ? [r.value] : []))
   const instructions = TransactionMessage.decompile(tx.message, { addressLookupTableAccounts: lookups }).instructions
   const owner = new PublicKey(account)
   const held = await heldTokens(owner).catch(() => new Map<string, Held>())
