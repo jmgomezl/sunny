@@ -3,11 +3,12 @@
 // compromised server might try. Run: node --env-file=../.env --import tsx --test test/sign-check.test.ts
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { Keypair, PublicKey, SystemProgram, Transaction } from '@solana/web3.js'
+import { createHash } from 'node:crypto'
+import { Keypair, PublicKey, SystemProgram, Transaction, TransactionInstruction } from '@solana/web3.js'
 
 process.env.SUNNY_USDC_MINT ||= '4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU'
-const { feePayer, prepareOwnerTx } = await import('../src/solana.js')
-const { describeTransaction } = await import('../../web/src/lib/vault.js')
+const { ata, feePayer, pocketPda, prepareOwnerTx, usdcMint, vaultPda } = await import('../src/solana.js')
+const { describeTransaction, pocketAccounts } = await import('../../web/src/lib/vault.js')
 
 const owner = Keypair.generate().publicKey.toBase58()
 
@@ -35,4 +36,31 @@ test('refuses a transaction that moves SOL out of the wallet', () => {
 test('refuses a transaction meant for another wallet', async () => {
   const other = await prepareOwnerTx(Keypair.generate().publicKey.toBase58(), { action: 'topup', amount: 1 })
   assert.throws(() => describeTransaction(other.message, owner), /isn’t for your wallet/)
+})
+
+test('works out the same pocket addresses as Solana', () => {
+  const pocket = pocketPda(new PublicKey(owner))
+  assert.deepEqual(pocketAccounts(owner), { pocket: pocket.toBase58(), vault: vaultPda(pocket).toBase58() })
+})
+
+test('refuses a top-up that sends your money into someone else’s pocket', () => {
+  // The honest text would read "Put $10 into Sunny’s pocket", but the vault is an attacker's.
+  const attackerPocket = pocketPda(Keypair.generate().publicKey)
+  const me = new PublicKey(owner)
+  const evil = new Transaction({ feePayer: feePayer().publicKey, recentBlockhash: '11111111111111111111111111111111' })
+  evil.add(
+    new TransactionInstruction({
+      programId: new PublicKey('7RhPyrf1C4t3QDce8hW19i6FK5wevEEPgBMne8Pt4wvy'),
+      keys: [
+        { pubkey: me, isSigner: true, isWritable: false },
+        { pubkey: attackerPocket, isSigner: false, isWritable: false },
+        { pubkey: vaultPda(attackerPocket), isSigner: false, isWritable: true },
+        { pubkey: usdcMint(), isSigner: false, isWritable: false },
+        { pubkey: ata(me), isSigner: false, isWritable: true },
+        { pubkey: new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA'), isSigner: false, isWritable: false },
+      ],
+      data: Buffer.concat([createHash('sha256').update('global:top_up').digest().subarray(0, 8), Buffer.from(new BigUint64Array([10_000_000n]).buffer)]),
+    }),
+  )
+  assert.throws(() => describeTransaction(evil.serializeMessage().toString('base64'), owner), /isn’t yours/)
 })

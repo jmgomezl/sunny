@@ -177,9 +177,10 @@ export function exportKey() {
 
 // ── Verify before signing ─────────────────────────────────────────────────────
 // The server prepares transactions, but this device decides whether to sign them.
-// Only Sunny pocket actions (and creating a token account) are allowed, and the
-// confirmation text is built from the decoded transaction, never from the server,
-// so even a compromised server can't trick the wallet into sending money elsewhere.
+// Only Sunny pocket actions (and creating a token account) are allowed, every one must
+// point at this wallet's own pocket (its address is worked out here, not taken from the
+// server), and the confirmation text is built from the decoded transaction, so even a
+// compromised server can't trick the wallet into sending money elsewhere.
 
 
 export const POCKET_PROGRAM = '7RhPyrf1C4t3QDce8hW19i6FK5wevEEPgBMne8Pt4wvy'
@@ -194,6 +195,33 @@ const POCKET_IX: Record<string, string> = {
   [anchorIx('set_frozen')]: 'set_frozen',
   [anchorIx('set_agent')]: 'set_agent',
   [anchorIx('withdraw')]: 'withdraw',
+}
+
+const utf8 = (text: string) => new TextEncoder().encode(text)
+const concat = (...parts: Uint8Array[]) => {
+  const out = new Uint8Array(parts.reduce((n, p) => n + p.length, 0))
+  parts.reduce((at, p) => (out.set(p, at), at + p.length), 0)
+  return out
+}
+
+/** A program-derived address, the way Solana computes it: the first bump whose hash is off the curve. */
+export function programAddress(seeds: Uint8Array[], programId: string): string {
+  const program = base58.decode(programId)
+  for (let bump = 255; bump >= 0; bump--) {
+    const hash = sha256(concat(...seeds, Uint8Array.of(bump), program, utf8('ProgramDerivedAddress')))
+    try {
+      ed25519.Point.fromBytes(hash)
+    } catch {
+      return base58.encode(hash)
+    }
+  }
+  throw new Error('No program address found.')
+}
+
+/** This wallet's pocket and its vault: the only accounts a pocket action may touch. */
+export function pocketAccounts(owner: string) {
+  const pocket = programAddress([utf8('pocket'), base58.decode(owner)], POCKET_PROGRAM)
+  return { pocket, vault: programAddress([utf8('vault'), base58.decode(pocket)], POCKET_PROGRAM) }
 }
 
 function readCompactU16(bytes: Uint8Array, at: number): [number, number] {
@@ -227,18 +255,34 @@ export function describeTransaction(messageBase64: string, owner: string): strin
   const [ixCount, n] = readCompactU16(m, at)
   at += n
   const actions: string[] = []
+  let mine: ReturnType<typeof pocketAccounts> | null = null
   for (let i = 0; i < ixCount; i++) {
     const program = keys[m[at]]
     at += 1
     const [accLen, a] = readCompactU16(m, at)
-    at += a + accLen
+    at += a
+    const accounts = Array.from(m.slice(at, at + accLen), (index) => keys[index])
+    at += accLen
     const [dataLen, d] = readCompactU16(m, at)
     at += d
     const data = m.slice(at, at + dataLen)
     at += dataLen
-    if (program === ATA_PROGRAM || program === COMPUTE_BUDGET) continue
+    if (program === COMPUTE_BUDGET) continue
+    if (program === ATA_PROGRAM) {
+      // Creating a token account is fine, as long as Sunny pays for it, not you.
+      if (accounts[0] === owner) throw new Error('This transaction would make your wallet pay rent. Not signing.')
+      continue
+    }
     if (program !== POCKET_PROGRAM) throw new Error('This transaction touches something other than Sunny’s pocket. Not signing.')
     const name = POCKET_IX[Array.from(data.slice(0, 8)).join(',')]
+    // Account order follows the program: open_pocket is (owner, payer, pocket, mint, vault, …),
+    // the others start (owner, pocket, vault?, …).
+    mine ??= pocketAccounts(owner)
+    const [pocketAt, vaultAt] = name === 'open_pocket' ? [2, 4] : [1, 2]
+    const usesVault = name === 'open_pocket' || name === 'top_up' || name === 'withdraw'
+    if (accounts[0] !== owner || accounts[pocketAt] !== mine.pocket || (usesVault && accounts[vaultAt] !== mine.vault)) {
+      throw new Error('This transaction points at a pocket that isn’t yours. Not signing.')
+    }
     switch (name) {
       case 'open_pocket':
         actions.push(`Open Sunny’s pocket: up to ${usdc(u64(data, 40))} a day, ${usdc(u64(data, 48))} per payment`)
