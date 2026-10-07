@@ -9,7 +9,8 @@ import { startScamLists } from './scams.js'
 import { allow, HOUR } from './limits.js'
 import { ago, KIND_ICON, latestNews, startNews, type NewsItem } from './news.js'
 import { handleGroup } from './groups.js'
-import { newsSubscribers, setNewsAlerts } from './users.js'
+import { newsSubscribers, setMorning, setNewsAlerts, touch } from './users.js'
+import { briefFor, startMorning } from './morning.js'
 
 const token = process.env.TELEGRAM_BOT_TOKEN
 if (!token) throw new Error('TELEGRAM_BOT_TOKEN is missing; add it to .env')
@@ -37,6 +38,7 @@ const COMMANDS = [
   { command: 'check', description: 'Is this token safe?' },
   { command: 'watch', description: 'Watch a token for me' },
   { command: 'news', description: 'What’s happening on Solana' },
+  { command: 'morning', description: 'My good-morning note' },
   { command: 'pocket', description: 'My pocket money' },
   { command: 'freeze', description: 'Freeze my pocket money' },
   { command: 'help', description: 'What can Sunny do?' },
@@ -50,6 +52,7 @@ let avatarFileId: string | undefined
 bot.use(async (ctx, next) => {
   if (ctx.chat?.type === 'group' || ctx.chat?.type === 'supergroup') return handleGroup(ctx)
   if (ctx.chat && ctx.chat.type !== 'private') return
+  if (ctx.message && ctx.from) touch(ctx.from.id, ctx.from.first_name, ctx.from.language_code)
   await next()
 })
 
@@ -83,7 +86,8 @@ bot.command('help', (ctx) =>
       '• /watch BONK 10% and I’ll message you if it drops 10%\n' +
       '• /pocket shows my allowance; /freeze stops me from spending anything\n' +
       '• /news shows what’s happening on Solana. I warn you here about hacks and scams (/news off to stop)\n' +
-      '• Add me to a group and I’ll quietly guard it from phishing links and risky tokens',
+      '• Add me to a group and I’ll quietly guard it from phishing links and risky tokens\n' +
+      '• Every morning I send your wallets’ weather and a safety tip (/morning to preview, /morning off to stop)',
   ),
 )
 
@@ -149,6 +153,29 @@ async function broadcastAlert(item: NewsItem) {
   }
 }
 
+bot.command('morning', async (ctx) => {
+  const arg = ctx.match.trim().toLowerCase()
+  const es = ctx.from?.language_code?.startsWith('es')
+  if (arg === 'off' || arg === 'on') {
+    setMorning(ctx.from!.id, arg === 'on')
+    return ctx.reply(
+      arg === 'on'
+        ? es
+          ? '¡Listo! Te saludo cada mañana con el clima de tus wallets y un consejo ☀️'
+          : 'Yay! I’ll say good morning every day with your wallets’ weather and a tip ☀️'
+        : es
+          ? 'Vale, sin notas de la mañana. /morning on las trae de vuelta.'
+          : 'Okay, no more morning notes. /morning on brings them back.',
+    )
+  }
+  // A preview right now, so people see what they'll get.
+  await ctx.replyWithChatAction('typing')
+  await ctx.reply(await briefFor(ctx.from!.id, ctx.from!.first_name, ctx.from!.language_code), {
+    reply_markup: openSky(),
+    link_preview_options: { is_disabled: true },
+  })
+})
+
 bot.command('pocket', (ctx) => askBrain(ctx, 'How is my pocket money?'))
 // Freezing is signed by the owner's own key, which only lives on their phone, so it happens in the sky.
 bot.command('freeze', (ctx) =>
@@ -183,6 +210,15 @@ async function main() {
   await bot.api.setChatMenuButton({ menu_button: { type: 'web_app', text: 'Sunny ☀️', web_app: { url: MINI_APP_URL } } })
   // Price alerts message people in Telegram, with a button back to Sunny's sky.
   startAlertChecker((userId, text) => bot.api.sendMessage(userId, text, { reply_markup: openSky() }))
+  // The good-morning note, once a day; people who blocked Sunny are taken off the list.
+  startMorning(async (userId, text) => {
+    await bot.api
+      .sendMessage(userId, text, { reply_markup: openSky(), link_preview_options: { is_disabled: true } })
+      .catch((err) => {
+        if (err instanceof GrammyError && (err.error_code === 403 || err.error_code === 400)) setMorning(userId, false)
+        throw err
+      })
+  })
   const me = await bot.api.getMe()
   console.log(`[sunny] @${me.username} is awake; Mini App at ${MINI_APP_URL}; free chat ${HAS_BRAIN ? 'on' : 'off'}`)
   await bot.start({ drop_pending_updates: true, allowed_updates: ['message', 'my_chat_member'] })

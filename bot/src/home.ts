@@ -1,7 +1,7 @@
 import { activeFor, triggerPrice } from './alerts.js'
 import { getJson, redFlags, riskOf, SOL_MINT_ADDRESS } from './market.js'
 import { latestNews, type NewsItem } from './news.js'
-import { activityOf } from './users.js'
+import { activityOf, streakOf } from './users.js'
 import { portfolio, tokenInfo, type Holding, type Portfolio } from './wallet.js'
 
 // Builds Sunny's home screen from real data: the weather of the wallets Sunny watches
@@ -59,6 +59,8 @@ export type Home = {
   activity: ReturnType<typeof activityOf>
   /** What's happening on Solana, from the news desk: security first. */
   news: NewsItem[]
+  /** Days in a row the person visited Sunny. */
+  streak: number
   updatedAt: string
 }
 
@@ -106,6 +108,7 @@ export async function buildHome(userId: number, wallets: string[]): Promise<Home
     alerts: alerts.map((a) => ({ symbol: a.symbol, direction: a.direction, percent: a.percent, triggerPrice: triggerPrice(a) })),
     activity: activityOf(userId),
     news: latestNews('all', 4),
+    streak: streakOf(userId),
     updatedAt: new Date().toISOString(),
   }
 

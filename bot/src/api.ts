@@ -4,7 +4,7 @@ import { hasBrain, reply } from './brain.js'
 import { buildHome } from './home.js'
 import { inspect } from './inspect.js'
 import { allow, DAY, HOUR } from './limits.js'
-import { logActivity, MAX_WATCHED, unwatchAll, unwatchWallet, watchedOf, watchWallet } from './users.js'
+import { logActivity, MAX_WATCHED, touch, unwatchAll, unwatchWallet, watchedOf, watchWallet } from './users.js'
 import { isAddress } from './wallet.js'
 import { faucet, hasChain, pocketState, prepareOwnerTx, submitOwnerTx, type OwnerAction } from './solana.js'
 import { saveVault, validRecord, vaultOf } from './vaults.js'
@@ -88,6 +88,7 @@ function identify(body: Record<string, unknown>, botToken: string, ip: string, r
     if (!user) throw new ApiError(401, 'I couldn’t confirm it’s you. Close and reopen me from Telegram?')
     const key = route === 'chat' ? `u:${user.id}` : `${route}:u:${user.id}`
     if (!allow(key, limit.user, HOUR)) throw new ApiError(429, 'I need a little rest to save my energy ☀️ Let’s pick this up in a bit.')
+    touch(user.id, user.name, user.lang)
     return { ...user, guest: false }
   }
 

@@ -19,6 +19,15 @@ type UserState = {
   seenAt: string
   /** Security alerts from the news desk; on unless the person turns them off. */
   newsAlerts?: boolean
+  /** First name and language from Telegram, for the morning greeting. */
+  name?: string
+  lang?: string
+  /** Consecutive days with a visit (chat or Mini App), counted in UTC days. */
+  streak?: { days: number; lastDay: string }
+  /** The good-morning note; on unless the person turns it off. */
+  morning?: boolean
+  /** UTC day of the last morning note, so it goes out once a day. */
+  briefDay?: string
   /** Before multiple watched wallets there was just one; migrated on first read. */
   wallet?: string | null
   linkedAt?: string | null
@@ -65,8 +74,57 @@ function get(id: number): UserState {
     delete u.wallet
     delete u.linkedAt
   }
-  u.seenAt = new Date().toISOString()
   return u
+}
+
+const utcDay = (d = new Date()) => d.toISOString().slice(0, 10)
+
+/**
+ * A real visit: the person chatted with Sunny or opened the Mini App. Only visits count as
+ * activity and build the streak; background work (alerts, briefs) never does.
+ */
+export function touch(id: number, name?: string, lang?: string) {
+  const u = get(id)
+  const today = utcDay()
+  const yesterday = utcDay(new Date(Date.now() - 86_400_000))
+  u.seenAt = new Date().toISOString()
+  if (name) u.name = name.slice(0, 40)
+  if (lang) u.lang = lang.slice(0, 8)
+  if (u.streak?.lastDay !== today) {
+    u.streak = { days: u.streak?.lastDay === yesterday ? u.streak.days + 1 : 1, lastDay: today }
+  }
+  scheduleSave()
+}
+
+/** Days in a row with a visit; still alive if the last visit was today or yesterday. */
+export function streakOf(id: number) {
+  return streakInfo(id).days
+}
+
+export function streakInfo(id: number) {
+  const s = get(id).streak
+  if (s?.lastDay === utcDay()) return { days: s.days, visitedToday: true }
+  if (s?.lastDay === utcDay(new Date(Date.now() - 86_400_000))) return { days: s.days, visitedToday: false }
+  return { days: 0, visitedToday: false }
+}
+
+export function setMorning(id: number, on: boolean) {
+  get(id).morning = on
+  scheduleSave()
+}
+
+/** Telegram people active in the last 14 days who haven't had today's note and haven't opted out. */
+export function morningSubscribers(day: string) {
+  load()
+  const since = Date.now() - 14 * 86_400_000
+  return Object.entries(users)
+    .filter(([id, u]) => Number(id) > 0 && u.morning !== false && u.briefDay !== day && Date.parse(u.seenAt) >= since)
+    .map(([id, u]) => ({ id: Number(id), name: u.name, lang: u.lang }))
+}
+
+export function markBriefSent(id: number, day: string) {
+  get(id).briefDay = day
+  scheduleSave()
 }
 
 export const watchedOf = (id: number) => get(id).wallets
@@ -107,8 +165,7 @@ export function setNewsAlerts(id: number, on: boolean) {
 export function newsSubscribers() {
   load()
   const since = Date.now() - 30 * 86_400_000
-  // Read directly: get() would mark everyone as just seen.
-  return Object.entries(users)
+    return Object.entries(users)
     .filter(([id, u]) => Number(id) > 0 && u.newsAlerts !== false && Date.parse(u.seenAt) >= since)
     .map(([id]) => Number(id))
 }
