@@ -1,0 +1,6 @@
+# Nightly copy of Sunny's data (users, encrypted wallets, alerts, groups), kept for 14 days.
+# Losing vaults.json would mean losing people's Sunny wallets, so it's backed up every night.
+# Installed at /etc/cron.d/sunny-backup.
+SHELL=/bin/sh
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+17 3 * * * root mkdir -p /root/backups/sunny && tar -czf /root/backups/sunny/data-$(date -u +\%Y\%m\%d).tar.gz --exclude=data/shares -C /opt/sunny data && chmod 600 /root/backups/sunny/*.tar.gz && find /root/backups/sunny -name 'data-*.tar.gz' -mtime +14 -delete
