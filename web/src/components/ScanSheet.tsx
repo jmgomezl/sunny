@@ -39,6 +39,13 @@ export function ScanSheet(props: ScanSheetProps) {
   const check = async (value: string) => {
     const input = value.trim()
     if (!input || pending) return
+    // Watching needs a wallet address (or a link or QR code that carries one), not a name.
+    if (mode === 'link' && !/[1-9A-HJ-NP-Za-km-z]{32,44}/.test(input)) {
+      setDraft(input)
+      setResult(null)
+      setError('That doesn’t look like a wallet address. It’s a long code of letters and numbers, like 9AhK…sbkw.')
+      return
+    }
     setDraft(input)
     setPending(true)
     setError(null)

@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
 import { SnowIcon, SolanaMark, SunMark } from './Icons'
 import { inTelegram } from '../lib/api'
+import { BOT_LINK } from '../lib/share'
 import {
   createWallet,
   exportKey,
@@ -45,6 +46,24 @@ const usd = (n: number) => `$${n.toLocaleString('en-US', { maximumFractionDigits
 const firstName = () => window.Telegram?.WebApp?.initDataUnsafe?.user?.first_name?.split(' ')[0]
 
 /** Your Sunny wallet (self-custodial, password-locked) and Sunny's pocket money. */
+// The wallet asks in the imperative ("Open Sunny’s pocket"); once it's done, Sunny says what happened.
+function pastTense(line: string) {
+  return line
+    .replace(/^Open Sunny’s pocket: /, 'Pocket opened: ')
+    .replace(/^Put (\S+) into Sunny’s pocket/, 'Put $1 into my pocket')
+    .replace(/^Take (\S+) back to your wallet/, 'Took $1 back to your wallet')
+    .replace(/^Change limits to/, 'Limits changed to')
+    .replace(/^Freeze Sunny’s pocket.*/, 'Pocket frozen: I can’t spend')
+    .replace(/^Unfreeze Sunny’s pocket/, 'Pocket warmed up')
+}
+
+// What the password is for, when the sheet was opened to do something specific.
+const UNLOCK_FOR: Record<string, string> = {
+  freeze: 'Tell me your password and I’ll freeze my pocket right away.',
+  unfreeze: 'Tell me your password and I’ll warm my pocket back up.',
+  topup: 'Tell me your password and we’ll top up my pocket.',
+}
+
 export function PocketSheet({ open, state, intent, onClose, onChanged, onBusy, onBackup }: PocketSheetProps) {
   const [record, setRecord] = useState<VaultRecord | null | undefined>(undefined)
   const [unlocked, setUnlocked] = useState(isUnlocked())
@@ -58,6 +77,7 @@ export function PocketSheet({ open, state, intent, onClose, onChanged, onBusy, o
   const [perTx, setPerTx] = useState('5')
   const [backup, setBackup] = useState<string | null>(null)
   const [skipFaucet, setSkipFaucet] = useState(false)
+  const [showPassword, setShowPassword] = useState(false)
 
   useEffect(() => {
     if (!open) return
@@ -65,6 +85,10 @@ export function PocketSheet({ open, state, intent, onClose, onChanged, onBusy, o
     setDone(null)
     setPrepared(null)
     setBackup(null)
+    // A password typed last time (maybe a wrong one) never waits in the form.
+    setPassword('')
+    setConfirm('')
+    setShowPassword(false)
     setUnlocked(isUnlocked())
     if (inTelegram())
       loadRecord()
@@ -146,7 +170,7 @@ export function PocketSheet({ open, state, intent, onClose, onChanged, onBusy, o
     if (!prepared) return
     void run('Signing on this phone…', async () => {
       const sent = await submitPocket(prepared)
-      setDone({ text: prepared.summary.join(' · '), explorer: sent.explorer })
+      setDone({ text: prepared.summary.map(pastTense).join(' · '), explorer: sent.explorer })
       setPrepared(null)
       onChanged(sent.state, prepared.event, sent)
     })
@@ -163,6 +187,8 @@ export function PocketSheet({ open, state, intent, onClose, onChanged, onBusy, o
   const amountChips = [5, 10, 20]
   // One step at a time: test money first, then the pocket.
   const wantsFaucet = Boolean(s && !s.exists && s.ownerUsdc < 5 && !skipFaucet)
+  // While a password form is showing, its errors and progress appear inside it, by the fields.
+  const passwordForm = inTelegram() && (record === null || Boolean(record && !unlocked))
   const name = firstName()
   // Sunny walks you through every step in its own words.
   const line = !inTelegram()
@@ -172,7 +198,7 @@ export function PocketSheet({ open, state, intent, onClose, onChanged, onBusy, o
       : record === null
         ? `${intent === 'hello' ? `Hi${name ? ` ${name}` : ''}! I’m Sunny ☀️ ` : ''}Let’s make your wallet together. It’s born right here on your phone and locked with a password only you know.`
         : !unlocked
-          ? `Welcome back${name ? `, ${name}` : ''}! Tell me your password so I know it’s you.`
+          ? `${name ? `Hi ${name}! ` : ''}${UNLOCK_FOR[intent ?? ''] ?? 'Welcome back! Tell me your password so I know it’s you.'}`
           : prepared
             ? 'Have a look before you sign. I read this on your phone, not on my server.'
             : !s
@@ -240,23 +266,38 @@ export function PocketSheet({ open, state, intent, onClose, onChanged, onBusy, o
                 </motion.p>
               </div>
 
+              {/* Outside Telegram (the web preview), the way in is one tap away. */}
+              {!inTelegram() && (
+                <a className="btn btn--primary pocket-open-tg" href={BOT_LINK} target="_blank" rel="noreferrer">
+                  Open Sunny in Telegram
+                </a>
+              )}
+
               {/* 1. Create a self-custodial wallet, OculusVault-style. */}
               {inTelegram() && record === null && (
                 <form className="pocket-form" onSubmit={create}>
                   <input
-                    type="password"
+                    type={showPassword ? 'text' : 'password'}
                     autoComplete="new-password"
                     placeholder={`Password (${MIN_PASSWORD}+ characters)`}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                   />
                   <input
-                    type="password"
+                    type={showPassword ? 'text' : 'password'}
                     autoComplete="new-password"
                     placeholder="Repeat password"
                     value={confirm}
                     onChange={(e) => setConfirm(e.target.value)}
                   />
+                  <button type="button" className="ghost-btn pocket-show" onClick={() => setShowPassword((v) => !v)}>
+                    {showPassword ? 'Hide password' : 'Show password'}
+                  </button>
+                  {error && (
+                    <p className="scan-error" role="alert">
+                      {error}
+                    </p>
+                  )}
                   <p className="scan-hint">
                     Not even I can open it, so there’s no reset: if you forget the password, the wallet is gone. Network
                     fees are on me.
@@ -266,7 +307,7 @@ export function PocketSheet({ open, state, intent, onClose, onChanged, onBusy, o
                     type="submit"
                     disabled={Boolean(busy) || password.length < MIN_PASSWORD}
                   >
-                    Make my wallet
+                    {busy ?? 'Make my wallet'}
                   </button>
                   {intent === 'hello' && (
                     <button type="button" className="ghost-btn pocket-later" onClick={onClose}>
@@ -280,14 +321,22 @@ export function PocketSheet({ open, state, intent, onClose, onChanged, onBusy, o
               {record && !unlocked && (
                 <form className="pocket-form" onSubmit={unlock}>
                   <input
-                    type="password"
+                    type={showPassword ? 'text' : 'password'}
                     autoComplete="current-password"
                     placeholder="Your password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                   />
+                  <button type="button" className="ghost-btn pocket-show" onClick={() => setShowPassword((v) => !v)}>
+                    {showPassword ? 'Hide password' : 'Show password'}
+                  </button>
+                  {error && (
+                    <p className="scan-error" role="alert">
+                      {error}
+                    </p>
+                  )}
                   <button className="btn btn--primary" type="submit" disabled={Boolean(busy) || !password}>
-                    Unlock
+                    {busy ?? 'Unlock'}
                   </button>
                 </form>
               )}
@@ -430,7 +479,7 @@ export function PocketSheet({ open, state, intent, onClose, onChanged, onBusy, o
                 </>
               )}
 
-              {busy && (
+              {busy && !passwordForm && (
                 <div className="scan-pending" role="status">
                   <span className="chat-typing">
                     <span />
@@ -440,7 +489,7 @@ export function PocketSheet({ open, state, intent, onClose, onChanged, onBusy, o
                   {busy}
                 </div>
               )}
-              {error && <p className="scan-error">{error}</p>}
+              {error && !passwordForm && <p className="scan-error">{error}</p>}
               {done && (
                 <p className="pocket-done">
                   ✓ {done.text}

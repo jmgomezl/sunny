@@ -64,6 +64,8 @@ type Play = {
   particles?: [ParticleKind, number]
   haptic?: Haptic
   ms?: number
+  /** How long the line stays, when it should outlast the reaction (a warning). */
+  lineMs?: number
   bond?: number
 }
 
@@ -133,6 +135,15 @@ const ASK_SUGGESTIONS = [
 
 const WATCH_SUGGESTIONS = ['Watch BONK for a 10% drop', 'Watch SOL for a 15% rise', 'What alerts do I have?']
 
+// The top color of each sky (index.css .sky-layer--*), for Telegram's header bar.
+const SKY_TOP: Record<Weather, string> = {
+  clear: '#86cdfb',
+  golden: '#ffb46e',
+  storm: '#5d6c90',
+  night: '#0b1129',
+  hazy: '#e9a28f',
+}
+
 const MOOD_WEATHER: Record<Mood, Weather> = {
   happy: 'clear',
   excited: 'golden',
@@ -181,7 +192,7 @@ function greeting() {
   const h = new Date().getHours()
   if (h < 5) return 'Up late? I’m awake too. ☀️'
   if (h < 12) return 'Good morning! ☀️ I’m here.'
-  if (h < 19) return 'Good afternoon! Missed you. ☀️'
+  if (h < 19) return 'Good afternoon! ☀️ I’m here.'
   return 'Good evening! Nice to see you. ☀️'
 }
 
@@ -236,6 +247,9 @@ export default function App() {
   const [badges, setBadges] = useState<Badge[] | null>(null)
   const earnedBadge = (id: string) => Boolean(badges?.find((b) => b.id === id)?.earned)
   const [dozing, setDozing] = useState(false)
+  // The sky couldn't be read: Sunny says so (and keeps trying) instead of showing calm it can't know.
+  const [homeFailed, setHomeFailed] = useState(false)
+  const [pocketFailed, setPocketFailed] = useState(false)
   const [chatOpen, setChatOpen] = useState(false)
   const [chat, setChat] = useState<ChatMessage[]>([])
   const [chatPending, setChatPending] = useState(false)
@@ -243,8 +257,9 @@ export default function App() {
   const timers = useRef<number[]>([])
   const lastTouch = useRef(0)
   const ps = pocket?.state
-  // Sunny gets hungry when its pocket can't cover a single payment.
-  const hungry = Boolean(ps?.exists && !ps.frozen && ps.vault < ps.perTxLimit)
+  // Sunny gets hungry when its pocket can't cover a single payment, but not the moment a new,
+  // still-empty pocket is opened: only once it has spent what it was given.
+  const hungry = Boolean(ps?.exists && !ps.frozen && ps.vault < ps.perTxLimit && ps.totalDrawn > 0)
   const liveMood: Mood = home
     ? home.mood === 'worried'
       ? 'worried'
@@ -262,9 +277,11 @@ export default function App() {
     try {
       const h = await fetchHome()
       setHome(h)
+      setHomeFailed(false)
       return h
     } catch (err) {
       console.warn('[sunny] home failed', err)
+      setHomeFailed(true)
       return null
     }
   }, [])
@@ -273,6 +290,7 @@ export default function App() {
     const p = insideTelegram() ? await fetchPocket().catch((err) => console.warn('[sunny] pocket failed', err)) : null
     const next = p ?? { wallet: null, state: null }
     if (p || !insideTelegram()) setPocket(next)
+    setPocketFailed(insideTelegram() && !p)
     return p ?? null
   }, [])
 
@@ -291,6 +309,13 @@ export default function App() {
     })
     return () => clearTimeout(t)
   }, [loadPocket])
+
+  // While the sky can't be read, try again every few seconds instead of every 90.
+  useEffect(() => {
+    if (!homeFailed || home) return
+    const t = window.setTimeout(() => void refreshHome(), 8000)
+    return () => clearTimeout(t)
+  }, [homeFailed, home, refreshHome])
 
   // Load the real home screen now and keep it fresh while the app is open.
   useEffect(() => {
@@ -326,6 +351,13 @@ export default function App() {
 
   useEffect(() => {
     document.documentElement.dataset.weather = weather
+    // Telegram's own header and page color follow the sky, so a storm or a night sky has no
+    // bright blue band above it and no cream showing when you pull past the edge.
+    const tg = window.Telegram?.WebApp
+    const page = weather === 'night' ? '#141a33' : '#fff8ec'
+    tg?.setHeaderColor?.(SKY_TOP[weather])
+    tg?.setBackgroundColor?.(page)
+    if (tg?.isVersionAtLeast?.('7.10')) tg.setBottomBarColor?.(page)
   }, [weather])
 
   useEffect(() => {
@@ -365,7 +397,7 @@ export default function App() {
     if (p.particles) setParticles((prev) => [...prev, ...burst(p.particles![0], p.particles![1])])
     if (p.haptic) haptic(p.haptic)
     timers.current.push(window.setTimeout(() => setReaction(null), p.ms ?? 1400))
-    timers.current.push(window.setTimeout(() => setSaid(null), (p.ms ?? 1400) + 2400))
+    timers.current.push(window.setTimeout(() => setSaid(null), p.lineMs ?? (p.ms ?? 1400) + 2400))
     if (p.bond) {
       setBond((prev) => {
         const next = Math.min(100, prev + p.bond!)
@@ -444,24 +476,33 @@ export default function App() {
 
   // Sunny reacts to whatever you scanned or pasted.
   const onScanResult = (r: Inspection | null) => {
-    const warn = (text: string) => {
-      play({ reaction: 'alarm', haptic: 'warning', ms: 1800, bond: 1 })
+    // The bubble and the status line tell the same story, for as long as the warning shows.
+    const warn = (text: string, line: string) => {
+      play({ reaction: 'alarm', line, lineMs: 8000, haptic: 'warning', ms: 1800, bond: 1 })
       setStatusOverride({ tone: 'warn', text })
       later(() => setStatusOverride(null), 8000)
     }
-    if (!r) return play({ reaction: 'blush', ms: 900 })
+    // Nothing found isn't a little win: no sparkles.
+    if (!r || r.kind === 'unknown' || (r.kind === 'token' && !r.found)) return play({ reaction: 'blush', ms: 900 })
     if (r.kind === 'blink' && r.report.verdict === 'danger') {
       void refreshBadges()
-      return warn(`Don’t sign · ${r.report.host}`)
+      return warn(`Don’t sign · ${r.report.host}`, 'Don’t sign that one! I read what it would do to your wallet.')
     }
     if (r.kind === 'link' && (r.link.verdict === 'known_scam' || r.link.verdict === 'suspicious')) {
       void refreshBadges()
-      return warn(`${r.link.verdict === 'known_scam' ? 'Scam site' : 'Suspicious link'} · ${r.link.domain}`)
+      return r.link.verdict === 'known_scam'
+        ? warn(`Scam site · ${r.link.domain}`, 'That site is a trap. Don’t connect your wallet there!')
+        : warn(`Suspicious link · ${r.link.domain}`, 'That link looks fishy to me. Please be careful.')
     }
     if (r.kind === 'token' && r.found && r.card.risk !== 'low') {
-      return warn(`${r.card.risk === 'high' ? 'High' : 'Medium'} risk · $${r.card.symbol}`)
+      return warn(
+        `${r.card.risk === 'high' ? 'High' : 'Medium'} risk · $${r.card.symbol}`,
+        `${r.card.symbol} has ${r.card.risk === 'high' ? 'serious red flags' : 'a few red flags'}. Take a careful look.`,
+      )
     }
-    if (r.kind === 'wallet' && r.report.risk !== 'low') return warn(`Wallet risk · ${short(r.report.address)}`)
+    if (r.kind === 'wallet' && r.report.risk !== 'low') {
+      return warn(`Wallet risk · ${short(r.report.address)}`, 'That wallet has some red flags. Have a look below.')
+    }
     play({ reaction: 'giggle', particles: ['sparkle', 4], haptic: 'light', ms: 1000, bond: 1 })
   }
 
@@ -680,12 +721,21 @@ export default function App() {
   }
 
   const frozen = demo ? demoFrozen : Boolean(ps?.frozen)
-  const line = said ?? (dozing ? DOZE_LINE : (demo?.line ?? home?.line ?? 'Waking up… checking the sky for you.'))
+  const skyDown = !demo && !home && homeFailed
+  const line =
+    said ??
+    (dozing
+      ? DOZE_LINE
+      : (demo?.line ??
+        home?.line ??
+        (skyDown ? 'I can’t see the sky right now ☁️ I’ll keep trying.' : 'Waking up… checking the sky for you.')))
   const status: Status =
     statusOverride ??
     (frozen
       ? { tone: 'info', text: 'Pocket frozen · Sunny can’t spend' }
-      : (demo?.status ?? home?.status ?? { tone: 'info', text: 'Checking the sky…' }))
+      : (demo?.status ??
+        home?.status ??
+        (skyDown ? { tone: 'warn', text: 'Can’t reach the sky · Tap to retry' } : { tone: 'info', text: 'Checking the sky…' })))
   // Pocket money goes on-chain next; until then the card shows a preview allowance.
   const pocketLeft = toppedUp ? POCKET_LIMIT : (demo?.pocketLeft ?? 7.2)
   // The status line leads somewhere: watch a wallet, ask why it's stormy, or warm Sunny up.
@@ -694,23 +744,27 @@ export default function App() {
     ? undefined
     : statusOverride
       ? undefined
-      : needsWatch
+      : skyDown
+        ? () => void refreshHome()
+        : needsWatch
         ? () => openScan('link')
         : frozen
           ? () => {
               window.scrollTo({ top: 0, behavior: 'smooth' })
               setPocketSheet({ open: true, intent: 'unfreeze' })
             }
-          : status.tone === 'warn'
+          : status.tone === 'warn' && home
             ? () => askFromScan('Why is my wallet weather stormy, and what should I do?')
             : home
               ? () => document.querySelector('.forecast')?.scrollIntoView({ behavior: 'smooth', block: 'center' })
               : undefined
 
   const pocketView: PocketView = demo
-    ? { kind: 'live', left: pocketLeft, daily: POCKET_LIMIT, perTx: POCKET_PER_TX, frozen, cluster: 'devnet' }
+    ? { kind: 'live', left: pocketLeft, daily: POCKET_LIMIT, perTx: POCKET_PER_TX, vault: pocketLeft, frozen, cluster: 'devnet' }
     : !pocket
-      ? { kind: 'loading' }
+      ? pocketFailed
+        ? { kind: 'error' }
+        : { kind: 'loading' }
       : !pocket.wallet
         ? { kind: 'no-wallet' }
         : !ps?.exists
@@ -720,6 +774,7 @@ export default function App() {
               left: ps.leftToday,
               daily: ps.dailyLimit,
               perTx: ps.perTxLimit,
+              vault: ps.vault,
               frozen: ps.frozen,
               cluster: ps.cluster,
             }
@@ -814,11 +869,12 @@ export default function App() {
 
       <main className="content">
         <CareCard
-          wellbeing={WELLBEING[mood]}
+          wellbeing={demo || home ? WELLBEING[mood] : null}
           bond={bond}
           streak={demo ? 5 : (home?.streak ?? 0)}
           pocket={pocketView}
           onPocket={managePocket}
+          onRetry={() => void loadPocket()}
         />
         {!demo && badges && <BadgesCard badges={badges} />}
         <ForecastCard
@@ -955,26 +1011,31 @@ function GuardianStatus({ status, onTap, watchPrompt }: GuardianProps) {
 /** What the care card shows about Sunny's pocket, from Solana or from a demo scene. */
 type PocketView =
   | { kind: 'loading' }
+  | { kind: 'error' }
   | { kind: 'no-wallet' }
   | { kind: 'empty' }
-  | { kind: 'live'; left: number; daily: number; perTx: number; frozen: boolean; cluster: string }
+  | { kind: 'live'; left: number; daily: number; perTx: number; vault: number; frozen: boolean; cluster: string }
 
 type PocketIntent = 'topup' | 'freeze' | 'unfreeze'
 
 type CareProps = {
-  wellbeing: number
+  /** null until Sunny has read the wallets: it doesn't pretend to know. */
+  wellbeing: number | null
   bond: number
   streak: number
   pocket: PocketView
   onPocket: (intent?: PocketIntent) => void
+  onRetry: () => void
 }
 
 /** Sunny's needs, like a pet's: its energy is the pocket money you give it, enforced on Solana. */
-function CareCard({ wellbeing, bond, streak, pocket, onPocket }: CareProps) {
+function CareCard({ wellbeing, bond, streak, pocket, onPocket, onRetry }: CareProps) {
   const level = bondLevel(bond)
   const inLevel = level === BOND_LEVELS.length - 1 ? 100 : ((bond % 20) / 20) * 100
   const live = pocket.kind === 'live' ? pocket : null
   const frozen = Boolean(live?.frozen)
+  // Less than one payment left: the honey "Give" button comes back next to freeze.
+  const low = Boolean(live && !frozen && live.vault < live.perTx)
   const whole = (n: number) => usd(n).replace('.00', '')
   return (
     <section className="card care" aria-label="Sunny’s care" data-frozen={frozen || undefined}>
@@ -987,11 +1048,19 @@ function CareCard({ wellbeing, bond, streak, pocket, onPocket }: CareProps) {
       <div className="care-grid">
         <Meter
           label="Energy"
-          hint={frozen ? 'Frozen ❄' : live ? `${whole(live.left)} of ${whole(live.daily)}` : 'Needs a pocket'}
-          value={live ? (live.left / live.daily) * 100 : 0}
+          hint={
+            frozen
+              ? 'Frozen ❄'
+              : live
+                ? `${whole(live.left)} of ${whole(live.daily)}`
+                : pocket.kind === 'loading' || pocket.kind === 'error'
+                  ? 'Checking…'
+                  : 'Needs a pocket'
+          }
+          value={live ? (live.left / live.daily) * 100 : pocket.kind === 'loading' || pocket.kind === 'error' ? null : 0}
           tone={frozen ? 'frozen' : 'energy'}
         />
-        <Meter label="Mood" hint="Wallet health" value={wellbeing} tone="mood" />
+        <Meter label="Mood" hint={wellbeing === null ? 'Checking…' : 'Wallet health'} value={wellbeing} tone="mood" />
         <Meter
           label="Bond"
           hint={streak >= 2 ? `${streak}-day streak ☀️` : 'Play with me'}
@@ -1001,7 +1070,7 @@ function CareCard({ wellbeing, bond, streak, pocket, onPocket }: CareProps) {
       </div>
 
       <div className="care-pocket">
-        <button type="button" className="care-pocket-main" onClick={() => onPocket()}>
+        <button type="button" className="care-pocket-main" onClick={() => (pocket.kind === 'error' ? onRetry() : onPocket(low ? 'topup' : undefined))}>
           <span className="care-pocket-icon" aria-hidden="true">
             {frozen ? <SnowIcon size={19} strokeWidth={2.1} /> : <CoinIcon size={20} />}
           </span>
@@ -1030,6 +1099,11 @@ function CareCard({ wellbeing, bond, streak, pocket, onPocket }: CareProps) {
                 <strong>Let’s make your wallet</strong>
                 <small>Locked by your password</small>
               </>
+            ) : pocket.kind === 'error' ? (
+              <>
+                <strong>I couldn’t read my pocket</strong>
+                <small>Tap to try again</small>
+              </>
             ) : (
               <>
                 <strong>Checking my pocket…</strong>
@@ -1054,9 +1128,9 @@ function CareCard({ wellbeing, bond, streak, pocket, onPocket }: CareProps) {
               Warm up
             </button>
           )}
-          {(pocket.kind === 'empty' || pocket.kind === 'no-wallet') && (
-            <button type="button" className="btn btn--primary" onClick={() => onPocket()}>
-              {pocket.kind === 'empty' ? 'Give' : 'Start'}
+          {(pocket.kind === 'empty' || pocket.kind === 'no-wallet' || low) && (
+            <button type="button" className="btn btn--primary" onClick={() => onPocket(low ? 'topup' : undefined)}>
+              {pocket.kind === 'no-wallet' ? 'Start' : 'Give'}
             </button>
           )}
         </div>
@@ -1071,13 +1145,13 @@ function CareCard({ wellbeing, bond, streak, pocket, onPocket }: CareProps) {
   )
 }
 
-function Meter({ label, hint, value, tone }: { label: string; hint: string; value: number; tone: string }) {
-  const v = Math.round(Math.max(0, Math.min(100, value)))
+function Meter({ label, hint, value, tone }: { label: string; hint: string; value: number | null; tone: string }) {
+  const v = Math.round(Math.max(0, Math.min(100, value ?? 0)))
   return (
     <div className={`meter meter--${tone}`}>
       <div className="meter-top">
         <span className="meter-label">{label}</span>
-        <span className="meter-num">{v}%</span>
+        <span className="meter-num">{value === null ? '—' : `${v}%`}</span>
       </div>
       <div
         className="meter-bar"
@@ -1178,7 +1252,8 @@ function ForecastCard({ home, demo, onWatch, onOpen }: ForecastProps) {
   const change = scene ? scene.change : home?.change24h
   const spark = scene ? scene.spark : home?.spark
   const forecast = scene ? scene.forecast : home?.forecast
-  const risk = scene ? scene.risk : (home?.risk ?? 'Low')
+  // Risk is unknown until the wallets are read: show a dash, never a reassuring "Low".
+  const risk = scene ? scene.risk : (home?.risk ?? null)
   const watching = scene ? WATCHLIST.length : (home?.tokens.length ?? 0)
   const [whole, cents] = value != null ? usd(value).split('.') : ['—', '']
 
@@ -1186,7 +1261,7 @@ function ForecastCard({ home, demo, onWatch, onOpen }: ForecastProps) {
     <section className="card forecast">
       <div className="card-head">
         <span className="eyebrow">{linked ? 'Wallet weather' : 'Solana today'}</span>
-        {forecast && <span className="forecast-tag">{forecast}</span>}
+        {forecast && forecast !== 'Solana today' && <span className="forecast-tag">{forecast}</span>}
       </div>
       <div className="forecast-value">
         <span className="big-num">
@@ -1203,7 +1278,7 @@ function ForecastCard({ home, demo, onWatch, onOpen }: ForecastProps) {
         </div>
         <div>
           <dt>Risk</dt>
-          <dd className={`risk risk--${risk.toLowerCase()}`}>{risk}</dd>
+          <dd className={risk ? `risk risk--${risk.toLowerCase()}` : undefined}>{risk ?? '—'}</dd>
         </div>
         <div>
           <dt>{linked ? 'Watching' : 'Market'}</dt>
@@ -1221,7 +1296,7 @@ function ForecastCard({ home, demo, onWatch, onOpen }: ForecastProps) {
         {scene
           ? 'Sample data · demo mode'
           : home
-            ? `Updated ${ago(home.updatedAt)} · Prices from Jupiter${home.fearGreed && linked ? ` · Market mood ${home.fearGreed.label.toLowerCase()}` : ''}`
+            ? `Updated ${ago(home.updatedAt)} · Prices from Jupiter${home.fearGreed && linked ? ` · Market mood: ${home.fearGreed.label}` : ''}`
             : 'Checking the sky…'}
       </p>
       {home && home.wallets.length > 0 && !scene && (
@@ -1294,8 +1369,33 @@ type WatchlistProps = {
   onAdd: () => void
 }
 
+/** A token's picture, or its first letter in a warm color while it loads or if it can't. */
+function TokenAvatar({ symbol, icon }: { symbol: string; icon?: string }) {
+  const [state, setState] = useState<'loading' | 'ok' | 'failed'>(icon ? 'loading' : 'failed')
+  return (
+    <span className="token-avatar" style={{ ['--h' as string]: hueOf(symbol) }}>
+      {state !== 'ok' && (symbol.replace(/^\$/, '')[0] ?? '?')}
+      {icon && state !== 'failed' && (
+        <img
+          src={icon}
+          alt=""
+          loading="lazy"
+          referrerPolicy="no-referrer"
+          data-loaded={state === 'ok' || undefined}
+          onLoad={() => setState('ok')}
+          onError={() => setState('failed')}
+        />
+      )}
+    </span>
+  )
+}
+
+const RISK_RANK = { high: 0, medium: 1, low: 2 } as const
+
 /** The tokens Sunny watches: what you hold plus anything you set an alert on. Tap one to check it. */
 function Watchlist({ tokens, linked, loading, onSelect, onAdd }: WatchlistProps) {
+  // Anything risky comes first, so a warning never hides off-screen behind safe tokens.
+  const ordered = [...tokens].sort((a, b) => RISK_RANK[a.risk] - RISK_RANK[b.risk])
   return (
     <section className="watch">
       <div className="section-head">
@@ -1306,7 +1406,7 @@ function Watchlist({ tokens, linked, loading, onSelect, onAdd }: WatchlistProps)
       </div>
       <div className="watch-row">
         {loading && [0, 1, 2].map((i) => <article key={i} className="token token--loading" aria-hidden="true" />)}
-        {tokens.map((t) => (
+        {ordered.map((t) => (
           <button
             key={t.mint}
             type="button"
@@ -1316,27 +1416,19 @@ function Watchlist({ tokens, linked, loading, onSelect, onAdd }: WatchlistProps)
             aria-label={`${t.symbol}: tap to check`}
           >
             <div className="token-top">
-              {t.icon ? (
-                <img
-                  className="token-avatar token-avatar--img"
-                  src={t.icon}
-                  alt=""
-                  loading="lazy"
-                  referrerPolicy="no-referrer"
-                />
+              <TokenAvatar symbol={t.symbol} icon={t.icon} />
+              {t.risk === 'low' ? (
+                // Safe tokens get a quiet check mark; the words are kept for the ones that need care.
+                <span className="token-safety token-safety--safe token-safety--mark" title="Checked: no red flags">
+                  <CheckIcon size={12} strokeWidth={2.6} />
+                  <span className="sr-only">Checked</span>
+                </span>
               ) : (
-                <span className="token-avatar" style={{ ['--h' as string]: hueOf(t.symbol) }}>
-                  {t.symbol[0]}
+                <span className="token-safety token-safety--risky">
+                  <AlertIcon size={12} strokeWidth={2.4} />
+                  {t.risk === 'high' ? 'Risky' : 'Careful'}
                 </span>
               )}
-              <span className={`token-safety token-safety--${t.risk === 'low' ? 'safe' : 'risky'}`}>
-                {t.risk === 'low' ? (
-                  <CheckIcon size={12} strokeWidth={2.6} />
-                ) : (
-                  <AlertIcon size={12} strokeWidth={2.4} />
-                )}
-                {t.risk === 'low' ? 'Checked' : t.risk === 'high' ? 'Risky' : 'Careful'}
-              </span>
             </div>
             <div className="token-symbol">
               {t.symbol}

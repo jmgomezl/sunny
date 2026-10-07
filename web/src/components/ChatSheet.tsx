@@ -110,7 +110,7 @@ export function ChatSheet({ open, messages, pending, suggestions, sameAsTelegram
                 <SunMark size={22} />
                 <div>
                   <strong>Sunny</strong>
-                  <small>{sameAsTelegram ? 'Same chat as Telegram' : 'Web preview'}</small>
+                  <small>{sameAsTelegram ? 'I remember our Telegram chat' : 'Web preview'}</small>
                 </div>
               </div>
               <button type="button" className="chat-close" onClick={onClose} aria-label="Close chat">

@@ -60,7 +60,7 @@ export function TokenCardView({ card }: { card: TokenCard }) {
       <div className="token-card-meta">
         <span className={`risk-pill risk-pill--${card.risk}`}>{RISK_LABEL[card.risk]}</span>
         {card.liquidity !== null && <span>Liquidity ${compact(card.liquidity)}</span>}
-        {card.holders !== null && <span>{compact(card.holders)} holders</span>}
+        {card.holders !== null && <span>{compact(card.holders)} {card.holders === 1 ? 'holder' : 'holders'}</span>}
       </div>
       {card.flags.length > 0 && (
         <ul className="token-card-flags">
@@ -384,16 +384,19 @@ export function DeepScanView({ scan }: { scan: DeepScan }) {
           caption: `My AI pet Sunny paid $${scan.price.toFixed(2)} from its pocket money to deep-scan ${scan.symbol} over x402 🔍`,
         }}
       />
-      <p className="deep-scan-paid">
-        <SolanaMark size={11} /> Paid ${scan.price.toFixed(2)} from my pocket over x402 ·{' '}
-        <a href={scan.paymentTx} target="_blank" rel="noreferrer">
-          Payment
-        </a>{' '}
-        ·{' '}
-        <a href={scan.drawTx} target="_blank" rel="noreferrer">
-          Pocket draw
-        </a>
-      </p>
+      <div className="deep-scan-paid">
+        <SolanaMark size={11} />
+        <span>
+          Paid ${scan.price.toFixed(2)} from my pocket over x402 ·{' '}
+          <a href={scan.paymentTx} target="_blank" rel="noreferrer">
+            Payment
+          </a>{' '}
+          ·{' '}
+          <a href={scan.drawTx} target="_blank" rel="noreferrer">
+            Pocket draw
+          </a>
+        </span>
+      </div>
     </div>
   )
 }
@@ -402,6 +405,12 @@ const VERDICT_PILL = {
   danger: { label: 'Don’t sign', risk: 'high' },
   caution: { label: 'Be careful', risk: 'medium' },
   ok: { label: 'Looks fine', risk: 'low' },
+} as const
+
+const BLINK_HEADLINE = {
+  danger: 'Don’t sign this. Here’s what it would do:',
+  caution: 'Be careful with this one. Here’s what I found:',
+  ok: 'It looks fine, with a note:',
 } as const
 
 const REGISTRY_LABEL = {
@@ -442,7 +451,8 @@ export function BlinkCardView({ report }: { report: BlinkReport }) {
         </div>
         <span className={`risk-pill risk-pill--${pill.risk}`}>{pill.label}</span>
       </div>
-      <p className="blink-summary">{report.summary}</p>
+      {/* With findings listed below, one plain line leads instead of the full summary (which repeats them). */}
+      <p className="blink-summary">{report.warnings.length ? BLINK_HEADLINE[report.verdict] : report.summary}</p>
       {(report.sends.length > 0 || report.receives.length > 0) && (
         <ul className="blink-flows">
           {report.sends.map((c) => (
