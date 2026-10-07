@@ -1814,9 +1814,280 @@ ul {
   animation: halo 0.6s ease-in-out infinite;
 }
 
+/* Nom: a coin is coming, so Sunny leans in with its mouth wide open. */
+.sunny--r-nom .sunny-react {
+  animation: nom-lean 0.5s ease-in-out infinite alternate;
+}
+
+.sunny--r-nom .sunny-cheeks {
+  opacity: 0.85;
+}
+
+.sunny--r-nom .sunny-arm--l {
+  transform: rotate(-30deg);
+}
+
+.sunny--r-nom .sunny-arm--r {
+  transform: rotate(30deg);
+}
+
+/* Yawn: woken at night, a long stretch before the alarm. */
+.sunny--r-yawn .sunny-react {
+  animation: yawn 1s ease-in-out;
+}
+
+.sunny--r-yawn .sunny-arm--l {
+  transform: rotate(38deg) translate(3px, -5px);
+}
+
+.sunny--r-yawn .sunny-arm--r {
+  transform: rotate(-38deg) translate(-3px, -5px);
+}
+
+/* Bedtime: the lantern sways from Sunny's hand and its light flickers softly. */
+.sunny-lantern {
+  transform-box: fill-box;
+  transform-origin: 50% 0%;
+  animation: lantern-sway 3.6s ease-in-out infinite;
+}
+
+.sunny-lantern-glow {
+  animation: lantern-flicker 2.2s ease-in-out infinite;
+}
+
+.sunny-lantern-flame {
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+  animation: flame 1.3s ease-in-out infinite alternate;
+}
+
+@keyframes nom-lean {
+  from {
+    transform: scale(1) translateY(0);
+  }
+  to {
+    transform: scale(1.04, 1.02) translateY(-2px);
+  }
+}
+
+@keyframes yawn {
+  0%,
+  100% {
+    transform: scale(1, 1);
+  }
+  45% {
+    transform: scale(0.96, 1.07) translateY(-3px);
+  }
+}
+
+@keyframes lantern-sway {
+  0%,
+  100% {
+    transform: rotate(-5deg);
+  }
+  50% {
+    transform: rotate(5deg);
+  }
+}
+
+@keyframes lantern-flicker {
+  0%,
+  100% {
+    opacity: 0.85;
+  }
+  40% {
+    opacity: 1;
+  }
+  70% {
+    opacity: 0.7;
+  }
+}
+
+@keyframes flame {
+  from {
+    transform: scale(1, 1);
+  }
+  to {
+    transform: scale(0.9, 1.08);
+  }
+}
+
 /* Idle wave with the right arm. */
 .sunny--wave .sunny-arm--r {
   animation: wave-r 0.32s ease-in-out 4 alternate;
+}
+
+/* "While you slept": the first visit of the morning, in dawn colors. */
+.morning {
+  background: linear-gradient(160deg, color-mix(in oklab, #b9b4f0 26%, var(--card)) 0%, var(--card) 45%,
+      color-mix(in oklab, #ffd39c 34%, var(--card)) 100%);
+}
+
+.morning-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.morning-head h2 {
+  font-family: var(--font-display);
+  font-size: 21px;
+  font-weight: 650;
+  font-variation-settings: 'SOFT' 100, 'WONK' 1, 'opsz' 36;
+}
+
+.morning-head small {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--ink-soft);
+}
+
+.morning-arc {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 7px 10px;
+  border-radius: 999px;
+  color: #6a5fc7;
+  background: color-mix(in oklab, #b9b4f0 30%, transparent);
+}
+
+.morning-arc-line {
+  width: 16px;
+  height: 2px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, #8f86e0, #ffb54d);
+}
+
+.morning-rows {
+  display: grid;
+  gap: 10px;
+  margin: 14px 0 16px;
+  padding: 0;
+  list-style: none;
+}
+
+.morning-rows li {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 14.5px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.morning-icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 10px;
+  color: var(--ink-soft);
+  background: color-mix(in oklab, var(--card-edge) 70%, transparent);
+}
+
+.morning-rows li[data-tone='ok'] .morning-icon {
+  color: var(--ok);
+  background: var(--ok-bg);
+}
+
+.morning-rows li[data-tone='warn'] .morning-icon {
+  color: var(--warn);
+  background: var(--warn-bg);
+}
+
+.morning-done {
+  width: 100%;
+  justify-content: center;
+}
+
+/* Feeding Sunny by hand: a honey coin floats beside it, ready to be dragged in. */
+.feed-coin-spot {
+  position: absolute;
+  left: calc(50% + 92px);
+  top: 54%;
+  z-index: 4;
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  animation: coin-float 3.2s ease-in-out infinite;
+}
+
+.feed-coin-spot[data-hungry] {
+  animation: coin-float 3.2s ease-in-out infinite, coin-wiggle 2.4s ease-in-out infinite;
+}
+
+.feed-coin {
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  padding: 0;
+  border-radius: 50%;
+  cursor: grab;
+  touch-action: none;
+  background: radial-gradient(circle at 34% 28%, #fff4c4 0%, #ffd65e 34%, #f6a92e 78%, #d9811c 100%);
+  box-shadow: 0 0 0 2.5px #e08d1f inset, 0 0 0 5px rgba(255, 236, 170, 0.55) inset, 0 8px 16px -6px rgba(150, 80, 20, 0.55),
+    0 0 18px rgba(255, 200, 90, 0.55);
+}
+
+.feed-coin:active {
+  cursor: grabbing;
+}
+
+.feed-coin-face {
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: 800;
+  font-variation-settings: 'SOFT' 100, 'WONK' 1;
+  color: #8a4b0f;
+  text-shadow: 0 1px 0 rgba(255, 246, 210, 0.9);
+  pointer-events: none;
+}
+
+.feed-coin-hint {
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+  white-space: nowrap;
+  color: var(--chip-ink, var(--ink));
+  background: var(--chip, rgba(255, 255, 255, 0.7));
+  pointer-events: none;
+}
+
+/* While a sheet is open the coin steps back. */
+.app[data-chat='open'] .feed-coin-spot {
+  opacity: 0;
+  pointer-events: none;
+}
+
+@keyframes coin-float {
+  0%,
+  100% {
+    translate: 0 0;
+  }
+  50% {
+    translate: 0 -6px;
+  }
+}
+
+@keyframes coin-wiggle {
+  0%,
+  70%,
+  100% {
+    rotate: 0deg;
+  }
+  76% {
+    rotate: -12deg;
+  }
+  84% {
+    rotate: 10deg;
+  }
+  92% {
+    rotate: -6deg;
+  }
 }
 
 /* Particles burst from Sunny's centre. */
@@ -3653,6 +3924,11 @@ button.token:active {
 
 .sticker .sunny {
   margin-top: -100px;
+}
+
+/* A bare pose for the story cards: centred, no caption. */
+.sticker--bare .sunny {
+  margin-top: 0;
 }
 
 .sticker .sunny-orbit,

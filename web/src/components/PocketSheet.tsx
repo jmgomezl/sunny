@@ -1,8 +1,9 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
 import { SnowIcon, SolanaMark, SunMark } from './Icons'
 import { inTelegram } from '../lib/api'
-import { BOT_LINK } from '../lib/share'
+import { BOT_LINK, type ShareSpec } from '../lib/share'
+import { ShareRow } from './Cards'
 import {
   createWallet,
   exportKey,
@@ -31,7 +32,9 @@ type PocketSheetProps = {
   open: boolean
   state: PocketState | null
   /** Optional action to jump to from the care card; 'hello' is the first visit, when Sunny offers a wallet. */
-  intent?: 'topup' | 'freeze' | 'unfreeze' | 'hello'
+  intent?: 'topup' | 'freeze' | 'unfreeze' | 'hello' | 'feed'
+  /** How much the coin fed on the home screen was worth. */
+  feedAmount?: number
   onClose: () => void
   onChanged: (state: PocketState | null, event: PocketEventKind, sent?: Sent) => void
   onBusy: (busy: boolean) => void
@@ -57,14 +60,43 @@ function pastTense(line: string) {
     .replace(/^Unfreeze Sunny’s pocket/, 'Pocket warmed up')
 }
 
+// Pocket moments worth sharing, with Sunny's pose and the transaction as proof.
+const SHARE_MOMENTS: Record<string, Omit<ShareSpec, 'proof'> | undefined> = {
+  topup: {
+    kicker: 'Pocket money',
+    title: 'I gave my AI some pocket money',
+    detail: 'Sunny can only spend inside the limits I set, and Solana checks every payment.',
+    tone: 'sol',
+    pose: 'yum',
+    caption: 'I just gave my AI pet Sunny its pocket money on Solana 🪙 It can’t spend past my limits:',
+  },
+  opened: {
+    kicker: 'Pocket money',
+    title: 'I gave my AI its first pocket money',
+    detail: 'A daily limit and a per-payment limit, enforced on Solana, not by the AI.',
+    tone: 'sol',
+    pose: 'yum',
+    caption: 'My AI pet Sunny just got its first pocket money on Solana 🪙 Limits enforced on-chain:',
+  },
+  freeze: {
+    kicker: 'Frozen on Solana',
+    title: 'I froze my AI’s pocket',
+    detail: 'With one tap, Sunny can’t spend a cent until I warm it up. Solana enforces it.',
+    tone: 'sol',
+    pose: 'frozen',
+    caption: 'I just froze my AI pet’s pocket money on Solana ❄ It can’t spend a cent:',
+  },
+}
+
 // What the password is for, when the sheet was opened to do something specific.
 const UNLOCK_FOR: Record<string, string> = {
   freeze: 'Tell me your password and I’ll freeze my pocket right away.',
   unfreeze: 'Tell me your password and I’ll warm my pocket back up.',
   topup: 'Tell me your password and we’ll top up my pocket.',
+  feed: 'Tell me your password and that coin is mine! 🪙',
 }
 
-export function PocketSheet({ open, state, intent, onClose, onChanged, onBusy, onBackup }: PocketSheetProps) {
+export function PocketSheet({ open, state, intent, feedAmount = 5, onClose, onChanged, onBusy, onBackup }: PocketSheetProps) {
   const [record, setRecord] = useState<VaultRecord | null | undefined>(undefined)
   const [unlocked, setUnlocked] = useState(isUnlocked())
   const [password, setPassword] = useState('')
@@ -72,7 +104,7 @@ export function PocketSheet({ open, state, intent, onClose, onChanged, onBusy, o
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [prepared, setPrepared] = useState<Prepared | null>(null)
-  const [done, setDone] = useState<{ text: string; explorer?: string } | null>(null)
+  const [done, setDone] = useState<{ text: string; explorer?: string; event?: PocketEventKind } | null>(null)
   const [daily, setDaily] = useState('10')
   const [perTx, setPerTx] = useState('5')
   const [backup, setBackup] = useState<string | null>(null)
@@ -158,6 +190,21 @@ export function PocketSheet({ open, state, intent, onClose, onChanged, onBusy, o
     })
   }
 
+  // Fed a coin on the home screen: the top-up (or, for a new pocket, opening it with that first
+  // money, in one signature) is prepared right away, so all that's left is to look and sign.
+  const fed = useRef(false)
+  useEffect(() => {
+    if (open) fed.current = false
+  }, [open])
+  useEffect(() => {
+    if (!open || intent !== 'feed' || fed.current || !unlocked || !record || !state || prepared || busy) return
+    if (state.frozen || state.ownerUsdc < feedAmount) return
+    fed.current = true
+    if (state.exists) prepare({ action: 'topup', amount: feedAmount }, 'topup')
+    else prepare({ action: 'open', daily: Number(daily) || 10, perTx: Number(perTx) || 5, amount: feedAmount }, 'opened')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, intent, unlocked, record, state?.exists, state?.ownerUsdc, state?.frozen, prepared, busy])
+
   // Jump straight to what the home card asked for.
   useEffect(() => {
     if (!open || !unlocked || !record || !state?.exists || !intent || prepared) return
@@ -170,7 +217,7 @@ export function PocketSheet({ open, state, intent, onClose, onChanged, onBusy, o
     if (!prepared) return
     void run('Signing on this phone…', async () => {
       const sent = await submitPocket(prepared)
-      setDone({ text: prepared.summary.map(pastTense).join(' · '), explorer: sent.explorer })
+      setDone({ text: prepared.summary.map(pastTense).join(' · '), explorer: sent.explorer, event: prepared.event })
       setPrepared(null)
       onChanged(sent.state, prepared.event, sent)
     })
@@ -200,7 +247,13 @@ export function PocketSheet({ open, state, intent, onClose, onChanged, onBusy, o
         : !unlocked
           ? `${name ? `Hi ${name}! ` : ''}${UNLOCK_FOR[intent ?? ''] ?? 'Welcome back! Tell me your password so I know it’s you.'}`
           : prepared
-            ? 'Have a look before you sign. I read this on your phone, not on my server.'
+            ? intent === 'feed'
+              ? 'Nom! Sign it and the coin is really mine. I read this on your phone, not on my server.'
+              : 'Have a look before you sign. I read this on your phone, not on my server.'
+            : intent === 'feed' && s?.frozen
+              ? 'I’m frozen, so I can’t eat right now ❄ Warm me up first, then feed me.'
+              : intent === 'feed' && s && s.ownerUsdc < feedAmount
+                ? 'Your wallet needs test USDC before you can feed me. Get some below, and that coin is mine 🪙'
             : !s
               ? 'Your wallet is ready! Let me check it on Solana…'
               : wantsFaucet
@@ -499,6 +552,9 @@ export function PocketSheet({ open, state, intent, onClose, onChanged, onBusy, o
                     </a>
                   )}
                 </p>
+              )}
+              {done?.explorer && SHARE_MOMENTS[done.event ?? ''] && (
+                <ShareRow spec={{ ...SHARE_MOMENTS[done.event ?? '']!, proof: done.explorer }} />
               )}
             </div>
           </motion.section>

@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { motion } from 'motion/react'
+import { AnimatePresence, motion } from 'motion/react'
 import { Sunny, type Gesture, type Mood, type Reaction } from './components/Sunny'
 import { CloudBank, Sky } from './components/Sky'
 import { Particles, burst, type Particle, type ParticleKind } from './components/Particles'
 import { ChatSheet, type ChatMessage } from './components/ChatSheet'
 import { ScanSheet, type ScanMode } from './components/ScanSheet'
 import { PocketSheet, type PocketEventKind } from './components/PocketSheet'
+import { FeedCoin } from './components/FeedCoin'
+import { MorningCard, markMorningSeen, readVisit, saveVisit, wantsMorning, type Visit } from './components/MorningCard'
 import { fetchPocket, PROGRAM_URL, type PocketState } from './lib/pocket'
 import { syncBadges, type Badge } from './lib/badges'
 import { inTelegram as insideTelegram } from './lib/api'
@@ -160,6 +162,14 @@ const isNight = () => {
 
 const short = (a: string) => `${a.slice(0, 4)}…${a.slice(-4)}`
 
+/** 11:42 pm yesterday, for the ?morning recording when there's no real last visit. */
+const lastNight = () => {
+  const d = new Date()
+  d.setDate(d.getDate() - 1)
+  d.setHours(23, 42, 0, 0)
+  return d.toISOString()
+}
+
 let chatIds = 1
 
 const BOND_LEVELS = ['New friends', 'Buddies', 'Close pals', 'Best friends', 'Sunshine soulmates']
@@ -198,6 +208,8 @@ function greeting() {
 
 // The mood picker is a demo tool: shown with ?demo, and keys 1–5 switch moods for recordings.
 const DEMO = new URLSearchParams(window.location.search).has('demo')
+// ?morning shows the "While you slept" note right away, for recordings.
+const MORNING_DEMO = new URLSearchParams(window.location.search).has('morning')
 
 const STICKERS = 'https://t.me/addstickers/sunny_by_SunnySolBot'
 /** Opens Sunny's sticker pack in Telegram (or in a new tab outside it). */
@@ -208,6 +220,10 @@ function openStickers() {
 }
 // Matches the server's limit on watched wallets.
 const MAX_WATCHED = 5
+
+// Each coin fed to Sunny by hand is worth this much pocket money.
+const COIN_USD = 5
+const FED_KEY = 'sunny.fed'
 
 // If someone says "later" to making a wallet, Sunny asks again the next day, not every visit.
 const HELLO_LATER = 'sunny.hello.later'
@@ -238,7 +254,7 @@ export default function App() {
   // Only used for ?demo recordings; real freezing lives on-chain in the pocket program.
   const [demoFrozen, setFrozen] = useState(false)
   const [pocket, setPocket] = useState<{ wallet: string | null; state: PocketState | null } | null>(null)
-  const [pocketSheet, setPocketSheet] = useState<{ open: boolean; intent?: PocketIntent | 'hello' }>({
+  const [pocketSheet, setPocketSheet] = useState<{ open: boolean; intent?: PocketIntent | 'hello' | 'feed' }>({
     open: false,
   })
   const [toppedUp, setToppedUp] = useState(false)
@@ -247,6 +263,18 @@ export default function App() {
   const [badges, setBadges] = useState<Badge[] | null>(null)
   const earnedBadge = (id: string) => Boolean(badges?.find((b) => b.id === id)?.earned)
   const [dozing, setDozing] = useState(false)
+  // The last visit, read before this one overwrites it: the morning note compares against it.
+  const [lastVisit] = useState<Visit | null>(readVisit)
+  const [morning, setMorning] = useState(() => MORNING_DEMO || wantsMorning(lastVisit))
+  // A coin is being dragged over Sunny's mouth.
+  const [nomming, setNomming] = useState(false)
+  const [fedBefore, setFedBefore] = useState(() => {
+    try {
+      return localStorage.getItem(FED_KEY) === '1'
+    } catch {
+      return true
+    }
+  })
   // The sky couldn't be read: Sunny says so (and keeps trying) instead of showing calm it can't know.
   const [homeFailed, setHomeFailed] = useState(false)
   const [pocketFailed, setPocketFailed] = useState(false)
@@ -278,6 +306,7 @@ export default function App() {
       const h = await fetchHome()
       setHome(h)
       setHomeFailed(false)
+      saveVisit(h)
       return h
     } catch (err) {
       console.warn('[sunny] home failed', err)
@@ -330,6 +359,17 @@ export default function App() {
     const t = window.setTimeout(() => setSaid(null), 4200)
     return () => clearTimeout(t)
   }, [])
+
+  // A storm that rolls in overnight (the wallets turned risky while Sunny slept) wakes it up.
+  const lastMood = useRef(liveMood)
+  useEffect(() => {
+    const was = lastMood.current
+    lastMood.current = liveMood
+    if (demoMood || was !== 'sleepy' || liveMood !== 'worried') return
+    play({ reaction: 'yawn', line: 'Mmh…? Wait…', ms: 1000 })
+    later(() => play({ reaction: 'alarm', line: home?.line ?? 'Something’s wrong. Look!', haptic: 'warning', ms: 1800 }), 1000)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [liveMood])
 
   // Like a real pet, Sunny dozes off when left alone, and wakes up when you come back.
   useEffect(() => {
@@ -412,6 +452,17 @@ export default function App() {
     }
   }, [])
 
+  // Bedtime: a warning that finds Sunny asleep wakes it with a yawn first, then the alarm.
+  const wakeToAlarm = (line: string, then?: () => void) => {
+    const alarm = () => {
+      play({ reaction: 'alarm', line, lineMs: 8000, haptic: 'warning', ms: 1800, bond: 1 })
+      then?.()
+    }
+    if (mood !== 'sleepy' && !dozing) return alarm()
+    play({ reaction: 'yawn', line: 'Mmh…? What’s that…', ms: 1000 })
+    later(alarm, 1000)
+  }
+
   const onGesture = (g: Gesture) => {
     if (dozing) {
       setDozing(false)
@@ -478,9 +529,8 @@ export default function App() {
   const onScanResult = (r: Inspection | null) => {
     // The bubble and the status line tell the same story, for as long as the warning shows.
     const warn = (text: string, line: string) => {
-      play({ reaction: 'alarm', line, lineMs: 8000, haptic: 'warning', ms: 1800, bond: 1 })
       setStatusOverride({ tone: 'warn', text })
-      later(() => setStatusOverride(null), 8000)
+      wakeToAlarm(line, () => later(() => setStatusOverride(null), 8000))
     }
     // Nothing found isn't a little win: no sparkles.
     if (!r || r.kind === 'unknown' || (r.kind === 'token' && !r.found)) return play({ reaction: 'blush', ms: 900 })
@@ -721,12 +771,29 @@ export default function App() {
   }
 
   const frozen = demo ? demoFrozen : Boolean(ps?.frozen)
+  // The coin beside Sunny: there's a wallet, Sunny isn't frozen, and its pocket has room.
+  const canFeed = demo
+    ? !frozen
+    : Boolean(
+        insideTelegram() && pocket?.wallet && ps && !ps.frozen && (!ps.exists || ps.vault + COIN_USD <= ps.dailyLimit * 3),
+      )
+
   const skyDown = !demo && !home && homeFailed
+  // Sunny's own words for how it feels, when nothing more important is going on.
+  const moodLine =
+    demo || !home
+      ? null
+      : mood === 'hungry' && canFeed
+        ? 'My pocket’s nearly empty… drag a coin to me? 🪙'
+        : mood === 'sleepy'
+          ? 'Shh… I’m dozing, but my lantern’s on. I’m still watching 🌙'
+          : null
   const line =
     said ??
     (dozing
       ? DOZE_LINE
       : (demo?.line ??
+        moodLine ??
         home?.line ??
         (skyDown ? 'I can’t see the sky right now ☁️ I’ll keep trying.' : 'Waking up… checking the sky for you.')))
   const status: Status =
@@ -782,6 +849,28 @@ export default function App() {
   const openWallet = () => {
     window.scrollTo({ top: 0, behavior: 'smooth' })
     setPocketSheet({ open: true })
+  }
+
+  const feedSunny = () => {
+    setNomming(false)
+    if (!fedBefore) {
+      setFedBefore(true)
+      try {
+        localStorage.setItem(FED_KEY, '1')
+      } catch {
+        // Private mode: the hint just shows again next time.
+      }
+    }
+    // In ?demo recordings the coin feeds Sunny straight away.
+    if (demo) return onTopUp()
+    play({
+      reaction: 'yum',
+      line: 'Nom! Now sign it on your phone, and it’s really mine ☀️',
+      particles: ['coin', 5],
+      haptic: 'success',
+      ms: 1300,
+    })
+    window.setTimeout(() => setPocketSheet({ open: true, intent: 'feed' }), 900)
   }
 
   const managePocket = (intent?: PocketIntent) => {
@@ -849,9 +938,10 @@ export default function App() {
         <div className="sunny-slot">
           <Sunny
             mood={mood}
-            reaction={reaction ?? (chatPending ? 'scan' : null)}
+            reaction={reaction ?? (nomming ? 'nom' : chatPending ? 'scan' : null)}
             frozen={frozen}
             dozing={dozing}
+            lantern={mood === 'sleepy'}
             size={200}
             wear={{
               shades: earnedBadge('sunny-streak'),
@@ -861,6 +951,18 @@ export default function App() {
             onGesture={onGesture}
           />
           <Particles items={particles} onDone={(id) => setParticles((prev) => prev.filter((p) => p.id !== id))} />
+          {canFeed && (
+            <FeedCoin
+              amount={COIN_USD}
+              hungry={mood === 'hungry'}
+              hint={!fedBefore}
+              onNear={(near) => {
+                setNomming(near)
+                if (near) haptic('light')
+              }}
+              onFeed={feedSunny}
+            />
+          )}
         </div>
 
         <GuardianStatus status={status} onTap={statusTap} watchPrompt={needsWatch} />
@@ -868,6 +970,27 @@ export default function App() {
       </section>
 
       <main className="content">
+        <AnimatePresence>
+          {morning && home && !demo && (
+            <MorningCard
+              key="morning"
+              home={home}
+              // ?morning without a real last visit pretends it was just before midnight.
+              last={lastVisit ?? { at: lastNight(), value: home.value ? home.value / 1.012 : null, wallets: home.wallets.length }}
+              onDone={() => {
+                markMorningSeen()
+                setMorning(false)
+                play({
+                  reaction: 'giggle',
+                  line: home.risk === 'High' ? 'Good morning! Let’s look at that storm together.' : 'Good morning! Everything’s safe ☀️',
+                  particles: ['sparkle', 5],
+                  haptic: 'light',
+                  bond: 1,
+                })
+              }}
+            />
+          )}
+        </AnimatePresence>
         <CareCard
           wellbeing={demo || home ? WELLBEING[mood] : null}
           bond={bond}
@@ -920,6 +1043,7 @@ export default function App() {
         open={pocketSheet.open}
         state={ps ?? null}
         intent={pocketSheet.intent}
+        feedAmount={COIN_USD}
         onClose={closePocket}
         onChanged={onPocketChanged}
         onBusy={(busy) => busy && play({ reaction: 'scan', ms: 20_000 })}
