@@ -3556,3 +3556,73 @@ button.token:active {
 .blink-flows li[data-dir='in'] b {
   color: var(--ok);
 }
+
+/* Sticker stage: one Sunny on a transparent 512×512 square, for the Telegram pack. */
+.sticker-mode,
+.sticker-mode body {
+  background: transparent !important;
+}
+
+.sticker-mode body::before,
+.sticker-mode body::after {
+  display: none !important;
+}
+
+.sticker {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 512px;
+  height: 512px;
+  overflow: hidden;
+}
+
+.sticker .sunny {
+  margin-top: -100px;
+}
+
+.sticker .sunny-orbit,
+.sticker .sunny-shadow-wrap {
+  display: none;
+}
+
+.sticker .sunny--wave .sunny-arm--r {
+  animation-iteration-count: infinite;
+}
+
+.sticker-caption {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 16px;
+  text-align: center;
+  font: 800 60px/1 var(--font-display);
+  font-variation-settings: 'SOFT' 100, 'WONK' 1, 'opsz' 72;
+  letter-spacing: -0.01em;
+  color: #3a2114;
+  -webkit-text-stroke: 12px #fff;
+  paint-order: stroke fill;
+  filter: drop-shadow(0 4px 6px rgba(120, 70, 30, 0.35));
+}
+
+.footer-links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.footer-links .built-on {
+  margin-top: 0;
+}
+
+.sticker-link {
+  padding: 7px 14px;
+  border-radius: 999px;
+  font-size: 12.5px;
+  font-weight: 750;
+  color: var(--ink-soft);
+  background: var(--card);
+  border: 1px solid var(--card-edge);
+}

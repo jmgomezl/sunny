@@ -186,6 +186,14 @@ function greeting() {
 
 // The mood picker is a demo tool: shown with ?demo, and keys 1–5 switch moods for recordings.
 const DEMO = new URLSearchParams(window.location.search).has('demo')
+
+const STICKERS = 'https://t.me/addstickers/sunny_by_SunnySolBot'
+/** Opens Sunny's sticker pack in Telegram (or in a new tab outside it). */
+function openStickers() {
+  const tg = window.Telegram?.WebApp
+  if (tg?.initData && tg.openTelegramLink) tg.openTelegramLink(STICKERS)
+  else window.open(STICKERS, '_blank', 'noopener')
+}
 // Matches the server's limit on watched wallets.
 const MAX_WATCHED = 5
 
@@ -781,8 +789,13 @@ export default function App() {
         />
         {!demo && home && home.news.length > 0 && <NewsCard items={home.news} />}
         <ActivityCard items={demo ? ACTIVITY.map(demoActivity) : (home?.activity ?? [])} />
-        <div className="built-on">
-          <SolanaMark size={14} /> Built on Solana
+        <div className="footer-links">
+          <div className="built-on">
+            <SolanaMark size={14} /> Built on Solana
+          </div>
+          <button type="button" className="sticker-link" onClick={openStickers}>
+            ☀️ Sunny stickers
+          </button>
         </div>
         <p className="footnote">
           Sunny watches and explains. It never invests for you without asking, and it can’t spend past the limits you

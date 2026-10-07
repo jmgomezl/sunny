@@ -11,6 +11,7 @@ import { ago, KIND_ICON, latestNews, startNews, type NewsItem } from './news.js'
 import { handleGroup } from './groups.js'
 import { newsSubscribers, setMorning, setNewsAlerts, touch } from './users.js'
 import { briefFor, startMorning } from './morning.js'
+import { loadStickers, packLink, stickerFor, type Pose } from './stickerpack.js'
 
 const token = process.env.TELEGRAM_BOT_TOKEN
 if (!token) throw new Error('TELEGRAM_BOT_TOKEN is missing; add it to .env')
@@ -39,6 +40,7 @@ const COMMANDS = [
   { command: 'watch', description: 'Watch a token for me' },
   { command: 'news', description: 'What’s happening on Solana' },
   { command: 'morning', description: 'My good-morning note' },
+  { command: 'stickers', description: 'Get Sunny’s sticker pack' },
   { command: 'pocket', description: 'My pocket money' },
   { command: 'freeze', description: 'Freeze my pocket money' },
   { command: 'help', description: 'What can Sunny do?' },
@@ -73,6 +75,8 @@ bot.command('start', async (ctx) => {
   } else {
     await ctx.reply(caption, { reply_markup: keyboard })
   }
+  const wave = stickerFor('gm')
+  if (wave) await ctx.replyWithSticker(wave).catch(() => {})
 })
 
 bot.command('home', (ctx) => ctx.reply('Here’s my sky. Tap to come in ☀️', { reply_markup: openSky() }))
@@ -87,7 +91,9 @@ bot.command('help', (ctx) =>
       '• /pocket shows my allowance; /freeze stops me from spending anything\n' +
       '• /news shows what’s happening on Solana. I warn you here about hacks and scams (/news off to stop)\n' +
       '• Add me to a group and I’ll quietly guard it from phishing links and risky tokens\n' +
-      '• Every morning I send your wallets’ weather and a safety tip (/morning to preview, /morning off to stop)',
+      '• Every morning I send your wallets’ weather and a safety tip (/morning to preview, /morning off to stop)\n' +
+      '• Paste a Blink and I’ll tell you what it would do before you sign\n' +
+      '• /stickers for my sticker pack ☀️',
   ),
 )
 
@@ -105,6 +111,16 @@ async function askBrain(ctx: Context, text: string) {
   try {
     const answer = await reply(ctx.chat!.id, ctx.from!.first_name, text, ctx.from!.language_code)
     await ctx.reply(answer.live ? `${answer.text}\n\n📡 Live from Jupiter` : answer.text)
+    // A sticker for the moments that deserve one.
+    const pose: Pose | null = answer.blinks.some((b) => b.verdict === 'danger')
+      ? 'scam'
+      : answer.pocket.some((p) => !p.ok)
+        ? 'no'
+        : answer.scans.length
+          ? 'dyor'
+          : null
+    const sticker = pose && stickerFor(pose)
+    if (sticker) await ctx.replyWithSticker(sticker).catch(() => {})
   } catch (err) {
     console.error('[sunny] brain error', err)
     await ctx.reply('My thoughts got cloudy for a second. Try me again? ☁️')
@@ -176,6 +192,13 @@ bot.command('morning', async (ctx) => {
   })
 })
 
+bot.command('stickers', async (ctx) => {
+  const link = packLink()
+  const hi = stickerFor('love')
+  if (hi) await ctx.replyWithSticker(hi).catch(() => {})
+  await ctx.reply(link ? `Here’s my sticker pack ☀️ ${link}` : 'My stickers are still drying in the sun ☀️')
+})
+
 bot.command('pocket', (ctx) => askBrain(ctx, 'How is my pocket money?'))
 // Freezing is signed by the owner's own key, which only lives on their phone, so it happens in the sky.
 bot.command('freeze', (ctx) =>
@@ -220,6 +243,7 @@ async function main() {
       })
   })
   const me = await bot.api.getMe()
+  await loadStickers(bot.api, me.username)
   console.log(`[sunny] @${me.username} is awake; Mini App at ${MINI_APP_URL}; free chat ${HAS_BRAIN ? 'on' : 'off'}`)
   await bot.start({ drop_pending_updates: true, allowed_updates: ['message', 'my_chat_member'] })
 }
