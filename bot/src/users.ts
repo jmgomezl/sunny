@@ -1,17 +1,26 @@
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-// Per-person state: the wallet they linked and a short log of what Sunny did for them.
+// Per-person state: the wallets Sunny watches for them and a short log of what Sunny did.
 // Telegram users have positive ids; web-preview guests have negative ids.
 
 const DATA_DIR = process.env.SUNNY_DATA_DIR || join(process.cwd(), 'data')
 const FILE = join(DATA_DIR, 'users.json')
 const MAX_ACTIVITY = 20
 const MAX_USERS = 5000
+export const MAX_WATCHED = 5
 
 export type ActivityKind = 'check' | 'scam' | 'alert' | 'wallet' | 'watch'
 export type ActivityItem = { kind: ActivityKind; text: string; meta: string; at: string }
-type UserState = { wallet: string | null; linkedAt: string | null; activity: ActivityItem[]; seenAt: string }
+type UserState = {
+  /** Wallets Sunny watches, read-only. Their own Sunny wallet lives in vaults.ts. */
+  wallets: string[]
+  activity: ActivityItem[]
+  seenAt: string
+  /** Before multiple watched wallets there was just one; migrated on first read. */
+  wallet?: string | null
+  linkedAt?: string | null
+}
 
 let users: Record<string, UserState> = {}
 let loaded = false
@@ -48,17 +57,40 @@ function scheduleSave() {
 function get(id: number): UserState {
   load()
   const key = String(id)
-  users[key] ??= { wallet: null, linkedAt: null, activity: [], seenAt: new Date().toISOString() }
-  users[key].seenAt = new Date().toISOString()
-  return users[key]
+  const u = (users[key] ??= { wallets: [], activity: [], seenAt: new Date().toISOString() })
+  if (!u.wallets) {
+    u.wallets = u.wallet ? [u.wallet] : []
+    delete u.wallet
+    delete u.linkedAt
+  }
+  u.seenAt = new Date().toISOString()
+  return u
 }
 
-export const walletOf = (id: number) => get(id).wallet
+export const watchedOf = (id: number) => get(id).wallets
 
-export function setWallet(id: number, wallet: string | null) {
+const short = (a: string) => `${a.slice(0, 4)}…${a.slice(-4)}`
+
+/** Adds a wallet for Sunny to watch (newest first) and notes it in the activity log. */
+export function watchWallet(id: number, address: string): 'added' | 'already' | 'full' {
   const u = get(id)
-  u.wallet = wallet
-  u.linkedAt = wallet ? new Date().toISOString() : null
+  if (u.wallets.includes(address)) return 'already'
+  if (u.wallets.length >= MAX_WATCHED) return 'full'
+  u.wallets = [address, ...u.wallets]
+  logActivity(id, 'wallet', `Watching wallet ${short(address)}`, 'Read-only, I’ll keep an eye on it')
+  return 'added'
+}
+
+export function unwatchWallet(id: number, address: string) {
+  const u = get(id)
+  if (!u.wallets.includes(address)) return false
+  u.wallets = u.wallets.filter((w) => w !== address)
+  logActivity(id, 'wallet', `Stopped watching ${short(address)}`, 'It’s off my list')
+  return true
+}
+
+export function unwatchAll(id: number) {
+  get(id).wallets = []
   scheduleSave()
 }
 

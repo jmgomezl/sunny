@@ -2,10 +2,10 @@ import OpenAI from 'openai'
 import { activeFor, cancelAlerts, createAlert, triggerPrice, type Alert } from './alerts.js'
 import { currentPrices, lookupToken, marketOverview, walletSnapshot, type TokenCard } from './market.js'
 import { checkLink, type LinkCheck } from './scams.js'
-import { logActivity, walletOf } from './users.js'
+import { logActivity, MAX_WATCHED, unwatchWallet, watchedOf, watchWallet } from './users.js'
 import { agentDraw, hasChain, pocketState, walletHistory, type WalletEvent } from './solana.js'
 import { vaultOf } from './vaults.js'
-import { walletReport, type WalletReport } from './wallet.js'
+import { isAddress, walletReport, type WalletReport } from './wallet.js'
 
 // Sunny's brain runs through OpenRouter so the model can be swapped from .env.
 // Created on first use, after index.ts has checked that the key is configured.
@@ -25,7 +25,7 @@ export const hasBrain = () => Boolean(process.env.OPENROUTER_API_KEY)
 const MODEL = process.env.OPENROUTER_MODEL || 'anthropic/claude-haiku-4.5'
 const HISTORY_TURNS = 12
 const MAX_TOOL_ROUNDS = 4
-// Requests that must go through a tool (creating, listing or cancelling alerts), in English or Spanish.
+// Requests that must go through a tool (alerts and watched wallets), in English or Spanish.
 const ACTION_REQUEST = /\b(cancel|delete|remove|stop watching|cancela|borra|elimina|deja de vigilar|watch|alert|vigila|avísame|avisame|alerta)/i
 
 const PERSONA = `You are Sunny, a small, warm sun who keeps the user's Solana wallet safe. You live in Telegram: in the chat and in your little sky (the Mini App), and both share the same conversation.
@@ -44,7 +44,9 @@ Actions are real only through tools: never say an alert was created, changed or 
 
 Wallets: you can read any public wallet address the user gives you, read-only. If the snapshot shows token approvals, explain that another program can move those tokens and suggest revoking any they don't recognise in their wallet's security settings.
 
-Their own wallets: when they say my wallet, my balance, my transactions or anything similar without pasting an address, call my_wallet. Never ask for their own address. It returns their Sunny wallet (made in your sky; it's on devnet with test money, say so lightly) with its latest transactions already in plain words, and the wallet they asked you to watch (read-only, mainnet), if any. Tell them what happened recently, newest first. If they have no Sunny wallet yet, invite them to make one in your sky: it takes a password and a few seconds.
+Their own wallets: when they say my wallet, my balance, my transactions or anything similar without pasting an address, call my_wallet. Never ask for their own address. It returns their Sunny wallet (made in your sky; it's on devnet with test money, say so lightly) with its latest transactions already in plain words, and the wallets they asked you to watch (read-only, mainnet), if any. Tell them what happened recently, newest first. If they have no Sunny wallet yet, invite them to make one in your sky: it takes a password and a few seconds.
+
+Watching wallets: you can keep an eye on up to ${MAX_WATCHED} of their other wallets (Phantom or any other), read-only, so you can never move that money. When they give you an address and ask you to watch it, keep an eye on it, or say it's theirs, call watch_wallet. Use stop_watching_wallet when they ask you to stop. Their watched wallets show up together as the wallet weather in your sky.
 
 Pocket money: the user can give you a small allowance on Solana (devnet, test USDC). It sits in their pocket vault; an on-chain program lets you draw at most their per-payment and daily limits, and nothing while frozen. You can check it with pocket_status and take money with use_pocket_money (it goes to your own wallet, to pay for tools). When the user asks you to take or spend pocket money, always call use_pocket_money with the amount they asked for, even if you think it's over the limits: the on-chain program is the judge, not you, and the user should see Solana enforce the rule. If it refuses, that's the safety working: explain which rule stopped you. (Swaps aren't live yet, so any money you take just goes to your own wallet.) They manage the pocket (open, top up, freeze, withdraw) from your sky, protected by their own password.
 
@@ -174,6 +176,32 @@ const TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
   {
     type: 'function',
     function: {
+      name: 'watch_wallet',
+      description: `Start watching one of the user’s wallets, read-only (up to ${MAX_WATCHED}). Its value and risks join the wallet weather in your sky.`,
+      parameters: {
+        type: 'object',
+        properties: { address: { type: 'string', description: 'A Solana wallet address' } },
+        required: ['address'],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'stop_watching_wallet',
+      description: 'Stop watching one of the user’s wallets. Accepts the full address or its first or last characters.',
+      parameters: {
+        type: 'object',
+        properties: { wallet: { type: 'string' } },
+        required: ['wallet'],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'wallet_snapshot',
       description:
         'Read-only snapshot of a public Solana wallet address: SOL balance, top tokens with USD values, total value and concentration.',
@@ -219,6 +247,8 @@ export type Reply = {
   pocket: PocketEvent[]
   mine: MyWallet | null
   wallets: WalletReport[]
+  /** The watched wallets changed, so the Mini App should reload its home. */
+  watchChanged: boolean
   live: boolean
 }
 
@@ -231,6 +261,7 @@ type Ctx = {
   pocket: PocketEvent[]
   mine: MyWallet | null
   wallets: WalletReport[]
+  watchChanged: boolean
 }
 
 const toAlertCard = (a: Alert): AlertCard => ({
@@ -283,15 +314,15 @@ async function createPriceAlert(args: Record<string, unknown>, ctx: Ctx) {
   }
 }
 
-/** The user's own wallets: their Sunny wallet (devnet) and the one they asked Sunny to watch, if any. */
+/** The user's own wallets: their Sunny wallet (devnet) and the ones they asked Sunny to watch. */
 async function myWallet(ctx: Ctx) {
   const sunny = vaultOf(ctx.userId)?.address ?? null
-  const watched = walletOf(ctx.userId)
+  const watched = watchedOf(ctx.userId)
   const chain = Boolean(sunny && hasChain())
-  const [state, recent, report] = await Promise.all([
+  const [state, recent, reports] = await Promise.all([
     chain ? pocketState(sunny!) : null,
     chain ? walletHistory(sunny!).catch(() => []) : [],
-    watched ? walletReport(watched).catch(() => null) : null,
+    Promise.all(watched.map((w) => walletReport(w).catch(() => null))),
   ])
   if (sunny && state) {
     const p = state.exists
@@ -299,7 +330,7 @@ async function myWallet(ctx: Ctx) {
       : null
     ctx.mine = { address: sunny, cluster: state.cluster, usdc: state.ownerUsdc, pocket: p, recent }
   }
-  if (report && ctx.wallets.length < 2) ctx.wallets.push(report)
+  for (const r of reports) if (r && ctx.wallets.length < 3) ctx.wallets.push(r)
   const own = sunny && {
     address: sunny,
     network: `${state?.cluster ?? 'devnet'} (test money)`,
@@ -307,20 +338,24 @@ async function myWallet(ctx: Ctx) {
     pocket: ctx.mine?.pocket ?? 'not opened yet',
     recent_transactions: recent.map(({ at, what, amount, ok }) => ({ at, what, amount_usd: amount, ok })),
   }
-  const watching = report && {
-    address: report.address,
-    network: 'mainnet',
-    total_usd: report.total,
-    sol: report.sol,
-    top_tokens: report.top.map((t) => ({ symbol: t.symbol, value_usd: t.value })),
-    transactions: report.activity?.transactions ?? null,
-    last_active: report.activity?.lastActive ?? null,
-    approvals: report.approvals,
-    flags: report.flags.map((f) => f.text),
-  }
+  const watching = watched.map((address, i) => {
+    const r = reports[i]
+    if (!r) return { address, error: 'Couldn’t read it right now.' }
+    return {
+      address,
+      network: 'mainnet',
+      total_usd: r.total,
+      sol: r.sol,
+      top_tokens: r.top.map((t) => ({ symbol: t.symbol, value_usd: t.value })),
+      transactions: r.activity?.transactions ?? null,
+      last_active: r.activity?.lastActive ?? null,
+      approvals: r.approvals,
+      flags: r.flags.map((f) => f.text),
+    }
+  })
   return {
     sunny_wallet: own || { none: true, hint: 'They can create it in your sky in a few seconds; it only needs a password.' },
-    watched_wallet: watching || (watched ? { address: watched, error: 'Couldn’t read it right now.' } : null),
+    watched_wallets: watching,
   }
 }
 
@@ -346,6 +381,23 @@ async function runTool(name: string, rawArgs: string, ctx: Ctx): Promise<unknown
         return await walletSnapshot(String(args.address ?? ''))
       case 'my_wallet':
         return await myWallet(ctx)
+      case 'watch_wallet': {
+        const address = String(args.address ?? '').trim()
+        if (!isAddress(address)) return { error: 'That doesn’t look like a Solana wallet address.' }
+        if (vaultOf(ctx.userId)?.address === address) return { error: 'That’s their Sunny wallet; it’s already theirs.' }
+        const result = watchWallet(ctx.userId, address)
+        if (result === 'full') return { error: `Already watching ${MAX_WATCHED} wallets; ask which one to stop watching.` }
+        ctx.watchChanged ||= result === 'added'
+        return { watching: true, already: result === 'already', count: watchedOf(ctx.userId).length }
+      }
+      case 'stop_watching_wallet': {
+        const hint = String(args.wallet ?? '').trim()
+        const match = watchedOf(ctx.userId).filter((w) => hint && (w === hint || w.startsWith(hint) || w.endsWith(hint)))
+        if (match.length !== 1) return { error: match.length ? 'More than one wallet matches.' : 'Not watching that wallet.', watched: watchedOf(ctx.userId) }
+        unwatchWallet(ctx.userId, match[0])
+        ctx.watchChanged = true
+        return { stopped: match[0], still_watching: watchedOf(ctx.userId).length }
+      }
       case 'check_link': {
         const result = checkLink(String(args.url ?? ''))
         if (!('error' in result) && ctx.links.length < 2) ctx.links.push(result)
@@ -422,9 +474,20 @@ export async function reply(chatId: number, name: string, text: string, lang = '
   history.push({ role: 'user', content: text })
 
   const messages: Message[] = [{ role: 'system', content: `${PERSONA}\n\nThe user's Telegram name is ${name}.` }, ...history]
-  const ctx: Ctx = { userId: chatId, lang, cards: [], links: [], alerts: [], pocket: [], mine: null, wallets: [] }
+  const ctx: Ctx = {
+    userId: chatId,
+    lang,
+    cards: [],
+    links: [],
+    alerts: [],
+    pocket: [],
+    mine: null,
+    wallets: [],
+    watchChanged: false,
+  }
   let live = false
   let nudged = false
+  let prompted = false
   let raw = ''
 
   for (let round = 0; round <= MAX_TOOL_ROUNDS; round++) {
@@ -440,10 +503,16 @@ export async function reply(chatId: number, name: string, text: string, lang = '
     const calls = (msg?.tool_calls ?? []).filter((c) => c.type === 'function')
     if (!msg || calls.length === 0) {
       if (!live && !nudged && round < MAX_TOOL_ROUNDS && ACTION_REQUEST.test(text)) {
-        // The user asked for an alert action but no tool ran: make the model actually do it.
+        // The user asked for an action (alert, watched wallet) but no tool ran: make the model actually do it.
         nudged = true
         messages.push({ role: 'assistant', content: msg?.content ?? '' })
-        messages.push({ role: 'user', content: '(Check: do this with the alert tool now, then answer me naturally from its result, without mentioning tools.)' })
+        messages.push({ role: 'user', content: '(Check: do this with the right tool now, then answer me naturally from its result, without mentioning tools.)' })
+        continue
+      }
+      if (live && !prompted && !msg?.content?.trim() && round < MAX_TOOL_ROUNDS) {
+        // Now and then the model goes quiet right after a tool; ask once for the answer.
+        prompted = true
+        messages.push({ role: 'user', content: '(Answer me now from what you found, in a sentence or two.)' })
         continue
       }
       raw = msg?.content?.trim() ?? ''
@@ -460,8 +529,8 @@ export async function reply(chatId: number, name: string, text: string, lang = '
   const answer = plain(raw) || 'Hmm, I lost my train of thought. Try me again? ☀️'
   history.push({ role: 'assistant', content: answer })
   histories.set(chatId, history.slice(-HISTORY_TURNS * 2))
-  const { cards, links, alerts, pocket, mine, wallets } = ctx
-  return { text: answer, cards, links, alerts, pocket, mine, wallets, live }
+  const { cards, links, alerts, pocket, mine, wallets, watchChanged } = ctx
+  return { text: answer, cards, links, alerts, pocket, mine, wallets, watchChanged, live }
 }
 
 export function forget(chatId: number) {

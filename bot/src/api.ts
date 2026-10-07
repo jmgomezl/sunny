@@ -4,7 +4,7 @@ import { hasBrain, reply } from './brain.js'
 import { buildHome } from './home.js'
 import { inspect } from './inspect.js'
 import { allow, DAY, HOUR } from './limits.js'
-import { logActivity, setWallet, walletOf } from './users.js'
+import { logActivity, MAX_WATCHED, unwatchAll, unwatchWallet, watchedOf, watchWallet } from './users.js'
 import { isAddress } from './wallet.js'
 import { faucet, hasChain, pocketState, prepareOwnerTx, submitOwnerTx, type OwnerAction } from './solana.js'
 import { saveVault, validRecord, vaultOf } from './vaults.js'
@@ -142,6 +142,7 @@ async function chat(req: IncomingMessage, res: ServerResponse, botToken: string)
     pocket: answer.pocket,
     mine: answer.mine,
     wallets: answer.wallets,
+    watchChanged: answer.watchChanged,
     live: answer.live,
     guest: person.guest,
   })
@@ -149,19 +150,24 @@ async function chat(req: IncomingMessage, res: ServerResponse, botToken: string)
 
 const clientIp = (req: IncomingMessage) => String(req.headers['x-real-ip'] ?? req.socket.remoteAddress ?? 'unknown')
 
-/** Home screen data. Passing a wallet here makes it the one Sunny watches for this person. */
+/** Starts watching a wallet for this person (read-only), or explains why not. */
+function startWatching(userId: number, address: string) {
+  if (!isAddress(address)) throw new ApiError(400, 'That doesn’t look like a Solana wallet address.')
+  if (watchWallet(userId, address) === 'full') {
+    throw new ApiError(400, `I can watch up to ${MAX_WATCHED} wallets. Stop watching one first.`)
+  }
+}
+
+/** Home screen data. `watch` / `unwatch` change which wallets Sunny watches for this person. */
 async function home(req: IncomingMessage, res: ServerResponse, botToken: string) {
   const body = await readJson(req)
   const person = identify(body, botToken, clientIp(req), 'home')
-  if (body.wallet === null) setWallet(person.id, null)
-  else if (typeof body.wallet === 'string' && body.wallet) {
-    if (!isAddress(body.wallet)) throw new ApiError(400, 'That doesn’t look like a Solana wallet address.')
-    if (body.wallet !== walletOf(person.id)) {
-      setWallet(person.id, body.wallet)
-      logActivity(person.id, 'wallet', `Watching wallet ${short(body.wallet)}`, 'Read-only, I’ll keep an eye on it')
-    }
-  }
-  send(res, 200, { ...(await buildHome(person.id, walletOf(person.id))), guest: person.guest })
+  if (typeof body.watch === 'string' && body.watch) startWatching(person.id, body.watch)
+  if (typeof body.unwatch === 'string' && body.unwatch) unwatchWallet(person.id, body.unwatch)
+  // Older Mini App builds (Telegram caches them) still send `wallet`.
+  if (typeof body.wallet === 'string' && body.wallet) startWatching(person.id, body.wallet)
+  if (body.wallet === null) unwatchAll(person.id)
+  send(res, 200, { ...(await buildHome(person.id, watchedOf(person.id))), guest: person.guest })
 }
 
 /** Scan or paste anything: token, wallet or link. */
