@@ -323,13 +323,13 @@ export type WalletEvent = { at: string | null; what: string; amount: number | nu
 // What each pocket instruction means, keyed by its Anchor discriminator.
 const LABELS = new Map(
   [
-    ['open_pocket', 'Opened Sunny’s pocket'],
-    ['top_up', 'Topped up Sunny’s pocket'],
+    ['open_pocket', 'Pocket opened'],
+    ['top_up', 'Pocket topped up'],
     ['draw', 'Sunny took pocket money'],
-    ['withdraw', 'Took money back from the pocket'],
-    ['set_limits', 'Changed the pocket limits'],
-    ['set_agent', 'Changed Sunny’s spending key'],
-    ['set_frozen', 'Froze the pocket'],
+    ['withdraw', 'Money taken back'],
+    ['set_limits', 'Pocket limits changed'],
+    ['set_agent', 'Sunny’s spending key changed'],
+    ['set_frozen', 'Pocket frozen'],
   ].map(([name, label]) => [disc(name).toString('hex'), { name, label }]),
 )
 
@@ -350,7 +350,7 @@ function describe(tx: ParsedTransactionWithMeta | undefined) {
       const data = base58.decode(ix.data)
       const known = LABELS.get(Buffer.from(data.subarray(0, 8)).toString('hex'))
       if (!known) continue
-      if (known.name === 'set_frozen' && data[8] === 0) return { name: known.name, label: 'Unfroze the pocket' }
+      if (known.name === 'set_frozen' && data[8] === 0) return { name: known.name, label: 'Pocket unfrozen' }
       return known
     }
     if ('parsed' in ix && ix.program === 'spl-token' && /^mintTo/.test(ix.parsed?.type)) {

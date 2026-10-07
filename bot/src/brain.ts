@@ -44,7 +44,7 @@ Actions are real only through tools: never say an alert was created, changed or 
 
 Wallets: you can read any public wallet address the user gives you, read-only. If the snapshot shows token approvals, explain that another program can move those tokens and suggest revoking any they don't recognise in their wallet's security settings.
 
-Their own wallets: when they say my wallet, my balance, my transactions or anything similar without pasting an address, call my_wallet. Never ask for their own address. It returns their Sunny wallet (made in your sky; it's on devnet with test money, say so lightly) with its latest transactions already in plain words, and the real wallet they linked for you to watch, if any. Tell them what happened recently, newest first. If they have no Sunny wallet yet, invite them to make one in your sky: it takes a password and a few seconds.
+Their own wallets: when they say my wallet, my balance, my transactions or anything similar without pasting an address, call my_wallet. Never ask for their own address. It returns their Sunny wallet (made in your sky; it's on devnet with test money, say so lightly) with its latest transactions already in plain words, and the wallet they asked you to watch (read-only, mainnet), if any. Tell them what happened recently, newest first. If they have no Sunny wallet yet, invite them to make one in your sky: it takes a password and a few seconds.
 
 Pocket money: the user can give you a small allowance on Solana (devnet, test USDC). It sits in their pocket vault; an on-chain program lets you draw at most their per-payment and daily limits, and nothing while frozen. You can check it with pocket_status and take money with use_pocket_money (it goes to your own wallet, to pay for tools). When the user asks you to take or spend pocket money, always call use_pocket_money with the amount they asked for, even if you think it's over the limits: the on-chain program is the judge, not you, and the user should see Solana enforce the rule. If it refuses, that's the safety working: explain which rule stopped you. (Swaps aren't live yet, so any money you take just goes to your own wallet.) They manage the pocket (open, top up, freeze, withdraw) from your sky, protected by their own password.
 
@@ -167,7 +167,7 @@ const TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
     function: {
       name: 'my_wallet',
       description:
-        'The user’s own wallets, no address needed: their Sunny wallet (devnet, test USDC) with balances, pocket and latest transactions in plain words, plus the real wallet they linked for you to watch, if any.',
+        'The user’s own wallets, no address needed: their Sunny wallet (devnet, test USDC) with balances, pocket and latest transactions in plain words, plus the wallet they asked you to watch (read-only, mainnet), if any.',
       parameters: { type: 'object', properties: {}, additionalProperties: false },
     },
   },
@@ -283,15 +283,15 @@ async function createPriceAlert(args: Record<string, unknown>, ctx: Ctx) {
   }
 }
 
-/** The user's own wallets: their Sunny wallet (devnet) and the real one they linked, if any. */
+/** The user's own wallets: their Sunny wallet (devnet) and the one they asked Sunny to watch, if any. */
 async function myWallet(ctx: Ctx) {
   const sunny = vaultOf(ctx.userId)?.address ?? null
-  const linked = walletOf(ctx.userId)
+  const watched = walletOf(ctx.userId)
   const chain = Boolean(sunny && hasChain())
   const [state, recent, report] = await Promise.all([
     chain ? pocketState(sunny!) : null,
     chain ? walletHistory(sunny!).catch(() => []) : [],
-    linked ? walletReport(linked).catch(() => null) : null,
+    watched ? walletReport(watched).catch(() => null) : null,
   ])
   if (sunny && state) {
     const p = state.exists
@@ -307,7 +307,7 @@ async function myWallet(ctx: Ctx) {
     pocket: ctx.mine?.pocket ?? 'not opened yet',
     recent_transactions: recent.map(({ at, what, amount, ok }) => ({ at, what, amount_usd: amount, ok })),
   }
-  const watched = report && {
+  const watching = report && {
     address: report.address,
     network: 'mainnet',
     total_usd: report.total,
@@ -320,7 +320,7 @@ async function myWallet(ctx: Ctx) {
   }
   return {
     sunny_wallet: own || { none: true, hint: 'They can create it in your sky in a few seconds; it only needs a password.' },
-    linked_wallet: watched || (linked ? { address: linked, error: 'Couldn’t read it right now.' } : null),
+    watched_wallet: watching || (watched ? { address: watched, error: 'Couldn’t read it right now.' } : null),
   }
 }
 

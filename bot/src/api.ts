@@ -149,7 +149,7 @@ async function chat(req: IncomingMessage, res: ServerResponse, botToken: string)
 
 const clientIp = (req: IncomingMessage) => String(req.headers['x-real-ip'] ?? req.socket.remoteAddress ?? 'unknown')
 
-/** Home screen data. Linking a wallet here saves it for this person. */
+/** Home screen data. Passing a wallet here makes it the one Sunny watches for this person. */
 async function home(req: IncomingMessage, res: ServerResponse, botToken: string) {
   const body = await readJson(req)
   const person = identify(body, botToken, clientIp(req), 'home')
@@ -158,7 +158,7 @@ async function home(req: IncomingMessage, res: ServerResponse, botToken: string)
     if (!isAddress(body.wallet)) throw new ApiError(400, 'That doesn’t look like a Solana wallet address.')
     if (body.wallet !== walletOf(person.id)) {
       setWallet(person.id, body.wallet)
-      logActivity(person.id, 'wallet', `Linked wallet ${short(body.wallet)}`, 'I’ll watch it from now on')
+      logActivity(person.id, 'wallet', `Watching wallet ${short(body.wallet)}`, 'Read-only, I’ll keep an eye on it')
     }
   }
   send(res, 200, { ...(await buildHome(person.id, walletOf(person.id))), guest: person.guest })

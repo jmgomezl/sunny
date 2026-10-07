@@ -3,7 +3,7 @@ import { getJson, redFlags, riskOf, SOL_MINT_ADDRESS } from './market.js'
 import { activityOf } from './users.js'
 import { portfolio, tokenInfo } from './wallet.js'
 
-// Builds Sunny's home screen from real data: the linked wallet's weather, the tokens
+// Builds Sunny's home screen from real data: the watched wallet's weather, the tokens
 // Sunny watches, its mood and what it says. Without a wallet it shows Solana today.
 
 const POPULAR = [
@@ -100,8 +100,8 @@ export async function buildHome(userId: number, wallet: string | null): Promise<
       forecast: 'Solana today',
       risk: 'Low',
       mood: 'happy',
-      status: { tone: 'info', text: 'Link a wallet so I can watch it' },
-      line: 'Hi! Link your wallet and I’ll keep watch over it. For now, here’s Solana today.',
+      status: { tone: 'info', text: 'Give me a wallet to watch over' },
+      line: 'Hi! Show me a wallet and I’ll keep watch over it. For now, here’s Solana today.',
       tokens,
       checked: 0,
       approvals: 0,
@@ -110,7 +110,10 @@ export async function buildHome(userId: number, wallet: string | null): Promise<
 
   const p = await portfolio(wallet)
   const held = p.holdings.filter((h) => h.value >= 0.5)
-  const extraMints = [...alertMints].filter((m) => !held.some((h) => h.mint === m))
+  // An empty wallet still gets something to look at: the popular tokens, like the no-wallet home.
+  const extraMints = [...new Set([...alertMints, ...(held.length ? [] : POPULAR)])].filter(
+    (m) => !held.some((h) => h.mint === m),
+  )
   const extra = extraMints.length ? await tokenInfo(extraMints) : new Map()
   const tokens: WatchToken[] = [
     ...held.slice(0, 8).map((h) => ({
@@ -131,7 +134,7 @@ export async function buildHome(userId: number, wallet: string | null): Promise<
       icon: t.icon,
       price: t.usdPrice ?? null,
       change: t.stats24h?.priceChange ?? null,
-      risk: riskOf(redFlags(t)),
+      risk: t.id === SOL_MINT_ADDRESS ? 'low' : riskOf(redFlags(t)),
       held: false,
       alert: true,
     })),
