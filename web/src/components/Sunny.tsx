@@ -4,7 +4,21 @@ import { motion, useAnimate, useMotionTemplate, useMotionValue, useSpring, useTr
 export type Mood = 'happy' | 'excited' | 'sleepy' | 'worried' | 'hungry'
 /** Short-lived expressions that play over the current mood. */
 export type Reaction =
-  'giggle' | 'love' | 'dizzy' | 'spin' | 'shiver' | 'yum' | 'scan' | 'pat' | 'blush' | 'boop' | 'alarm'
+  | 'giggle'
+  | 'love'
+  | 'dizzy'
+  | 'spin'
+  | 'shiver'
+  | 'yum'
+  | 'scan'
+  | 'pat'
+  | 'blush'
+  | 'boop'
+  | 'alarm'
+  // A coin is on its way: mouth wide open.
+  | 'nom'
+  // Woken up at night, before it takes in what's wrong.
+  | 'yawn'
 /** Where and how Sunny was touched. */
 export type Gesture = 'boop' | 'head' | 'cheek' | 'ray' | 'double' | 'pet' | 'dizzy'
 
@@ -39,6 +53,8 @@ type SunnyProps = {
   wave?: boolean
   /** Accessories from the good-habit badges Sunny's friend earned. */
   wear?: Wear
+  /** At night Sunny dozes holding a little lantern: still on watch. */
+  lantern?: boolean
   onGesture?: (gesture: Gesture) => void
 }
 
@@ -52,6 +68,7 @@ export function Sunny({
   size = 220,
   wave = false,
   wear = {},
+  lantern = false,
   onGesture,
 }: SunnyProps) {
   const uid = useId().replace(/[^a-zA-Z0-9]/g, '')
@@ -343,6 +360,15 @@ export function Sunny({
                       <stop offset="0.45" stopColor="#FFCF62" />
                       <stop offset="1" stopColor="#F29230" />
                     </radialGradient>
+                    <radialGradient id={ref('lantern-light')} cx="50%" cy="55%" r="60%">
+                      <stop offset="0" stopColor="#FFFBE0" />
+                      <stop offset="0.5" stopColor="#FFD668" />
+                      <stop offset="1" stopColor="#F59A2C" />
+                    </radialGradient>
+                    <radialGradient id={ref('lantern-glow')}>
+                      <stop offset="0" stopColor="#FFE07A" stopOpacity="0.95" />
+                      <stop offset="1" stopColor="#FFB238" stopOpacity="0" />
+                    </radialGradient>
                     <linearGradient id={ref('drop')} x1="0" y1="0" x2="0" y2="1">
                       <stop offset="0" stopColor="#D8F1FF" />
                       <stop offset="1" stopColor="#7FC4F2" />
@@ -404,7 +430,7 @@ export function Sunny({
 
                   {/* Little plush arms with mitten hands. Each turns at its shoulder, hidden under the body. */}
                   <Arm side="l" url={url} />
-                  <Arm side="r" url={url} />
+                  <Arm side="r" url={url} holding={lantern ? <Lantern url={url} /> : null} />
 
                   {/* Feet in little sneakers, peeking out from under the body like a plush toy sitting down. */}
                   <g className="sunny-feet">
@@ -540,8 +566,33 @@ export function Sunny({
 
 type LimbProps = { side: 'l' | 'r'; url: (name: string) => string }
 
+/**
+ * A little brass lantern hanging from the right mitten. The sleepy arm hangs at 18°, so the
+ * lantern turns back by the same amount to hang straight, and sways gently.
+ */
+function Lantern({ url }: { url: (name: string) => string }) {
+  const brass = '#9C6A35'
+  return (
+    <g transform="rotate(-18 77 47) translate(77 47) scale(1.38) translate(-77 -47)">
+      <g className="sunny-lantern">
+        <circle className="sunny-lantern-glow" cx="77" cy="64" r="23" fill={url('lantern-glow')} />
+        <path d="M 71.5 56 Q 77 43 82.5 56" fill="none" stroke={brass} strokeWidth="1.8" strokeLinecap="round" />
+        <rect x="70.5" y="53.6" width="13" height="3.6" rx="1.6" fill={brass} />
+        <rect x="71.6" y="56.8" width="10.8" height="13.6" rx="3" fill={url('lantern-light')} stroke={brass} strokeWidth="1.3" />
+        <path d="M 75.4 57.4 V 69.8 M 78.6 57.4 V 69.8" stroke={brass} strokeWidth="0.9" opacity="0.55" />
+        <path
+          className="sunny-lantern-flame"
+          d="M 77 59.6 C 77 59.6 74.6 62.8 74.6 64.6 C 74.6 66 75.7 67 77 67 C 78.3 67 79.4 66 79.4 64.6 C 79.4 62.8 77 59.6 77 59.6 Z"
+          fill="#FFFDF0"
+        />
+        <rect x="70" y="69.8" width="14" height="3.6" rx="1.6" fill={brass} />
+      </g>
+    </g>
+  )
+}
+
 /** An arm from the shoulder at (±56, 20), ending in a round mitten with a little thumb. */
-function Arm({ side, url }: LimbProps) {
+function Arm({ side, url, holding }: LimbProps & { holding?: ReactNode }) {
   const k = side === 'l' ? -1 : 1
   const arm = `M ${56 * k} 20 Q ${66 * k} 26 ${73 * k} 36`
   return (
@@ -555,6 +606,8 @@ function Arm({ side, url }: LimbProps) {
         strokeWidth="14.6"
         strokeLinecap="butt"
       />
+      {/* Whatever the hand holds goes under the mitten, so the fingers close around it. */}
+      {holding}
       <ellipse
         cx={68 * k}
         cy="35"
@@ -683,6 +736,25 @@ function Spiral({ cx, cy }: { cx: number; cy: number }) {
 
 const FACES: Record<Mood | Reaction, (url: (name: string) => string) => ReactNode> = {
   alarm: (url) => FACES.worried(url),
+  nom: () => (
+    <>
+      <path d="M -29 -22 Q -21 -27 -13 -23" {...stroke} strokeWidth={2.6} opacity={0.55} />
+      <path d="M 13 -23 Q 21 -27 29 -22" {...stroke} strokeWidth={2.6} opacity={0.55} />
+      <OpenEye cx={-21} cy={-5} look={2.5} big />
+      <OpenEye cx={21} cy={-5} look={2.5} big />
+      <path d="M -12.5 12 Q 0 38 12.5 12 Q 0 8.5 -12.5 12 Z" fill={INK} />
+      <path d="M -6.5 25.5 Q 0 21 6.5 25.5 Q 0 31.5 -6.5 25.5 Z" fill="#FF8394" />
+    </>
+  ),
+  yawn: (url) => (
+    <>
+      <path d="M -29 -3 Q -21 -9.5 -13 -3" {...stroke} />
+      <path d="M 13 -3 Q 21 -9.5 29 -3" {...stroke} />
+      <ellipse cx="0" cy="20" rx="7.5" ry="10.5" fill={INK} />
+      <ellipse cx="0" cy="25.5" rx="4.6" ry="3.6" fill="#FF8394" />
+      <path d="M 33 -1 C 33 -1 30.5 2.6 30.5 4.2 C 30.5 5.6 31.6 6.6 33 6.6 C 34.4 6.6 35.5 5.6 35.5 4.2 C 35.5 2.6 33 -1 33 -1 Z" fill={url('drop')} />
+    </>
+  ),
   happy: () => (
     <>
       <path d="M -29 -21 Q -21 -25.5 -13 -22" {...stroke} strokeWidth={2.6} opacity={0.55} />

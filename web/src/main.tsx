@@ -22,7 +22,7 @@ createRoot(document.getElementById('root')!).render(
     {/* People who ask their phone for less motion get Sunny's springs and bounces toned down. */}
     <MotionConfig reducedMotion="user">
       {sticker ? (
-        <StickerStage pose={sticker} caption={params.get('caption')} wearAll={params.get('wear') === 'all'} />
+        <StickerStage pose={sticker} caption={params.get('caption')} wear={params.get('wear')} bare={params.has('bare')} />
       ) : (
         <App />
       )}
