@@ -14,6 +14,7 @@ import {
   type ActivityItem,
   type Home,
   type Inspection,
+  type NewsItem,
   type WatchChange,
   type WatchedWallet,
   type WatchToken,
@@ -751,6 +752,7 @@ export default function App() {
           onSelect={(mint) => openScan('check', mint)}
           onAdd={() => openChat('watch')}
         />
+        {!demo && home && home.news.length > 0 && <NewsCard items={home.news} />}
         <ActivityCard items={demo ? ACTIVITY.map(demoActivity) : (home?.activity ?? [])} />
         <div className="built-on">
           <SolanaMark size={14} /> Built on Solana
@@ -1257,6 +1259,40 @@ function demoActivity(a: Activity): ActivityItem {
 }
 
 /** A real log of what Sunny did for you: checks, flagged scams, alerts, linked wallets. */
+const NEWS_KIND = {
+  security: { icon: '🚨', label: 'Security' },
+  opportunity: { icon: '✨', label: 'Opportunity' },
+  news: { icon: '📰', label: 'News' },
+} as const
+
+/** What's happening on Solana, from free public sources. Security alerts come first. */
+function NewsCard({ items }: { items: NewsItem[] }) {
+  return (
+    <section className="card news">
+      <div className="card-head">
+        <span className="eyebrow">What’s happening</span>
+        <span className="news-sources">Public sources</span>
+      </div>
+      <ul>
+        {items.map((n) => (
+          <li key={n.id} className={`news-item news-item--${n.kind}`}>
+            <a href={n.link} target="_blank" rel="noreferrer">
+              <span className="news-kind">
+                {NEWS_KIND[n.kind].icon} {NEWS_KIND[n.kind].label}
+              </span>
+              <span className="news-title">{n.title}</span>
+              <small>
+                {n.source} · {ago(n.at)}
+              </small>
+            </a>
+          </li>
+        ))}
+      </ul>
+      <p className="source">News, not financial advice. Sunny isn’t an investment advisor.</p>
+    </section>
+  )
+}
+
 function ActivityCard({ items }: { items: ActivityItem[] }) {
   return (
     <section className="card activity">

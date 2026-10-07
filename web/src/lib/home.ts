@@ -15,6 +15,17 @@ export type WatchToken = {
 
 export type ActivityItem = { kind: 'check' | 'scam' | 'alert' | 'wallet' | 'watch'; text: string; meta: string; at: string }
 
+/** A headline from Sunny's news desk: free public sources, filtered for Solana. */
+export type NewsItem = {
+  id: string
+  title: string
+  link: string
+  source: string
+  at: string
+  kind: 'security' | 'opportunity' | 'news'
+  solana: boolean
+}
+
 /** A wallet Sunny watches (read-only), as listed under the wallet weather. */
 export type WatchedWallet = {
   address: string
@@ -43,6 +54,7 @@ export type Home = {
   fearGreed: { value: number; label: string } | null
   alerts: Omit<AlertCard, 'basePrice'>[]
   activity: ActivityItem[]
+  news: NewsItem[]
   updatedAt: string
   guest: boolean
 }
