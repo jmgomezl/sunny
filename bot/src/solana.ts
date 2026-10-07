@@ -296,6 +296,17 @@ export async function agentDraw(ownerAddress: string, usd: number) {
   return send(tx)
 }
 
+/** Opens a wallet's test-USDC account if it doesn't exist yet. Sunny's fee wallet pays the rent. */
+export async function ensureAta(owner: PublicKey) {
+  if (await connection.getAccountInfo(ata(owner))) return
+  const tx = new Transaction({ feePayer: feePayer().publicKey }).add(createAtaIdempotent(owner, feePayer().publicKey))
+  tx.recentBlockhash = (await connection.getLatestBlockhash()).blockhash
+  tx.sign(feePayer())
+  await send(tx)
+}
+
+export const explorerTx = (signature: string) => `https://solscan.io/tx/${signature}?cluster=${CLUSTER}`
+
 /** Mints test USDC (devnet only) to a wallet so people can try the pocket. */
 export async function faucet(ownerAddress: string, usd: number) {
   if (CLUSTER === 'mainnet-beta') throw new Error('No faucet on mainnet')
