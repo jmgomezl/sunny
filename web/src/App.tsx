@@ -738,7 +738,13 @@ export default function App() {
       </section>
 
       <main className="content">
-        <CareCard wellbeing={WELLBEING[mood]} bond={bond} pocket={pocketView} onPocket={managePocket} />
+        <CareCard
+          wellbeing={WELLBEING[mood]}
+          bond={bond}
+          streak={demo ? 5 : (home?.streak ?? 0)}
+          pocket={pocketView}
+          onPocket={managePocket}
+        />
         <ForecastCard
           home={home}
           demo={demoMood}
@@ -847,12 +853,13 @@ type PocketIntent = 'topup' | 'freeze' | 'unfreeze'
 type CareProps = {
   wellbeing: number
   bond: number
+  streak: number
   pocket: PocketView
   onPocket: (intent?: PocketIntent) => void
 }
 
 /** Sunny's needs, like a pet's: its energy is the pocket money you give it, enforced on Solana. */
-function CareCard({ wellbeing, bond, pocket, onPocket }: CareProps) {
+function CareCard({ wellbeing, bond, streak, pocket, onPocket }: CareProps) {
   const level = bondLevel(bond)
   const inLevel = level === BOND_LEVELS.length - 1 ? 100 : ((bond % 20) / 20) * 100
   const live = pocket.kind === 'live' ? pocket : null
@@ -874,7 +881,12 @@ function CareCard({ wellbeing, bond, pocket, onPocket }: CareProps) {
           tone={frozen ? 'frozen' : 'energy'}
         />
         <Meter label="Mood" hint="Wallet health" value={wellbeing} tone="mood" />
-        <Meter label="Bond" hint="Play with me" value={inLevel} tone="bond" />
+        <Meter
+          label="Bond"
+          hint={streak >= 2 ? `${streak}-day streak ☀️` : 'Play with me'}
+          value={inLevel}
+          tone="bond"
+        />
       </div>
 
       <div className="care-pocket">

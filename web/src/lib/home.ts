@@ -55,6 +55,8 @@ export type Home = {
   alerts: Omit<AlertCard, 'basePrice'>[]
   activity: ActivityItem[]
   news: NewsItem[]
+  /** Days in a row you visited Sunny. */
+  streak: number
   updatedAt: string
   guest: boolean
 }
