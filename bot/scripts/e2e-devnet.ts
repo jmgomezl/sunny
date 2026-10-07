@@ -82,3 +82,11 @@ if (chat.mine?.address !== record.address) throw new Error('Sunny did not find t
 console.log(`8. "What happened in my wallet?" → ${chat.mine.recent.length} transactions read from devnet:`)
 for (const e of chat.mine.recent) console.log(`   ${e.ok ? '✓' : '✗'} ${e.what}${e.amount !== null ? ` $${e.amount}` : ''}`)
 console.log(`   Sunny: ${chat.reply.replace(/\s+/g, ' ').slice(0, 160)}…`)
+
+// Good habits leave non-transferable badges in the Sunny wallet.
+type Badges = { newly: string[]; badges: { id: string; earned: boolean; tx: string | null }[] }
+const synced = await call<Badges>('badges', { op: 'backup' })
+const expected = ['key-keeper', 'pocket-parent', 'deep-diver']
+const missing = expected.filter((id) => !synced.badges.find((b) => b.id === id)?.tx)
+if (missing.length) throw new Error(`Badges not minted: ${missing.join(', ')}`)
+console.log(`9. badges minted on devnet: ${synced.newly.join(', ')}`)
