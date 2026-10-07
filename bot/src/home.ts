@@ -1,5 +1,6 @@
 import { activeFor, triggerPrice } from './alerts.js'
 import { getJson, redFlags, riskOf, SOL_MINT_ADDRESS } from './market.js'
+import { latestNews, type NewsItem } from './news.js'
 import { activityOf } from './users.js'
 import { portfolio, tokenInfo, type Holding, type Portfolio } from './wallet.js'
 
@@ -56,6 +57,8 @@ export type Home = {
   fearGreed: { value: number; label: string } | null
   alerts: { symbol: string; direction: 'drop' | 'rise'; percent: number | null; triggerPrice: number }[]
   activity: ReturnType<typeof activityOf>
+  /** What's happening on Solana, from the news desk: security first. */
+  news: NewsItem[]
   updatedAt: string
 }
 
@@ -102,6 +105,7 @@ export async function buildHome(userId: number, wallets: string[]): Promise<Home
     fearGreed: fg,
     alerts: alerts.map((a) => ({ symbol: a.symbol, direction: a.direction, percent: a.percent, triggerPrice: triggerPrice(a) })),
     activity: activityOf(userId),
+    news: latestNews('all', 4),
     updatedAt: new Date().toISOString(),
   }
 
