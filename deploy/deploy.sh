@@ -40,8 +40,9 @@ bot() {
   rsync -az "$ROOT/brand/sunny-avatar-640.png" "$HOST:/opt/sunny/sunny-avatar.png"
   rsync -az "$ROOT/.env" "$HOST:/opt/sunny/.env"
   # Back off between crash restarts so a bad build can't hammer the shared server.
-  ssh "$HOST" 'chmod 600 /opt/sunny/.env && cd /opt/sunny && if pm2 describe sunny-bot >/dev/null 2>&1; then pm2 restart sunny-bot; else \
-    pm2 start bot.mjs --name sunny-bot --node-args="--env-file=/opt/sunny/.env" --max-memory-restart 160M \
+  # 240M: the x402 SDK and @solana/kit added ~30 MB over the 113 MB the bot used before.
+  ssh "$HOST" 'chmod 600 /opt/sunny/.env && cd /opt/sunny && if pm2 describe sunny-bot >/dev/null 2>&1; then pm2 restart sunny-bot --max-memory-restart 240M; else \
+    pm2 start bot.mjs --name sunny-bot --node-args="--env-file=/opt/sunny/.env" --max-memory-restart 240M \
       --exp-backoff-restart-delay=2000; fi && pm2 save >/dev/null'
   # Health check: the bot must still be online a few seconds later, or we show why and stop.
   sleep 8
