@@ -5,6 +5,7 @@ import { Bot, GrammyError, HttpError, InlineKeyboard, InputFile, type Context } 
 import { startApi } from './api.js'
 import { startAlertChecker } from './alerts.js'
 import { forget, hasBrain, reply } from './brain.js'
+import { sharedSecret } from './guard.js'
 import { startScamLists } from './scams.js'
 import { allow, HOUR } from './limits.js'
 import { ago, KIND_ICON, latestNews, startNews, type NewsItem } from './news.js'
@@ -209,7 +210,11 @@ bot.command('freeze', (ctx) =>
   ),
 )
 
-bot.on('message:text', (ctx) => askBrain(ctx, ctx.message.text))
+bot.on('message:text', async (ctx) => {
+  // A pasted recovery phrase or key is taken out of the chat right away (Sunny's answer explains).
+  if (sharedSecret(ctx.message.text)) await ctx.deleteMessage().catch(() => {})
+  await askBrain(ctx, ctx.message.text)
+})
 
 bot.on('message', (ctx) => ctx.reply('I can only read text for now ☀️ Tell me what’s on your mind.'))
 

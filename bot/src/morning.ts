@@ -72,7 +72,8 @@ export async function briefFor(id: number, name: string | undefined, lang: strin
         : t('I missed you! Come say hi ☀️', '¡Te extrañé! Pasa a saludarme ☀️')
 
   const lines: string[] = []
-  if (home && wallets.length && home.value !== null) {
+  // Only when at least one watched wallet could actually be read (otherwise home shows Solana today).
+  if (home && home.value !== null && home.wallets.some((w) => w.value !== null)) {
     const change = home.change24h !== null ? ` (${signed(home.change24h)})` : ''
     lines.push(
       `🌤 ${t(wallets.length > 1 ? 'Your wallets' : 'Your wallet', wallets.length > 1 ? 'Tus wallets' : 'Tu wallet')}: ${t(home.forecast, FORECAST_ES[home.forecast] ?? home.forecast)} · ${usd(home.value)}${change}`,
