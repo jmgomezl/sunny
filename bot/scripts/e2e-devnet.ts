@@ -68,3 +68,11 @@ console.log(`6. state: vault $${s.vault}, spent today $${s.spentToday}/${s.daily
 await ownerDoes({ action: 'withdraw', amount: s.vault })
 const end = await pocketState(record.address)
 console.log(`7. after withdraw: vault $${end.vault}, owner wallet $${end.ownerUsdc}`)
+
+// Sunny reads all of this back, in plain words, without being given an address.
+type Mine = { mine: { address: string; recent: { what: string; amount: number | null; ok: boolean }[] } | null }
+const chat = await call<{ reply: string } & Mine>('chat', { message: 'What happened in my wallet?' })
+if (chat.mine?.address !== record.address) throw new Error('Sunny did not find the wallet on its own')
+console.log(`8. "What happened in my wallet?" → ${chat.mine.recent.length} transactions read from devnet:`)
+for (const e of chat.mine.recent) console.log(`   ${e.ok ? '✓' : '✗'} ${e.what}${e.amount !== null ? ` $${e.amount}` : ''}`)
+console.log(`   Sunny: ${chat.reply.replace(/\s+/g, ' ').slice(0, 160)}…`)
