@@ -6,7 +6,7 @@ import { checkBlink, looksLikeBlink, probeAccount, type BlinkReport } from './bl
 // "Scan or paste anything": works out whether the input is a token, a wallet or a link
 // (including Solana Pay QR codes and Solscan/Explorer links) and returns the right report.
 
-const TOKEN_PROGRAMS = new Set(['TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA', 'TokenzQdBNbLqP5VEhdkAS6EPFLC1PeqcWDAm9m3KXz8'])
+const TOKEN_PROGRAMS = new Set(['TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA', 'TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb'])
 
 export type Inspection =
   | ({ kind: 'token' } & Awaited<ReturnType<typeof lookupToken>>)

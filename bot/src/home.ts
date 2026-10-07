@@ -112,7 +112,14 @@ export async function buildHome(userId: number, wallets: string[]): Promise<Home
     updatedAt: new Date().toISOString(),
   }
 
-  if (!wallets.length) {
+  // One wallet that can't be read shouldn't hide the others.
+  const settled = await Promise.allSettled(wallets.map((w) => portfolio(w)))
+  const read = settled.flatMap((r) => (r.status === 'fulfilled' ? [r.value] : []))
+
+  // No wallet yet, or none can be read right now: show Solana today, and keep any watched
+  // wallets listed so they can still be removed.
+  if (!read.length) {
+    const unreadable = wallets.length > 0
     const info = await tokenInfo([...new Set([...POPULAR, ...alertMints])])
     const sol = info.get(SOL_MINT_ADDRESS)
     const tokens: WatchToken[] = [...info.values()].map((t) => ({
@@ -136,7 +143,7 @@ export async function buildHome(userId: number, wallets: string[]): Promise<Home
     ]
     return {
       ...base,
-      wallets: [],
+      wallets: wallets.map((address) => ({ address, value: null, change24h: null, risk: 'low', approvals: 0 })),
       value: p || null,
       change24h: sol?.stats24h?.priceChange ?? null,
       spark: interpolate(anchors),
@@ -144,18 +151,18 @@ export async function buildHome(userId: number, wallets: string[]): Promise<Home
       forecast: 'Solana today',
       risk: 'Low',
       mood: 'happy',
-      status: { tone: 'info', text: 'Give me a wallet to watch over' },
-      line: 'Hi! Show me a wallet and I’ll keep watch over it. For now, here’s Solana today.',
+      status: unreadable
+        ? { tone: 'warn', text: 'I can’t read that wallet' }
+        : { tone: 'info', text: 'Give me a wallet to watch over' },
+      line: unreadable
+        ? 'I couldn’t read the wallet you gave me just now. Check the address, or remove it and add it again.'
+        : 'Hi! Show me a wallet and I’ll keep watch over it. For now, here’s Solana today.',
       tokens,
       checked: 0,
       approvals: 0,
     }
   }
 
-  // One wallet that can't be read shouldn't hide the others.
-  const settled = await Promise.allSettled(wallets.map((w) => portfolio(w)))
-  const read = settled.flatMap((r) => (r.status === 'fulfilled' ? [r.value] : []))
-  if (!read.length) throw (settled[0] as PromiseRejectedResult).reason
   const watched: WatchedWallet[] = wallets.map((address, i) => {
     const r = settled[i]
     if (r.status === 'rejected') return { address, value: null, change24h: null, risk: 'low', approvals: 0 }
@@ -196,7 +203,7 @@ export async function buildHome(userId: number, wallets: string[]): Promise<Home
       change: t.stats24h?.priceChange ?? null,
       risk: t.id === SOL_MINT_ADDRESS ? 'low' : riskOf(redFlags(t)),
       held: false,
-      alert: true,
+      alert: alertMints.has(t.id),
     })),
   ]
 

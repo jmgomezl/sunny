@@ -8,7 +8,7 @@ const RUGCHECK = 'https://api.rugcheck.xyz/v1'
 const FEAR_GREED = 'https://api.alternative.me/fng/?limit=1'
 // Mainnet reads (approvals). Separate from SOLANA_RPC_URL, which points at devnet for Sunny's program.
 export const MAINNET_RPC = process.env.SOLANA_MAINNET_RPC_URL || 'https://api.mainnet-beta.solana.com'
-const TOKEN_PROGRAMS = ['TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA', 'TokenzQdBNbLqP5VEhdkAS6EPFLC1PeqcWDAm9m3KXz8']
+const TOKEN_PROGRAMS = ['TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA', 'TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb']
 const SOL_MINT = 'So11111111111111111111111111111111111111112'
 const CACHE_MS = 30_000
 const TIMEOUT_MS = 8_000
@@ -130,7 +130,8 @@ export async function lookupToken(query: string) {
   const results = await getJson<JupToken[]>(`/tokens/v2/search?query=${encodeURIComponent(q)}`)
   if (!results.length) return { found: false as const, query: q }
 
-  const exact = results.filter((t) => t.symbol.toLowerCase() === q.toLowerCase() || t.id === q)
+  // Some symbols carry their own "$" ($WIF), so it's ignored on both sides.
+  const exact = results.filter((t) => t.symbol.replace(/^\$/, '').toLowerCase() === q.toLowerCase() || t.id === q)
   const pick =
     exact.find((t) => t.isVerified) ??
     [...exact].sort((a, b) => (b.liquidity ?? 0) - (a.liquidity ?? 0))[0] ??
@@ -225,17 +226,20 @@ type Holdings = {
 export async function walletSnapshot(address: string) {
   if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(address)) return { error: 'That doesn’t look like a Solana address.' }
   const holdings = await getJson<Holdings>(`/ultra/v1/holdings/${address}`)
-  const amounts = Object.entries(holdings.tokens ?? {})
+  const all = Object.entries(holdings.tokens ?? {})
     .map(([mint, accounts]) => [mint, accounts.reduce((s, a) => s + (a.uiAmount ?? 0), 0)] as const)
     .filter(([, amount]) => amount > 0)
-    .slice(0, 40)
-
-  const mints = [SOL_MINT, ...amounts.map(([m]) => m)]
-  const [prices, infos] = await Promise.all([
-    getJson<Record<string, { usdPrice: number }>>(`/price/v3?ids=${mints.slice(0, 50).join(',')}`),
-    amounts.length ? getJson<JupToken[]>(`/tokens/v2/search?query=${amounts.map(([m]) => m).join(',')}`) : [],
+  // Every token is priced before picking the top ones (a wallet full of spam can't hide its
+  // real holdings), up to a sane cap, in Jupiter's batches of 50.
+  const amounts = all.slice(0, 200)
+  const batches = (list: string[]) => Array.from({ length: Math.ceil(list.length / 50) }, (_, i) => list.slice(i * 50, i * 50 + 50))
+  const mintList = amounts.map(([m]) => m)
+  const [priceParts, infoParts] = await Promise.all([
+    Promise.all(batches([SOL_MINT, ...mintList]).map((ids) => getJson<Record<string, { usdPrice: number }>>(`/price/v3?ids=${ids.join(',')}`))),
+    Promise.all(batches(mintList).map((ids) => getJson<JupToken[]>(`/tokens/v2/search?query=${ids.join(',')}`))),
   ])
-  const symbol = new Map(infos.map((t) => [t.id, t.symbol]))
+  const prices = Object.assign({}, ...priceParts) as Record<string, { usdPrice: number }>
+  const symbol = new Map(infoParts.flat().map((t) => [t.id, t.symbol]))
 
   const solAmount = holdings.uiAmount ?? 0
   const solValue = solAmount * (prices[SOL_MINT]?.usdPrice ?? 0)
@@ -253,7 +257,7 @@ export async function walletSnapshot(address: string) {
   return {
     sol: { amount: round(solAmount, 4), value_usd: round(solValue, 2) },
     top_tokens: tokens.slice(0, 8),
-    token_count: tokens.length,
+    token_count: all.length,
     total_value_usd: round(total, 2),
     largest_position_pct: total > 0 ? round((biggest / total) * 100, 0) : null,
     // Delegations let another program move these tokens without asking again.
