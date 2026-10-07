@@ -326,7 +326,7 @@ async function simulate(tx: VersionedTransaction, wallet: PublicKey, held: Map<s
     const insufficient = sim.value.logs?.some((l) => /insufficient (funds|lamports)/i.test(l))
     return {
       ok: false,
-      error: fromLogs ?? (insufficient ? 'not enough funds in the wallet' : JSON.stringify(sim.value.err)),
+      error: fromLogs ?? (insufficient ? 'not enough funds in the wallet' : simError(sim.value.err)),
       sends: [],
       receives: [],
       warnings: [],
@@ -543,6 +543,18 @@ export async function checkBlink(link: string, watched: string | null, probe: st
     outcome: sim.ok ? 'simulated' : 'would_fail',
     failReason: sim.error,
   })
+}
+
+/** A simulation error in plain words, instead of {"InstructionError":[3,{"Custom":17}]}. */
+function simError(err: unknown): string {
+  const ix = (err as { InstructionError?: [number, unknown] })?.InstructionError
+  if (ix) {
+    const [index, why] = ix
+    const code = (why as { Custom?: number })?.Custom
+    return `step ${index + 1} of the transaction was refused${code !== undefined ? ` by its program (error ${code})` : typeof why === 'string' ? ` (${why.replace(/([a-z])([A-Z])/g, '$1 $2').toLowerCase()})` : ''}`
+  }
+  if (typeof err === 'string') return err.replace(/([a-z])([A-Z])/g, '$1 $2').toLowerCase()
+  return 'the network refused it'
 }
 
 /** One line per kind of finding (the simulation's version wins), worst first. */

@@ -193,7 +193,14 @@ export function newsSubscribers() {
 
 export function logActivity(id: number, kind: ActivityKind, text: string, meta: string) {
   const u = get(id)
-  u.activity = [{ kind, text, meta, at: new Date().toISOString() }, ...u.activity].slice(0, MAX_ACTIVITY)
+  const at = new Date().toISOString()
+  // The same thing again right after (checking a wallet three times) is one entry, freshened.
+  const last = u.activity[0]
+  if (last && last.kind === kind && last.text === text && Date.now() - Date.parse(last.at) < 30 * 60_000) {
+    u.activity[0] = { ...last, meta, at }
+  } else {
+    u.activity = [{ kind, text, meta, at }, ...u.activity].slice(0, MAX_ACTIVITY)
+  }
   scheduleSave()
 }
 
