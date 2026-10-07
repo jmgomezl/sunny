@@ -2,7 +2,7 @@ import { activeFor, triggerPrice } from './alerts.js'
 import { getJson, redFlags, riskOf, SOL_MINT_ADDRESS } from './market.js'
 import { latestNews, type NewsItem } from './news.js'
 import { activityOf, streakOf } from './users.js'
-import { portfolio, tokenInfo, type Holding, type Portfolio } from './wallet.js'
+import { holdingFlags, portfolio, tokenInfo, type Holding, type Portfolio } from './wallet.js'
 
 // Builds Sunny's home screen from real data: the weather of the wallets Sunny watches
 // (all of them together), the tokens it watches, its mood and what it says.
@@ -74,12 +74,8 @@ async function fearGreed() {
 }
 
 const short = (a: string) => `${a.slice(0, 4)}…${a.slice(-4)}`
-const worth = (p: Portfolio) => p.holdings.filter((h) => h.value >= 0.5)
 
-function walletRisk(p: Portfolio): WatchedWallet['risk'] {
-  if (p.approvals?.count || worth(p).some((h) => h.risk === 'high')) return 'high'
-  return worth(p).some((h) => h.risk === 'medium') ? 'medium' : 'low'
-}
+const walletRisk = (p: Portfolio): WatchedWallet['risk'] => riskOf(holdingFlags(p))
 
 /** All watched wallets as one: values and curves add up, and the same token in two wallets merges. */
 function combine(list: Portfolio[]) {
@@ -207,9 +203,12 @@ export async function buildHome(userId: number, wallets: string[]): Promise<Home
     })),
   ]
 
-  const risky = held.find((h) => h.risk === 'high')
+  // Same rule as the wallet card: risky tokens count from $1 up (dust is often spam).
+  const risky = held.find((h) => h.risk === 'high' && h.value >= 1)
   const approvals = p.approvals
-  const risk: Home['risk'] = risky || approvals ? 'High' : held.some((h) => h.risk === 'medium') ? 'Medium' : 'Low'
+  // The weather is the worst of the wallets, each judged exactly like its wallet card.
+  const risks = read.map(walletRisk)
+  const risk: Home['risk'] = risks.includes('high') ? 'High' : risks.includes('medium') ? 'Medium' : 'Low'
   const change = p.change24h ?? 0
   const mood: Mood = risk === 'High' ? 'worried' : change >= 5 ? 'excited' : 'happy'
 
@@ -218,7 +217,7 @@ export async function buildHome(userId: number, wallets: string[]): Promise<Home
   if (risky) {
     const where = many ? read.find((w) => w.holdings.some((h) => h.mint === risky.mint)) : undefined
     status = { tone: 'warn', text: `Risk found · $${risky.symbol}` }
-    line = `Heads up: ${risky.symbol}${where ? ` in ${short(where.address)}` : ''} has red flags (${risky.flags[0]?.text.toLowerCase() ?? 'high risk'}). Tap it to see why.`
+    line = `Heads up: ${risky.symbol}${where ? ` in ${short(where.address)}` : ''} has red flags (${risky.flags[0]?.text.toLowerCase() ?? 'high risk'}). Tap the alert below to see why.`
   } else if (approvals) {
     status = { tone: 'warn', text: `${approvals} approval${approvals > 1 ? 's' : ''} to review` }
     line = `Another program can move some of your tokens (${approvals} approval${approvals > 1 ? 's' : ''}). Let’s review it together.`

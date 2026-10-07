@@ -193,20 +193,37 @@ export type WalletReport = {
   flags: Flag[]
 }
 
-/** Everything Sunny shows after you scan or paste a wallet address. */
-export async function walletReport(address: string): Promise<WalletReport> {
-  const [p, activity] = await Promise.all([portfolio(address), walletActivity(address).catch(() => null)])
+/** Tokens worth at least this count toward a wallet's risk; below it is dust (often spam airdrops). */
+const COUNTS_USD = 1
+
+/**
+ * A wallet's red flags from what it holds. The home weather and the wallet card both use
+ * these, so the same wallet always gets the same risk.
+ */
+export function holdingFlags(p: Portfolio): Flag[] {
   const flags: Flag[] = []
   if (p.approvals?.count) {
     flags.push({ level: 'high', text: `${p.approvals.count} token approval${p.approvals.count > 1 ? 's' : ''}: another program can move these tokens` })
   }
-  const risky = p.holdings.filter((h) => h.risk === 'high' && h.value >= 1)
-  if (risky.length) flags.push({ level: 'medium', text: `Holds ${risky.length} high-risk token${risky.length > 1 ? 's' : ''} (${risky[0].symbol})` })
+  const counted = p.holdings.filter((h) => h.value >= COUNTS_USD)
+  const risky = counted.filter((h) => h.risk === 'high')
+  if (risky.length) flags.push({ level: 'high', text: `Holds ${risky.length} high-risk token${risky.length > 1 ? 's' : ''} (${risky[0].symbol})` })
+  const careful = counted.filter((h) => h.risk === 'medium')
+  if (careful.length) {
+    flags.push({ level: 'medium', text: `${careful.length} token${careful.length > 1 ? 's' : ''} with some red flags (${careful[0].symbol})` })
+  }
   const biggest = p.holdings[0]
   if (biggest && p.total >= 10 && biggest.value / p.total > 0.8) {
     flags.push({ level: 'medium', text: `${Math.round((biggest.value / p.total) * 100)}% of the value is in ${biggest.symbol}` })
   }
   if (p.total > 1 && p.sol < 0.002) flags.push({ level: 'medium', text: 'Almost no SOL left to pay network fees' })
+  return flags
+}
+
+/** Everything Sunny shows after you scan or paste a wallet address. */
+export async function walletReport(address: string): Promise<WalletReport> {
+  const [p, activity] = await Promise.all([portfolio(address), walletActivity(address).catch(() => null)])
+  const flags = holdingFlags(p)
   const ageDays = activity?.firstSeen ? (Date.now() - Date.parse(activity.firstSeen)) / 86_400_000 : null
   if (ageDays !== null && ageDays < 7) flags.push({ level: 'medium', text: `Brand-new wallet: first transaction ${Math.floor(ageDays)} days ago` })
 
