@@ -8,6 +8,7 @@ import { forget, hasBrain, reply } from './brain.js'
 import { startScamLists } from './scams.js'
 import { allow, HOUR } from './limits.js'
 import { ago, KIND_ICON, latestNews, startNews, type NewsItem } from './news.js'
+import { handleGroup } from './groups.js'
 import { newsSubscribers, setNewsAlerts } from './users.js'
 
 const token = process.env.TELEGRAM_BOT_TOKEN
@@ -44,8 +45,10 @@ const COMMANDS = [
 const bot = new Bot(token)
 let avatarFileId: string | undefined
 
-// Sunny is a personal companion: stay out of groups.
+// In private chats Sunny is a companion. In groups it's a quiet guardian (see groups.ts),
+// and channels are left alone.
 bot.use(async (ctx, next) => {
+  if (ctx.chat?.type === 'group' || ctx.chat?.type === 'supergroup') return handleGroup(ctx)
   if (ctx.chat && ctx.chat.type !== 'private') return
   await next()
 })
@@ -79,7 +82,8 @@ bot.command('help', (ctx) =>
       '• /check BONK and I’ll tell you how risky a token is, or paste a link and I’ll check it for scams\n' +
       '• /watch BONK 10% and I’ll message you if it drops 10%\n' +
       '• /pocket shows my allowance; /freeze stops me from spending anything\n' +
-      '• /news shows what’s happening on Solana. I warn you here about hacks and scams (/news off to stop)',
+      '• /news shows what’s happening on Solana. I warn you here about hacks and scams (/news off to stop)\n' +
+      '• Add me to a group and I’ll quietly guard it from phishing links and risky tokens',
   ),
 )
 
@@ -181,7 +185,7 @@ async function main() {
   startAlertChecker((userId, text) => bot.api.sendMessage(userId, text, { reply_markup: openSky() }))
   const me = await bot.api.getMe()
   console.log(`[sunny] @${me.username} is awake; Mini App at ${MINI_APP_URL}; free chat ${HAS_BRAIN ? 'on' : 'off'}`)
-  await bot.start({ drop_pending_updates: true, allowed_updates: ['message'] })
+  await bot.start({ drop_pending_updates: true, allowed_updates: ['message', 'my_chat_member'] })
 }
 
 for (const signal of ['SIGINT', 'SIGTERM'] as const) process.once(signal, () => bot.stop())
