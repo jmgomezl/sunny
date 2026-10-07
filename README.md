@@ -45,12 +45,15 @@ Everything runs on **devnet with test USDC**. It speaks English and Spanish.
 - **Links:** checks domains against the MetaMask and Phantom phishing lists and spots lookalikes of known brands.
 - **Wallets:** value, holdings, transaction history and age, and **token approvals** (another program that can move your tokens). Scan a QR with Telegram's own scanner or paste an address.
 - **Price alerts:** *"tell me if BONK drops 10%"*. Checked every minute and delivered as a Telegram message.
+- **Group guardian:** add Sunny to any Telegram group. It stays quiet, but replies when someone posts a phishing link, a fake airdrop page or a token with serious red flags, and anyone can ask `/check BONK`. Only deterministic checks run there, never the AI, so nobody in a group can steer it.
 - **News and warnings:** every 15 minutes Sunny reads free public sources, filtered for Solana. A fresh Solana hack, exploit or scam reaches you in Telegram with what to do (`/news off` to stop). Launches and upgrades are shared as news, always with "not financial advice".
 
 **Lives with you**
 - **Wallet weather:** Sunny's mood and sky come from real data. A clear sky means all is well, a golden hour means you're up today, and a storm warning means something risky turned up. At night Sunny sleeps under the stars.
 - **Care like a pet:** Energy (the pocket money left today), Mood (wallet health) and Bond (how much you play). It reacts to boops, pets, spins and too many taps.
 - **One conversation:** the Telegram chat and the Mini App chat share the same memory.
+- **Good-morning ritual:** each morning a short note in your language with your wallets' weather, pocket money left, one headline and one safety tip. Visiting Sunny builds a streak, shown on its Bond meter (`/morning` to preview, `/morning off` to stop).
+- **Share the moment:** when Sunny catches a scam, Solana stops a draw, or a deep scan comes back, share a story-sized card to your Telegram Story or send it to a friend.
 
 **Spends safely**
 - **Sunny wallet:** a self-custodial wallet made inside Telegram and locked with your password.

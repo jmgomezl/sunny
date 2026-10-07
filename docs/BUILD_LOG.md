@@ -79,6 +79,14 @@ The first real devnet run failed: a brand-new wallet has 0 SOL and couldn't pay 
 | `092eb7c` | Sunny reads the news in chat: security first, opportunities without hype and always "not financial advice" |
 | `c2f47a7` | A "What's happening" card on the home screen |
 
+## Oct 7, 12:30–14:30 · Reaching more people: groups, mornings, sharing
+
+| Commit | What |
+|---|---|
+| `badfb06` | **Group guardian**: Sunny guards Telegram groups from phishing links, fake airdrops and risky tokens, quietly and without the AI, with `/check` for everyone |
+| `2c84e98` `a24e022` | **Good-morning ritual** in English or Spanish, and **visit streaks** on the Bond meter. Only real visits count as activity now |
+| `a1d22f2` `d41e088` | **Share cards**: story-sized cards for a caught scam, a stopped draw or a deep scan, shared to Telegram Stories or a chat |
+
 ## Decisions, and why
 
 - **Money rules live in a program, not in the prompt.** A model can be talked into things; a program can't. Sunny is told to always *try* the draw you ask for, because watching Solana refuse a $500 draw is the whole point.
@@ -90,6 +98,8 @@ The first real devnet run failed: a brand-new wallet has 0 SOL and couldn't pay 
 - **x402 with the official SDK, settled in-process.** Sunny's server is the resource server and its own facilitator, so it can verify, run the scan and only then settle. That means a failed scan costs nothing, and it works with our devnet test USDC. Any standard x402 client can pay the same endpoint.
 - **Every purchase goes through the pocket.** Before paying an API, Sunny draws the price from your pocket, so the program's limits and freeze cover what it buys, not just what it takes.
 - **Warn loudly, suggest softly.** A story is labeled security if the headline *or* its teaser mentions a hack or scam, because missing one is worse than a false alarm. It's only called an opportunity if the headline itself says so, and Sunny always adds that it's news, not advice.
+- **No AI in groups.** In a group, anyone can type anything, so Sunny only runs deterministic checks there and stays silent unless it finds a real problem. A group raid can't make it spam: one warning per link per hour, and 20 an hour per group.
+- **Only real visits count.** Background work (alerts, the morning note) used to refresh 'last seen'. Now only chatting or opening the Mini App does, so the streak and 'active users' are honest.
 - **Gentle guardrails.** Blocked attempts get a friendly refusal and only a short break, because curious people (and judges) will poke at it.
 
 ## Problems I hit, and the fixes
@@ -110,6 +120,7 @@ The first real devnet run failed: a brand-new wallet has 0 SOL and couldn't pay 
 | The model sometimes went silent right after a tool call | It's asked once for its answer | `cc81bed` |
 | The Telegram first name went into the system prompt, so anyone could rename themselves "Ignore your rules…" | Names reduced to plain letters before they reach the prompt | `d1c40dc` |
 | The x402 client refused to pay in our test USDC: its spend controls only allow known assets | Allow exactly our test-USDC mint, capped at $0.50 a request | `41c9b8c` |
+| nginx capped `/api/` bodies at 16 KB, too small for a story card | A dedicated `/api/share` location with room for one image; the rest stays at 16 KB | `a1d22f2` |
 | The x402 SDK pushed the bot close to its 160 MB PM2 limit | Measured at 138 MB in production; limit raised to 240 MB for Sunny's process only | `4515210` |
 
 ## How it was tested
