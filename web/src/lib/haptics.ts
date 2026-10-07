@@ -3,9 +3,17 @@ type TelegramHaptics = {
   notificationOccurred: (type: 'error' | 'success' | 'warning') => void
 }
 
+type TelegramWebApp = {
+  ready: () => void
+  expand: () => void
+  setHeaderColor?: (color: string) => void
+  setBackgroundColor?: (color: string) => void
+  HapticFeedback?: TelegramHaptics
+}
+
 declare global {
   interface Window {
-    Telegram?: { WebApp?: { HapticFeedback?: TelegramHaptics } }
+    Telegram?: { WebApp?: TelegramWebApp }
   }
 }
 
