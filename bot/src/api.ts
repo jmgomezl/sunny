@@ -140,6 +140,8 @@ async function chat(req: IncomingMessage, res: ServerResponse, botToken: string)
     links: answer.links,
     alerts: answer.alerts,
     pocket: answer.pocket,
+    mine: answer.mine,
+    wallets: answer.wallets,
     live: answer.live,
     guest: person.guest,
   })

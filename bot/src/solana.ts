@@ -4,11 +4,13 @@ import { base58 } from '@scure/base'
 import {
   Connection,
   Keypair,
+  type ParsedTransactionWithMeta,
   PublicKey,
   SendTransactionError,
   SystemProgram,
   Transaction,
   TransactionInstruction,
+  type TokenBalance,
 } from '@solana/web3.js'
 
 // Sunny on Solana (devnet): the pocket program, Sunny's fee wallet (pays network fees
@@ -312,6 +314,84 @@ export async function faucet(ownerAddress: string, usd: number) {
   tx.recentBlockhash = (await connection.getLatestBlockhash()).blockhash
   tx.sign(feePayer())
   return send(tx)
+}
+
+// ── A Sunny wallet's history, described from the chain itself ───────────────
+
+export type WalletEvent = { at: string | null; what: string; amount: number | null; ok: boolean; explorer: string }
+
+// What each pocket instruction means, keyed by its Anchor discriminator.
+const LABELS = new Map(
+  [
+    ['open_pocket', 'Opened Sunny’s pocket'],
+    ['top_up', 'Topped up Sunny’s pocket'],
+    ['draw', 'Sunny took pocket money'],
+    ['withdraw', 'Took money back from the pocket'],
+    ['set_limits', 'Changed the pocket limits'],
+    ['set_agent', 'Changed Sunny’s spending key'],
+    ['set_frozen', 'Froze the pocket'],
+  ].map(([name, label]) => [disc(name).toString('hex'), { name, label }]),
+)
+
+/** Change in test-USDC held by `holder` within one transaction. */
+function usdcDelta(tx: ParsedTransactionWithMeta | undefined, holder: string) {
+  const mint = usdcMint().toBase58()
+  const sum = (list?: TokenBalance[] | null) =>
+    (list ?? [])
+      .filter((b) => b.owner === holder && b.mint === mint)
+      .reduce((s, b) => s + (b.uiTokenAmount.uiAmount ?? 0), 0)
+  return sum(tx?.meta?.postTokenBalances) - sum(tx?.meta?.preTokenBalances)
+}
+
+/** Reads what a transaction did from its instructions (devnet's token program no longer logs names). */
+function describe(tx: ParsedTransactionWithMeta | undefined) {
+  for (const ix of tx?.transaction.message.instructions ?? []) {
+    if ('data' in ix && ix.programId.equals(POCKET_PROGRAM)) {
+      const data = base58.decode(ix.data)
+      const known = LABELS.get(Buffer.from(data.subarray(0, 8)).toString('hex'))
+      if (!known) continue
+      if (known.name === 'set_frozen' && data[8] === 0) return { name: known.name, label: 'Unfroze the pocket' }
+      return known
+    }
+    if ('parsed' in ix && ix.program === 'spl-token' && /^mintTo/.test(ix.parsed?.type)) {
+      return { name: 'mint', label: 'Received test USDC' }
+    }
+  }
+  return { name: 'other', label: 'Other transaction' }
+}
+
+/**
+ * The latest transactions of a Sunny wallet and its pocket. Draws and faucet mints don't
+ * list the owner's address, so we also read the owner's USDC account and the pocket.
+ */
+export async function walletHistory(ownerAddress: string, limit = 6): Promise<WalletEvent[]> {
+  const owner = new PublicKey(ownerAddress)
+  const pocket = pocketPda(owner)
+  const watched = [owner, ata(owner), pocket]
+  const lists = await Promise.all(watched.map((a) => connection.getSignaturesForAddress(a, { limit })))
+  const bySig = new Map(lists.flat().map((s) => [s.signature, s]))
+  const latest = [...bySig.values()].sort((a, b) => b.slot - a.slot).slice(0, limit)
+  if (!latest.length) return []
+  const fetched = await connection.getParsedTransactions(
+    latest.map((s) => s.signature),
+    { maxSupportedTransactionVersion: 0 },
+  )
+  // Batched replies can arrive in any order, so match them by signature.
+  const txs = new Map(fetched.filter((t) => t !== null).map((t) => [t.transaction.signatures[0], t]))
+  return latest.map((s) => {
+    const tx = txs.get(s.signature)
+    const { name, label } = describe(tx)
+    const vault = Math.abs(usdcDelta(tx, pocket.toBase58()))
+    const mine = Math.abs(usdcDelta(tx, ownerAddress))
+    const moved = ['top_up', 'draw', 'withdraw'].includes(name) ? vault : name === 'mint' ? mine : 0
+    return {
+      at: s.blockTime ? new Date(s.blockTime * 1000).toISOString() : null,
+      what: label,
+      amount: moved ? Math.round(moved * 100) / 100 : null,
+      ok: !s.err,
+      explorer: `https://solscan.io/tx/${s.signature}?cluster=${CLUSTER}`,
+    }
+  })
 }
 
 export const isSolanaAddress = (s: string) => {

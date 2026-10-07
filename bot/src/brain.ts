@@ -2,9 +2,10 @@ import OpenAI from 'openai'
 import { activeFor, cancelAlerts, createAlert, triggerPrice, type Alert } from './alerts.js'
 import { currentPrices, lookupToken, marketOverview, walletSnapshot, type TokenCard } from './market.js'
 import { checkLink, type LinkCheck } from './scams.js'
-import { logActivity } from './users.js'
-import { agentDraw, hasChain, pocketState } from './solana.js'
+import { logActivity, walletOf } from './users.js'
+import { agentDraw, hasChain, pocketState, walletHistory, type WalletEvent } from './solana.js'
 import { vaultOf } from './vaults.js'
+import { walletReport, type WalletReport } from './wallet.js'
 
 // Sunny's brain runs through OpenRouter so the model can be swapped from .env.
 // Created on first use, after index.ts has checked that the key is configured.
@@ -42,6 +43,8 @@ Price alerts: you can watch a token and message the user in Telegram when it mov
 Actions are real only through tools: never say an alert was created, changed or cancelled unless the tool result in this turn confirms it. If the user asks you to do one of these, call the tool every time, even if you think you already know the answer.
 
 Wallets: you can read any public wallet address the user gives you, read-only. If the snapshot shows token approvals, explain that another program can move those tokens and suggest revoking any they don't recognise in their wallet's security settings.
+
+Their own wallets: when they say my wallet, my balance, my transactions or anything similar without pasting an address, call my_wallet. Never ask for their own address. It returns their Sunny wallet (made in your sky; it's on devnet with test money, say so lightly) with its latest transactions already in plain words, and the real wallet they linked for you to watch, if any. Tell them what happened recently, newest first. If they have no Sunny wallet yet, invite them to make one in your sky: it takes a password and a few seconds.
 
 Pocket money: the user can give you a small allowance on Solana (devnet, test USDC). It sits in their pocket vault; an on-chain program lets you draw at most their per-payment and daily limits, and nothing while frozen. You can check it with pocket_status and take money with use_pocket_money (it goes to your own wallet, to pay for tools). When the user asks you to take or spend pocket money, always call use_pocket_money with the amount they asked for, even if you think it's over the limits: the on-chain program is the judge, not you, and the user should see Solana enforce the rule. If it refuses, that's the safety working: explain which rule stopped you. (Swaps aren't live yet, so any money you take just goes to your own wallet.) They manage the pocket (open, top up, freeze, withdraw) from your sky, protected by their own password.
 
@@ -162,6 +165,15 @@ const TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
   {
     type: 'function',
     function: {
+      name: 'my_wallet',
+      description:
+        'The user’s own wallets, no address needed: their Sunny wallet (devnet, test USDC) with balances, pocket and latest transactions in plain words, plus the real wallet they linked for you to watch, if any.',
+      parameters: { type: 'object', properties: {}, additionalProperties: false },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'wallet_snapshot',
       description:
         'Read-only snapshot of a public Solana wallet address: SOL balance, top tokens with USD values, total value and concentration.',
@@ -190,12 +202,23 @@ export type AlertCard = {
 /** A pocket-money draw Sunny attempted, as shown in the Mini App chat. */
 export type PocketEvent = { amount: number; reason: string; ok: boolean; message: string; explorer?: string }
 
+/** The user's Sunny wallet as shown in the Mini App chat. */
+export type MyWallet = {
+  address: string
+  cluster: string
+  usdc: number
+  pocket: { vault: number; leftToday: number; dailyLimit: number; frozen: boolean } | null
+  recent: WalletEvent[]
+}
+
 export type Reply = {
   text: string
   cards: TokenCard[]
   links: LinkCheck[]
   alerts: AlertCard[]
   pocket: PocketEvent[]
+  mine: MyWallet | null
+  wallets: WalletReport[]
   live: boolean
 }
 
@@ -206,6 +229,8 @@ type Ctx = {
   links: LinkCheck[]
   alerts: AlertCard[]
   pocket: PocketEvent[]
+  mine: MyWallet | null
+  wallets: WalletReport[]
 }
 
 const toAlertCard = (a: Alert): AlertCard => ({
@@ -258,6 +283,47 @@ async function createPriceAlert(args: Record<string, unknown>, ctx: Ctx) {
   }
 }
 
+/** The user's own wallets: their Sunny wallet (devnet) and the real one they linked, if any. */
+async function myWallet(ctx: Ctx) {
+  const sunny = vaultOf(ctx.userId)?.address ?? null
+  const linked = walletOf(ctx.userId)
+  const chain = Boolean(sunny && hasChain())
+  const [state, recent, report] = await Promise.all([
+    chain ? pocketState(sunny!) : null,
+    chain ? walletHistory(sunny!).catch(() => []) : [],
+    linked ? walletReport(linked).catch(() => null) : null,
+  ])
+  if (sunny && state) {
+    const p = state.exists
+      ? { vault: state.vault, leftToday: state.leftToday, dailyLimit: state.dailyLimit, frozen: state.frozen }
+      : null
+    ctx.mine = { address: sunny, cluster: state.cluster, usdc: state.ownerUsdc, pocket: p, recent }
+  }
+  if (report && ctx.wallets.length < 2) ctx.wallets.push(report)
+  const own = sunny && {
+    address: sunny,
+    network: `${state?.cluster ?? 'devnet'} (test money)`,
+    test_usdc: state?.ownerUsdc ?? null,
+    pocket: ctx.mine?.pocket ?? 'not opened yet',
+    recent_transactions: recent.map(({ at, what, amount, ok }) => ({ at, what, amount_usd: amount, ok })),
+  }
+  const watched = report && {
+    address: report.address,
+    network: 'mainnet',
+    total_usd: report.total,
+    sol: report.sol,
+    top_tokens: report.top.map((t) => ({ symbol: t.symbol, value_usd: t.value })),
+    transactions: report.activity?.transactions ?? null,
+    last_active: report.activity?.lastActive ?? null,
+    approvals: report.approvals,
+    flags: report.flags.map((f) => f.text),
+  }
+  return {
+    sunny_wallet: own || { none: true, hint: 'They can create it in your sky in a few seconds; it only needs a password.' },
+    linked_wallet: watched || (linked ? { address: linked, error: 'Couldn’t read it right now.' } : null),
+  }
+}
+
 async function runTool(name: string, rawArgs: string, ctx: Ctx): Promise<unknown> {
   const cards = ctx.cards
   let args: Record<string, unknown>
@@ -278,6 +344,8 @@ async function runTool(name: string, rawArgs: string, ctx: Ctx): Promise<unknown
         return await marketOverview((args.category as 'trending') ?? 'trending')
       case 'wallet_snapshot':
         return await walletSnapshot(String(args.address ?? ''))
+      case 'my_wallet':
+        return await myWallet(ctx)
       case 'check_link': {
         const result = checkLink(String(args.url ?? ''))
         if (!('error' in result) && ctx.links.length < 2) ctx.links.push(result)
@@ -354,7 +422,7 @@ export async function reply(chatId: number, name: string, text: string, lang = '
   history.push({ role: 'user', content: text })
 
   const messages: Message[] = [{ role: 'system', content: `${PERSONA}\n\nThe user's Telegram name is ${name}.` }, ...history]
-  const ctx: Ctx = { userId: chatId, lang, cards: [], links: [], alerts: [], pocket: [] }
+  const ctx: Ctx = { userId: chatId, lang, cards: [], links: [], alerts: [], pocket: [], mine: null, wallets: [] }
   let live = false
   let nudged = false
   let raw = ''
@@ -392,7 +460,8 @@ export async function reply(chatId: number, name: string, text: string, lang = '
   const answer = plain(raw) || 'Hmm, I lost my train of thought. Try me again? ☀️'
   history.push({ role: 'assistant', content: answer })
   histories.set(chatId, history.slice(-HISTORY_TURNS * 2))
-  return { text: answer, cards: ctx.cards, links: ctx.links, alerts: ctx.alerts, pocket: ctx.pocket, live }
+  const { cards, links, alerts, pocket, mine, wallets } = ctx
+  return { text: answer, cards, links, alerts, pocket, mine, wallets, live }
 }
 
 export function forget(chatId: number) {
