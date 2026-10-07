@@ -16,6 +16,7 @@ import { SOLANA_DEVNET_CAIP2, toFacilitatorSvmSigner } from '@x402/svm'
 import { registerExactSvmScheme as registerClientScheme } from '@x402/svm/exact/client'
 import { registerExactSvmScheme as registerFacilitatorScheme } from '@x402/svm/exact/facilitator'
 import { deepReport, type DeepReport } from './deepscan.js'
+import { accountKind } from './inspect.js'
 import { agentDraw, agentFor, ensureAta, explorerTx, feePayer, isSolanaAddress, USD, usdcMint } from './solana.js'
 
 // Sunny's deep scan is a real x402 API (protocol v2, "exact" scheme on Solana devnet).
@@ -77,10 +78,26 @@ function reply(res: ServerResponse, status: number, body: unknown, headers: Reco
   res.end(JSON.stringify(body))
 }
 
+/** CORS preflight, so browser clients on other sites can pay too. */
+export function deepScanPreflight(res: ServerResponse) {
+  res.writeHead(204, {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET, OPTIONS',
+    'Access-Control-Allow-Headers': 'PAYMENT-SIGNATURE, Content-Type',
+    'Access-Control-Expose-Headers': EXPOSE,
+    'Access-Control-Max-Age': '86400',
+  })
+  res.end()
+}
+
 /** GET /api/x402/deep-scan?mint=… — 402 with the price, or the report once paid. */
 export async function deepScanRoute(req: IncomingMessage, res: ServerResponse) {
   const mint = new URL(req.url ?? '/', 'http://localhost').searchParams.get('mint') ?? ''
   if (!isSolanaAddress(mint)) return reply(res, 400, { error: 'Add ?mint=<token mint address>' })
+  // Only tokens get a price quote: a wallet address has nothing to scan.
+  if ((await accountKind(mint).catch(() => 'mint')) !== 'mint') {
+    return reply(res, 400, { error: 'That address is a wallet, not a token mint.' })
+  }
   treasuryReady ??= ensureAta(treasury().publicKey).catch((err) => {
     treasuryReady = undefined
     throw err
@@ -110,14 +127,19 @@ export async function deepScanRoute(req: IncomingMessage, res: ServerResponse) {
     return reply(res, 400, { error: 'The PAYMENT-SIGNATURE header isn’t a valid x402 payment.' })
   }
   const f = await getFacilitator()
-  const verified = await f.verify(payload, accepts)
+  // A payload that decodes but is missing parts makes the SDK throw: that's a bad request.
+  const verified = await f.verify(payload, accepts).catch(() => null)
+  if (!verified) return reply(res, 400, { error: 'The PAYMENT-SIGNATURE header isn’t a complete x402 payment.' })
   if (!verified.isValid) {
     return reply(res, 402, { error: verified.invalidMessage ?? verified.invalidReason ?? 'Payment rejected' })
   }
   // Scan first and settle after, so a failed scan never charges anyone.
   const report = await deepReport(mint)
   if (!report) return reply(res, 502, { error: 'I couldn’t scan that token right now. You weren’t charged.' })
-  const settled = await f.settle(payload, accepts)
+  const settled = await f.settle(payload, accepts).catch((err) => {
+    console.error('[sunny] x402 settle failed', err)
+    return { success: false as const, errorMessage: 'The payment didn’t settle.', errorReason: undefined }
+  })
   if (!settled.success) {
     return reply(res, 402, { error: settled.errorMessage ?? settled.errorReason ?? 'The payment didn’t settle.' })
   }
