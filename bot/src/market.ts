@@ -3,6 +3,11 @@
 // to guess numbers or compute risk itself.
 
 const JUP = 'https://lite-api.jup.ag'
+const RUGCHECK = 'https://api.rugcheck.xyz/v1'
+const FEAR_GREED = 'https://api.alternative.me/fng/?limit=1'
+// Mainnet reads (approvals). Separate from SOLANA_RPC_URL, which points at devnet for Sunny's program.
+const MAINNET_RPC = process.env.SOLANA_MAINNET_RPC_URL || 'https://api.mainnet-beta.solana.com'
+const TOKEN_PROGRAMS = ['TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA', 'TokenzQdBNbLqP5VEhdkAS6EPFLC1PeqcWDAm9m3KXz8']
 const SOL_MINT = 'So11111111111111111111111111111111111111112'
 const CACHE_MS = 30_000
 const TIMEOUT_MS = 8_000
@@ -52,7 +57,7 @@ export type TokenCard = {
 const cache = new Map<string, { at: number; data: unknown }>()
 
 async function getJson<T>(path: string): Promise<T> {
-  const url = `${JUP}${path}`
+  const url = path.startsWith('http') ? path : `${JUP}${path}`
   const hit = cache.get(url)
   if (hit && Date.now() - hit.at < CACHE_MS) return hit.data as T
   const res = await fetch(url, { signal: globalThis.AbortSignal.timeout(TIMEOUT_MS) })
@@ -127,7 +132,15 @@ export async function lookupToken(query: string) {
     exact.find((t) => t.isVerified) ??
     [...exact].sort((a, b) => (b.liquidity ?? 0) - (a.liquidity ?? 0))[0] ??
     results[0]
+  const rug = await rugcheck(pick.id)
   const card = toCard(pick)
+  // RugCheck's dangers become flags too; its softer warnings go to the model as context.
+  for (const r of rug?.risks ?? []) {
+    if (r.level === 'danger' && !card.flags.some((f) => f.text.startsWith(`RugCheck: ${r.name}`))) {
+      card.flags.push({ level: 'high', text: `RugCheck: ${r.name}` })
+    }
+  }
+  card.risk = riskOf(card.flags)
   const v24 = (pick.stats24h?.buyVolume ?? 0) + (pick.stats24h?.sellVolume ?? 0)
 
   return {
@@ -142,20 +155,53 @@ export async function lookupToken(query: string) {
       age_days: ageDays(pick),
       organic_trading: pick.organicScoreLabel ?? 'unknown',
       tags: (pick.tags ?? []).slice(0, 6),
+      rugcheck: rug
+        ? {
+            score_out_of_10: rug.score_normalised ?? null,
+            lp_locked_pct: round(rug.lpLockedPct, 0),
+            risks: (rug.risks ?? []).map((r) => `${r.name} (${r.level})`),
+          }
+        : 'unavailable',
     },
   }
+}
+
+type RugReport = { score_normalised?: number; lpLockedPct?: number; risks?: { name: string; level: string }[] }
+
+/** RugCheck's free summary report: a second opinion on a token's risks. */
+async function rugcheck(mint: string): Promise<RugReport | null> {
+  try {
+    return await getJson<RugReport>(`${RUGCHECK}/tokens/${mint}/report/summary`)
+  } catch {
+    return null
+  }
+}
+
+/** Live USD prices for many mints at once (used by price alerts). */
+export async function currentPrices(mints: string[]): Promise<Record<string, number>> {
+  const out: Record<string, number> = {}
+  for (let i = 0; i < mints.length; i += 50) {
+    const chunk = mints.slice(i, i + 50)
+    const data = await getJson<Record<string, { usdPrice: number }>>(`/price/v3?ids=${chunk.join(',')}`)
+    for (const [mint, v] of Object.entries(data)) if (v?.usdPrice) out[mint] = v.usdPrice
+  }
+  return out
 }
 
 const CATEGORIES = { trending: 'toptrending', top_traded: 'toptraded', top_organic: 'toporganicscore' } as const
 
 /** SOL's price plus the top tokens on Solana right now. */
 export async function marketOverview(category: keyof typeof CATEGORIES = 'trending') {
-  const [sol, tokens] = await Promise.all([
+  const [sol, tokens, mood] = await Promise.all([
     getJson<Record<string, { usdPrice: number; priceChange24h?: number }>>(`/price/v3?ids=${SOL_MINT}`),
     getJson<JupToken[]>(`/tokens/v2/${CATEGORIES[category] ?? 'toptrending'}/24h?limit=8`),
+    getJson<{ data: { value: string; value_classification: string }[] }>(FEAR_GREED).catch(() => null),
   ])
   return {
     sol: { price: price(sol[SOL_MINT]?.usdPrice), change_24h_pct: round(sol[SOL_MINT]?.priceChange24h, 1) },
+    fear_greed: mood?.data?.[0]
+      ? { value: Number(mood.data[0].value), label: mood.data[0].value_classification, source: 'alternative.me (crypto-wide)' }
+      : 'unavailable',
     category,
     tokens: tokens.slice(0, 8).map((t) => ({
       symbol: t.symbol,
@@ -198,6 +244,7 @@ export async function walletSnapshot(address: string) {
     }))
     .sort((a, b) => b.value_usd - a.value_usd)
 
+  const approvals = await tokenApprovals(address, symbol).catch(() => null)
   const total = solValue + tokens.reduce((s, t) => s + t.value_usd, 0)
   const biggest = Math.max(solValue, tokens[0]?.value_usd ?? 0)
   return {
@@ -206,5 +253,40 @@ export async function walletSnapshot(address: string) {
     token_count: tokens.length,
     total_value_usd: round(total, 2),
     largest_position_pct: total > 0 ? round((biggest / total) * 100, 0) : null,
+    // Delegations let another program move these tokens without asking again.
+    token_approvals: approvals ?? 'unavailable',
   }
+}
+
+type ParsedAccount = {
+  account: { data: { parsed: { info: { mint: string; delegate?: string; delegatedAmount?: { uiAmount?: number } } } } }
+}
+
+/** Token accounts where the owner has approved someone else to spend (a classic drain risk). */
+async function tokenApprovals(address: string, symbol: Map<string, string>) {
+  const found: { token: string; approved_to: string; amount: number | null }[] = []
+  for (const programId of TOKEN_PROGRAMS) {
+    const res = await fetch(MAINNET_RPC, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'getTokenAccountsByOwner',
+        params: [address, { programId }, { encoding: 'jsonParsed' }],
+      }),
+      signal: globalThis.AbortSignal.timeout(TIMEOUT_MS),
+    })
+    const body = (await res.json()) as { result?: { value: ParsedAccount[] } }
+    for (const a of body.result?.value ?? []) {
+      const info = a.account.data.parsed.info
+      if (!info.delegate) continue
+      found.push({
+        token: symbol.get(info.mint) ?? `${info.mint.slice(0, 4)}…`,
+        approved_to: `${info.delegate.slice(0, 4)}…${info.delegate.slice(-4)}`,
+        amount: info.delegatedAmount?.uiAmount ?? null,
+      })
+    }
+  }
+  return { count: found.length, items: found.slice(0, 6) }
 }

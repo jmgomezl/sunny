@@ -17,7 +17,7 @@ const GUEST_PER_HOUR = 12
 const IP_PER_HOUR = 30
 const GUESTS_PER_DAY = 400
 
-type Person = { id: number; name: string; guest: boolean }
+type Person = { id: number; name: string; lang: string; guest: boolean }
 
 class ApiError extends Error {
   constructor(
@@ -29,7 +29,7 @@ class ApiError extends Error {
 }
 
 /** Verifies Telegram Mini App initData and returns the user, or null if it isn't genuine. */
-export function verifyInitData(initData: string, botToken: string): { id: number; name: string } | null {
+export function verifyInitData(initData: string, botToken: string): { id: number; name: string; lang: string } | null {
   const params = new URLSearchParams(initData)
   const hash = params.get('hash')
   if (!hash) return null
@@ -54,7 +54,7 @@ export function verifyInitData(initData: string, botToken: string): { id: number
   try {
     const user = JSON.parse(params.get('user') ?? '')
     if (typeof user?.id !== 'number') return null
-    return { id: user.id, name: String(user.first_name || 'friend') }
+    return { id: user.id, name: String(user.first_name || 'friend'), lang: String(user.language_code || 'en') }
   } catch {
     return null
   }
@@ -78,7 +78,7 @@ function identify(body: Record<string, unknown>, botToken: string, ip: string): 
   }
   // Negative ids keep guest memories apart from real Telegram users.
   const id = -parseInt(createHash('sha256').update(guestId).digest('hex').slice(0, 12), 16)
-  return { id, name: 'friend', guest: true }
+  return { id, name: 'friend', lang: 'en', guest: true }
 }
 
 async function readJson(req: IncomingMessage): Promise<Record<string, unknown>> {
@@ -112,8 +112,15 @@ async function chat(req: IncomingMessage, res: ServerResponse, botToken: string)
 
   const ip = String(req.headers['x-real-ip'] ?? req.socket.remoteAddress ?? 'unknown')
   const person = identify(body, botToken, ip)
-  const answer = await reply(person.id, person.name, message)
-  send(res, 200, { reply: answer.text, cards: answer.cards, live: answer.live, guest: person.guest })
+  const answer = await reply(person.id, person.name, message, person.lang)
+  send(res, 200, {
+    reply: answer.text,
+    cards: answer.cards,
+    links: answer.links,
+    alerts: answer.alerts,
+    live: answer.live,
+    guest: person.guest,
+  })
 }
 
 export function startApi(port: number, botToken: string) {

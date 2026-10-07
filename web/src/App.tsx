@@ -341,10 +341,22 @@ export default function App() {
     setChatPending(true)
     setDozing(false)
     try {
-      const { reply, cards, live } = await askSunny(text)
-      setChat((prev) => [...prev, { ...sunnySays(reply), cards, live }])
+      const { reply, cards, links, alerts, live } = await askSunny(text)
+      setChat((prev) => [...prev, { ...sunnySays(reply), cards, links, alerts, live }])
       const risky = cards.find((c) => c.risk !== 'low')
-      if (risky) {
+      const scam = links.find((l) => l.verdict === 'known_scam' || l.verdict === 'suspicious')
+      if (scam) {
+        play({ reaction: 'alarm', haptic: 'warning', ms: 1800, bond: 1 })
+        setStatusOverride({
+          tone: 'warn',
+          text: `${scam.verdict === 'known_scam' ? 'Scam site' : 'Suspicious link'} · ${scam.domain}`,
+        })
+        later(() => setStatusOverride(null), 8000)
+      } else if (alerts.length) {
+        play({ reaction: 'giggle', particles: ['sparkle', 6], haptic: 'success', ms: 1100, bond: 2 })
+        setStatusOverride({ tone: 'ok', text: `Watching ${alerts[0].symbol} · alert set` })
+        later(() => setStatusOverride(null), 8000)
+      } else if (risky) {
         play({ reaction: 'alarm', haptic: 'warning', ms: 1600, bond: 1 })
         setStatusOverride({
           tone: 'warn',

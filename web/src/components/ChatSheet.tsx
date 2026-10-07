@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
 import { SolanaMark, SunMark } from './Icons'
-import type { TokenCard } from '../lib/chat'
+import type { AlertCard, LinkCheck, TokenCard } from '../lib/chat'
 
 export type ChatMessage = {
   id: number
@@ -9,6 +9,8 @@ export type ChatMessage = {
   text: string
   error?: boolean
   cards?: TokenCard[]
+  links?: LinkCheck[]
+  alerts?: AlertCard[]
   live?: boolean
 }
 
@@ -119,6 +121,12 @@ export function ChatSheet({ open, messages, pending, suggestions, sameAsTelegram
                   )}
                   <div className="chat-body">
                     <p>{m.text}</p>
+                    {m.links?.map((l) => (
+                      <LinkCardView key={l.domain} link={l} />
+                    ))}
+                    {m.alerts?.map((a) => (
+                      <AlertCardView key={`${a.symbol}-${a.triggerPrice}`} alert={a} />
+                    ))}
                     {m.cards?.map((c) => (
                       <TokenCardView key={c.mint} card={c} />
                     ))}
@@ -258,6 +266,59 @@ function TokenCardView({ card }: { card: TokenCard }) {
       >
         <SolanaMark size={11} /> {card.mint.slice(0, 4)}…{card.mint.slice(-4)}
       </a>
+    </div>
+  )
+}
+
+const VERDICT = {
+  known_scam: { label: 'Known scam', icon: '⛔' },
+  suspicious: { label: 'Suspicious', icon: '⚠️' },
+  official: { label: 'Official site', icon: '✅' },
+  unknown: { label: 'Not on scam lists', icon: '🔍' },
+} as const
+
+/** Verdict on a link the user asked about (phishing lists + impersonation checks). */
+function LinkCardView({ link }: { link: LinkCheck }) {
+  const v = VERDICT[link.verdict]
+  return (
+    <div className={`link-card link-card--${link.verdict}`}>
+      <div className="link-card-top">
+        <span className="link-card-icon" aria-hidden="true">
+          {v.icon}
+        </span>
+        <div>
+          <strong>{v.label}</strong>
+          <code>{link.domain}</code>
+        </div>
+      </div>
+      <ul>
+        {link.reasons.slice(0, 3).map((r) => (
+          <li key={r}>{r}</li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
+/** Confirmation of a price alert Sunny will watch and message about in Telegram. */
+function AlertCardView({ alert }: { alert: AlertCard }) {
+  const what =
+    alert.percent !== null
+      ? `${alert.direction === 'drop' ? 'Drops' : 'Rises'} ${alert.percent}%`
+      : `${alert.direction === 'drop' ? 'Falls to' : 'Reaches'} ${formatUsd(alert.triggerPrice)}`
+  return (
+    <div className="alert-card">
+      <span className="alert-card-bell" aria-hidden="true">
+        🔔
+      </span>
+      <div>
+        <strong>
+          Watching {alert.symbol} · {what}
+        </strong>
+        <small>
+          Now {formatUsd(alert.basePrice)} → alert at {formatUsd(alert.triggerPrice)}. I’ll message you in Telegram.
+        </small>
+      </div>
     </div>
   )
 }

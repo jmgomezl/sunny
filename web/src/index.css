@@ -2665,3 +2665,84 @@ ul {
 .sunny--r-alarm .sunny-react {
   animation: shake 0.12s linear 8;
 }
+
+/* Link verdicts and alert confirmations in the chat. */
+.link-card,
+.alert-card {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 18px;
+  background: var(--card);
+  border: 1px solid var(--card-edge);
+  box-shadow: 0 8px 20px -14px rgba(90, 50, 20, 0.45);
+}
+
+.link-card-top,
+.alert-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.alert-card {
+  border-color: color-mix(in oklab, var(--sol-green) 45%, var(--card-edge));
+}
+
+.link-card-icon,
+.alert-card-bell {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  font-size: 16px;
+  background: color-mix(in oklab, var(--card-edge) 70%, transparent);
+}
+
+.link-card strong,
+.alert-card strong {
+  display: block;
+  font-size: 14.5px;
+  font-weight: 800;
+}
+
+.link-card code {
+  font: 600 12px/1.3 ui-monospace, 'SF Mono', Menlo, monospace;
+  color: var(--ink-soft);
+  overflow-wrap: anywhere;
+}
+
+.alert-card small {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-faint);
+}
+
+.link-card ul {
+  display: grid;
+  gap: 4px;
+  font-size: 12.5px;
+  line-height: 1.35;
+  color: var(--ink-soft);
+}
+
+.link-card--known_scam {
+  border-color: color-mix(in oklab, var(--coral) 70%, var(--card-edge));
+  background: color-mix(in oklab, var(--coral) 9%, var(--card));
+}
+
+.link-card--known_scam strong {
+  color: var(--warn);
+}
+
+.link-card--suspicious {
+  border-color: color-mix(in oklab, var(--honey-deep) 55%, var(--card-edge));
+}
+
+.link-card--official strong {
+  color: var(--ok);
+}

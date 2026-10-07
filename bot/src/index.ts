@@ -3,7 +3,9 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { Bot, GrammyError, HttpError, InlineKeyboard, InputFile } from 'grammy'
 import { startApi } from './api.js'
+import { startAlertChecker } from './alerts.js'
 import { forget, hasBrain, reply } from './brain.js'
+import { startScamLists } from './scams.js'
 import { allow, HOUR } from './limits.js'
 
 const token = process.env.TELEGRAM_BOT_TOKEN
@@ -70,8 +72,9 @@ bot.command('help', (ctx) =>
     'Here’s what I can do ☀️\n\n' +
       '• Chat with me about Solana, wallets and staying safe\n' +
       '• /home opens my sky: your wallet’s weather, the tokens I watch and my pocket money\n\n' +
-      'Arriving this week: /check token safety reports, /watch price alerts, and /pocket and /freeze, ' +
-      'my on-chain allowance.',
+      '• Ask me if a token is safe, how the market is, or paste a link and I’ll check it for scams\n' +
+      '• /watch BONK 10% and I’ll message you if it drops 10%\n\n' +
+      'Arriving this week: /pocket and /freeze, my on-chain allowance.',
   ),
 )
 
@@ -79,7 +82,13 @@ const comingSoon = (what: string) =>
   `${what} is arriving this week ☀️ I’m learning to do it safely first. For now, ask me anything, or open my sky.`
 
 bot.command('check', (ctx) => ctx.reply(comingSoon('Token safety checks'), { reply_markup: openSky() }))
-bot.command('watch', (ctx) => ctx.reply(comingSoon('Price alerts'), { reply_markup: openSky() }))
+bot.command('watch', async (ctx) => {
+  if (!HAS_BRAIN || !allowed(ctx.from!.id)) return ctx.reply('Tell me later which token to watch ☀️')
+  const ask = ctx.match ? `Watch ${ctx.match}` : 'Which price alerts do I have?'
+  await ctx.replyWithChatAction('typing')
+  const answer = await reply(ctx.chat.id, ctx.from!.first_name, ask, ctx.from!.language_code)
+  await ctx.reply(answer.text)
+})
 bot.command('pocket', (ctx) =>
   ctx.reply(
     'My pocket money is a small daily allowance you give me on Solana. A program on-chain enforces the limit, ' +
@@ -106,7 +115,7 @@ bot.on('message:text', async (ctx) => {
   }
   await ctx.replyWithChatAction('typing')
   try {
-    const answer = await reply(ctx.chat.id, ctx.from.first_name, ctx.message.text)
+    const answer = await reply(ctx.chat.id, ctx.from.first_name, ctx.message.text, ctx.from.language_code)
     await ctx.reply(answer.live ? `${answer.text}\n\n📡 Live from Jupiter` : answer.text)
   } catch (err) {
     console.error('[sunny] brain error', err)
@@ -124,6 +133,7 @@ bot.catch((err) => {
 })
 
 async function main() {
+  startScamLists()
   startApi(API_PORT, token!)
   if (!POLLING) {
     console.log('[sunny] BOT_POLLING=off: API only')
@@ -131,6 +141,8 @@ async function main() {
   }
   await bot.api.setMyCommands(COMMANDS)
   await bot.api.setChatMenuButton({ menu_button: { type: 'web_app', text: 'Sunny ☀️', web_app: { url: MINI_APP_URL } } })
+  // Price alerts message people in Telegram, with a button back to Sunny's sky.
+  startAlertChecker((userId, text) => bot.api.sendMessage(userId, text, { reply_markup: openSky() }))
   const me = await bot.api.getMe()
   console.log(`[sunny] @${me.username} is awake; Mini App at ${MINI_APP_URL}; free chat ${HAS_BRAIN ? 'on' : 'off'}`)
   await bot.start({ drop_pending_updates: true, allowed_updates: ['message'] })

@@ -8,3 +8,4 @@ test-ledger
 .anchor
 .DS_Store
 *.log
+data/

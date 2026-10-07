@@ -15,7 +15,30 @@ export type TokenCard = {
   flags: TokenFlag[]
 }
 
-export type ChatReply = { reply: string; cards: TokenCard[]; live: boolean; guest: boolean }
+/** Result of checking a link against phishing lists. */
+export type LinkCheck = {
+  domain: string
+  verdict: 'known_scam' | 'suspicious' | 'official' | 'unknown'
+  reasons: string[]
+}
+
+/** A price alert Sunny just set. */
+export type AlertCard = {
+  symbol: string
+  direction: 'drop' | 'rise'
+  percent: number | null
+  basePrice: number
+  triggerPrice: number
+}
+
+export type ChatReply = {
+  reply: string
+  cards: TokenCard[]
+  links: LinkCheck[]
+  alerts: AlertCard[]
+  live: boolean
+  guest: boolean
+}
 
 const FALLBACK_ERROR = 'My thoughts got cloudy for a second. Try me again? ☁️'
 
@@ -52,5 +75,12 @@ export async function askSunny(message: string): Promise<ChatReply> {
   }
   const data = (await res.json().catch(() => ({}))) as Partial<ChatReply> & { error?: string }
   if (!res.ok || !data.reply) throw new Error(data.error || FALLBACK_ERROR)
-  return { reply: data.reply, cards: data.cards ?? [], live: Boolean(data.live), guest: Boolean(data.guest) }
+  return {
+    reply: data.reply,
+    cards: data.cards ?? [],
+    links: data.links ?? [],
+    alerts: data.alerts ?? [],
+    live: Boolean(data.live),
+    guest: Boolean(data.guest),
+  }
 }
