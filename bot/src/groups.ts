@@ -5,6 +5,7 @@ import type { Message, MessageEntity } from 'grammy/types'
 import { allow, HOUR } from './limits.js'
 import { lookupToken } from './market.js'
 import { checkLink } from './scams.js'
+import { checkBlink, looksLikeBlink, probeAccount } from './blink.js'
 
 // Sunny as a group guardian. In a group it stays quiet and only speaks up when someone
 // posts a known phishing link, a suspicious look-alike or bait page, or a token with
@@ -77,6 +78,14 @@ export function addressesIn(text: string): string[] {
 async function warningsFor(msg: Message): Promise<{ key: string; text: string }[]> {
   const found: { key: string; text: string }[] = []
   for (const link of linksIn(msg)) {
+    // A Blink is read for drainer patterns (no wallet to simulate with in a group).
+    if (await looksLikeBlink(link)) {
+      const blink = await checkBlink(link, null, probeAccount()).catch(() => null)
+      if (blink?.verdict === 'danger') {
+        found.push({ key: blink.host, text: `🚨 Don’t sign this Blink (${blink.host}). ${blink.summary.replace(/^Don’t sign\. /, '')}` })
+        continue
+      }
+    }
     const r = checkLink(link)
     if ('error' in r) continue
     if (r.verdict === 'known_scam') {

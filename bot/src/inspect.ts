@@ -1,8 +1,7 @@
 import { lookupToken, MAINNET_RPC } from './market.js'
 import { checkLink, type LinkCheck } from './scams.js'
 import { isAddress, walletReport, type WalletReport } from './wallet.js'
-import { checkBlink, looksLikeBlink, type BlinkReport } from './blink.js'
-import { feePayer, hasChain } from './solana.js'
+import { checkBlink, looksLikeBlink, probeAccount, type BlinkReport } from './blink.js'
 
 // "Scan or paste anything": works out whether the input is a token, a wallet or a link
 // (including Solana Pay QR codes and Solscan/Explorer links) and returns the right report.
@@ -39,12 +38,6 @@ async function accountKind(address: string): Promise<'mint' | 'wallet'> {
   return value && TOKEN_PROGRAMS.has(value.owner) && value.data?.parsed?.type === 'mint' ? 'mint' : 'wallet'
 }
 
-/**
- * Without a wallet of yours to simulate with, a Blink is still read using a stand-in address
- * (Sunny's fee wallet, which holds nothing on mainnet).
- */
-const PROBE = () => (hasChain() ? feePayer().publicKey.toBase58() : '11111111111111111111111111111112')
-
 /** `watched` is a wallet you watch: Blinks are simulated against its real balances. */
 export async function inspect(input: string, watched: string | null = null): Promise<Inspection> {
   const text = input.trim()
@@ -57,7 +50,7 @@ export async function inspect(input: string, watched: string | null = null): Pro
   }
 
   if (/^solana-action:/i.test(text) || ((/^https?:\/\//i.test(text) || /\./.test(text)) && (await looksLikeBlink(text)))) {
-    const report = await checkBlink(text, watched, PROBE()).catch(() => null)
+    const report = await checkBlink(text, watched, probeAccount()).catch(() => null)
     if (report) return { kind: 'blink', report }
   }
 

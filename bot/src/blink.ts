@@ -9,6 +9,7 @@ import {
 import { MAINNET_RPC, SOL_MINT_ADDRESS } from './market.js'
 import { checkLink, type LinkCheck } from './scams.js'
 import { tokenInfo } from './wallet.js'
+import { feePayer, hasChain } from './solana.js'
 
 // "Should I sign this?" A Blink (Solana Action) is a link that asks your wallet to sign a
 // transaction. Sunny opens it the way a wallet would: it finds the Action behind the link,
@@ -42,6 +43,12 @@ const json = async <T>(url: string, init?: RequestInit) => {
   const body = (await res.json().catch(() => null)) as T | null
   return { ok: res.ok, status: res.status, body }
 }
+
+/**
+ * Without a wallet of yours to simulate with, a Blink is still read using a stand-in address:
+ * Sunny's fee wallet, which holds nothing on mainnet.
+ */
+export const probeAccount = () => (hasChain() ? feePayer().publicKey.toBase58() : '11111111111111111111111111111112')
 
 // ── Finding the Action behind a link ─────────────────────────────────────────
 

@@ -148,6 +148,7 @@ async function chat(req: IncomingMessage, res: ServerResponse, botToken: string)
     mine: answer.mine,
     wallets: answer.wallets,
     scans: answer.scans,
+    blinks: answer.blinks,
     watchChanged: answer.watchChanged,
     live: answer.live,
     guest: person.guest,
