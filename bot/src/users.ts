@@ -17,6 +17,8 @@ type UserState = {
   wallets: string[]
   activity: ActivityItem[]
   seenAt: string
+  /** Security alerts from the news desk; on unless the person turns them off. */
+  newsAlerts?: boolean
   /** Before multiple watched wallets there was just one; migrated on first read. */
   wallet?: string | null
   linkedAt?: string | null
@@ -92,6 +94,23 @@ export function unwatchWallet(id: number, address: string) {
 export function unwatchAll(id: number) {
   get(id).wallets = []
   scheduleSave()
+}
+
+export const newsAlertsOn = (id: number) => get(id).newsAlerts !== false
+
+export function setNewsAlerts(id: number, on: boolean) {
+  get(id).newsAlerts = on
+  scheduleSave()
+}
+
+/** Telegram people (positive ids) active in the last 30 days who haven't turned news alerts off. */
+export function newsSubscribers() {
+  load()
+  const since = Date.now() - 30 * 86_400_000
+  // Read directly: get() would mark everyone as just seen.
+  return Object.entries(users)
+    .filter(([id, u]) => Number(id) > 0 && u.newsAlerts !== false && Date.parse(u.seenAt) >= since)
+    .map(([id]) => Number(id))
 }
 
 export function logActivity(id: number, kind: ActivityKind, text: string, meta: string) {

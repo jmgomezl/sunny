@@ -7,6 +7,8 @@ import { startAlertChecker } from './alerts.js'
 import { forget, hasBrain, reply } from './brain.js'
 import { startScamLists } from './scams.js'
 import { allow, HOUR } from './limits.js'
+import { ago, KIND_ICON, latestNews, startNews, type NewsItem } from './news.js'
+import { newsSubscribers, setNewsAlerts } from './users.js'
 
 const token = process.env.TELEGRAM_BOT_TOKEN
 if (!token) throw new Error('TELEGRAM_BOT_TOKEN is missing; add it to .env')
@@ -33,6 +35,7 @@ const COMMANDS = [
   { command: 'home', description: 'Open Sunny’s sky' },
   { command: 'check', description: 'Is this token safe?' },
   { command: 'watch', description: 'Watch a token for me' },
+  { command: 'news', description: 'What’s happening on Solana' },
   { command: 'pocket', description: 'My pocket money' },
   { command: 'freeze', description: 'Freeze my pocket money' },
   { command: 'help', description: 'What can Sunny do?' },
@@ -75,7 +78,8 @@ bot.command('help', (ctx) =>
       '• /home opens my sky: your Sunny wallet, my pocket money and the wallets I watch\n' +
       '• /check BONK and I’ll tell you how risky a token is, or paste a link and I’ll check it for scams\n' +
       '• /watch BONK 10% and I’ll message you if it drops 10%\n' +
-      '• /pocket shows my allowance; /freeze stops me from spending anything',
+      '• /pocket shows my allowance; /freeze stops me from spending anything\n' +
+      '• /news shows what’s happening on Solana. I warn you here about hacks and scams (/news off to stop)',
   ),
 )
 
@@ -104,6 +108,43 @@ bot.command('check', async (ctx) => {
   await askBrain(ctx, `Is ${ctx.match} safe?`)
 })
 bot.command('watch', (ctx) => askBrain(ctx, ctx.match ? `Watch ${ctx.match}` : 'Which price alerts do I have?'))
+const NOT_ADVICE = 'From public sources. It’s news, not financial advice: I’m not an investment advisor.'
+
+bot.command('news', async (ctx) => {
+  const arg = ctx.match.trim().toLowerCase()
+  if (arg === 'off' || arg === 'on') {
+    setNewsAlerts(ctx.from!.id, arg === 'on')
+    return ctx.reply(
+      arg === 'on'
+        ? 'Got it! I’ll warn you here when a Solana hack, exploit or scam hits the news 🚨'
+        : 'Okay, no more security alerts from me. /news on brings them back ☀️',
+    )
+  }
+  const latest = latestNews('all', 6)
+  if (!latest.length) return ctx.reply('My news desk is still waking up ☀️ Try again in a minute.')
+  const lines = latest.map((it) => `${KIND_ICON[it.kind]} ${it.title}\n${it.source} · ${ago(it.at)}\n${it.link}`)
+  await ctx.reply(`Here’s what’s happening on Solana ☀️\n\n${lines.join('\n\n')}\n\n${NOT_ADVICE}\n/news off stops security alerts.`, {
+    link_preview_options: { is_disabled: true },
+  })
+})
+
+/** Warns everyone who hasn't opted out about a fresh Solana hack, exploit or scam. */
+async function broadcastAlert(item: NewsItem) {
+  const text =
+    `🚨 Heads up from Sunny\n${item.title}\n${item.source} · ${ago(item.at)}\n${item.link}\n\n` +
+    'If you’ve used it: don’t sign anything new from it, and check your token approvals. Ask me if you’re unsure ☀️\n' +
+    '(/news off stops these alerts)'
+  const people = newsSubscribers()
+  console.log(`[sunny] security alert to ${people.length} people: ${item.title}`)
+  for (const id of people) {
+    await bot.api.sendMessage(id, text).catch((err) => {
+      // Blocked the bot or never chatted with it: stop trying.
+      if (err instanceof GrammyError && (err.error_code === 403 || err.error_code === 400)) setNewsAlerts(id, false)
+    })
+    await new Promise((r) => setTimeout(r, 60))
+  }
+}
+
 bot.command('pocket', (ctx) => askBrain(ctx, 'How is my pocket money?'))
 // Freezing is signed by the owner's own key, which only lives on their phone, so it happens in the sky.
 bot.command('freeze', (ctx) =>
@@ -127,6 +168,8 @@ bot.catch((err) => {
 
 async function main() {
   startScamLists()
+  // Security alerts go out only from the live bot, never from a local API-only run.
+  startNews(POLLING ? broadcastAlert : undefined)
   startApi(API_PORT, token!)
   if (!POLLING) {
     console.log('[sunny] BOT_POLLING=off: API only')
