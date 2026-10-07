@@ -5,6 +5,12 @@ const windows = new Map<string, number[]>()
 export const HOUR = 60 * 60 * 1000
 export const DAY = 24 * HOUR
 
+/** How many hits `key` has within `windowMs`, without recording one. */
+export function hits(key: string, windowMs: number) {
+  const now = Date.now()
+  return (windows.get(key) ?? []).filter((t) => now - t < windowMs).length
+}
+
 /** Records a hit for `key` and returns false once `max` hits fall within `windowMs`. */
 export function allow(key: string, max: number, windowMs: number): boolean {
   const now = Date.now()
