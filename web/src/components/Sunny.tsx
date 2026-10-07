@@ -12,6 +12,7 @@ const INK = '#3A2114'
 const BLUSH = '#FF7C8C'
 // A soft warm edge that keeps hands and feet readable against the rays.
 const LIMB_EDGE = '#D9761F'
+const SHOE_EDGE = '#B9A288'
 
 // Soft "flame petal" rays, pointing up; rotated around the body.
 const LONG_RAY = 'M -12 -56 C -15 -74 -7 -90 0 -98 C 7 -90 15 -74 12 -56 Z'
@@ -306,6 +307,17 @@ export function Sunny({ mood, reaction = null, frozen = false, dozing = false, s
                       <stop offset="0" stopColor="#FFD066" />
                       <stop offset="1" stopColor="#F59A33" />
                     </radialGradient>
+                    {/* Sunny's little outfit: Solana sneakers and sweatbands. */}
+                    <linearGradient id={ref('sol')} x1="0" y1="0" x2="1" y2="0">
+                      <stop offset="0" stopColor="#9945FF" />
+                      <stop offset="0.55" stopColor="#43B4CA" />
+                      <stop offset="1" stopColor="#14F195" />
+                    </linearGradient>
+                    <radialGradient id={ref('shoe')} cx="40%" cy="25%" r="80%">
+                      <stop offset="0" stopColor="#FFFFFF" />
+                      <stop offset="0.6" stopColor="#FBF6EE" />
+                      <stop offset="1" stopColor="#E9DFD1" />
+                    </radialGradient>
                     <radialGradient id={ref('mitten')} cx="38%" cy="30%" r="75%">
                       <stop offset="0" stopColor="#FFF0C2" />
                       <stop offset="0.45" stopColor="#FFCF62" />
@@ -374,10 +386,10 @@ export function Sunny({ mood, reaction = null, frozen = false, dozing = false, s
                   <Arm side="l" url={url} />
                   <Arm side="r" url={url} />
 
-                  {/* Bean feet peeking out from under the body, like a plush toy sitting down. */}
+                  {/* Feet in little sneakers, peeking out from under the body like a plush toy sitting down. */}
                   <g className="sunny-feet">
-                    <Foot side="l" url={url} />
-                    <Foot side="r" url={url} />
+                    <Foot side="l" url={url} id={ref} />
+                    <Foot side="r" url={url} id={ref} />
                   </g>
 
                   <circle r="62" fill={url('body')} />
@@ -458,6 +470,13 @@ function Arm({ side, url }: LimbProps) {
     <g className={`sunny-arm sunny-arm--${side}`}>
       <path d={arm} fill="none" stroke={LIMB_EDGE} strokeOpacity="0.5" strokeWidth="15" strokeLinecap="round" />
       <path d={arm} fill="none" stroke={url('arm')} strokeWidth="12.4" strokeLinecap="round" />
+      <path
+        className="sunny-band"
+        d={`M ${64.6 * k} 26.4 L ${69 * k} 30.6`}
+        stroke={url('sol')}
+        strokeWidth="14.6"
+        strokeLinecap="butt"
+      />
       <ellipse
         cx={68 * k}
         cy="35"
@@ -485,23 +504,42 @@ function Arm({ side, url }: LimbProps) {
   )
 }
 
-/** A bean-shaped foot, its top tucked under the body so only the toes and sole show. */
-function Foot({ side, url }: LimbProps) {
+// Three slanted bars, like the Solana logo, for the side of each sneaker.
+const STRIPES = [0, 1, 2]
+
+/**
+ * A foot in a little sneaker: cream upper, Solana sole and three Solana stripes. Its top
+ * is tucked under the body, so only the toe, the side and the sole show.
+ */
+function Foot({ side, url, id }: LimbProps & { id: (name: string) => string }) {
   const k = side === 'l' ? -1 : 1
+  const cx = 24 * k
+  const turn = `rotate(${12 * k} ${cx} 65)`
+  const shoe = <ellipse cx={cx} cy="65" rx="15.5" ry="10" transform={turn} />
   return (
     <g className={`sunny-foot sunny-foot--${side}`}>
-      <ellipse
-        cx={24 * k}
-        cy="65"
-        rx="15.5"
-        ry="10"
-        transform={`rotate(${12 * k} ${24 * k} 65)`}
-        fill={url('mitten')}
-        stroke={LIMB_EDGE}
-        strokeOpacity="0.5"
-        strokeWidth="1.3"
-      />
-      <ellipse cx={28 * k} cy="68" rx="5.5" ry="2.4" fill="#fff" opacity="0.4" />
+      <clipPath id={id(`shoe-${side}`)}>{shoe}</clipPath>
+      <ellipse cx={cx} cy="65" rx="15.5" ry="10" transform={turn} fill={url('shoe')} />
+      <g clipPath={url(`shoe-${side}`)}>
+        <rect x={cx - 20} y="70.4" width="40" height="8" transform={turn} fill={url('sol')} />
+        <rect x={cx - 20} y="69.6" width="40" height="1.2" transform={turn} fill="#fff" opacity="0.7" />
+      </g>
+      <g transform={turn} fill={url('sol')}>
+        {STRIPES.map((i) => {
+          // Outer side of the shoe; the middle bar leans the other way, as in the logo.
+          const x = cx + 5.5 * k
+          const y = 59.6 + i * 3.1
+          const lean = i === 1 ? -1.3 : 1.3
+          return (
+            <path
+              key={i}
+              d={`M ${x - 4} ${y + 1.8} L ${x + 4} ${y + 1.8} L ${x + 4 + lean} ${y} L ${x - 4 + lean} ${y} Z`}
+            />
+          )
+        })}
+      </g>
+      <ellipse cx={cx} cy="65" rx="15.5" ry="10" transform={turn} fill="none" stroke={SHOE_EDGE} strokeWidth="1.2" />
+      <ellipse cx={(24 - 9) * k} cy="63.5" rx="4.5" ry="2.2" transform={turn} fill="#fff" opacity="0.8" />
     </g>
   )
 }
