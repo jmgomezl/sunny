@@ -18,6 +18,8 @@ type TelegramWebApp = {
   setHeaderColor?: (color: string) => void
   setBackgroundColor?: (color: string) => void
   HapticFeedback?: TelegramHaptics
+  showScanQrPopup?: (params: { text?: string }, callback?: (data: string) => boolean | void) => void
+  closeScanQrPopup?: () => void
 }
 
 declare global {

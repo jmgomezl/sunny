@@ -4,7 +4,10 @@ import { Sunny, type Gesture, type Mood, type Reaction } from './components/Sunn
 import { CloudBank, Sky } from './components/Sky'
 import { Particles, burst, type Particle, type ParticleKind } from './components/Particles'
 import { ChatSheet, type ChatMessage } from './components/ChatSheet'
+import { ScanSheet, type ScanMode } from './components/ScanSheet'
 import { askSunny, inTelegram } from './lib/chat'
+import { fetchHome, type ActivityItem, type Home, type Inspection, type WatchToken } from './lib/home'
+import type { Weather } from './components/Sky'
 import { haptic, type Haptic } from './lib/haptics'
 import {
   AlertIcon,
@@ -116,11 +119,23 @@ const ASK_SUGGESTIONS = [
   'Explain staking simply',
 ]
 
-const WATCH_SUGGESTIONS = [
-  'Watch BONK for a 10% drop',
-  'What should I watch on a new token?',
-  'Which red flags make a token risky?',
-]
+const WATCH_SUGGESTIONS = ['Watch BONK for a 10% drop', 'Watch SOL for a 15% rise', 'What alerts do I have?']
+
+const MOOD_WEATHER: Record<Mood, Weather> = {
+  happy: 'clear',
+  excited: 'golden',
+  worried: 'storm',
+  sleepy: 'night',
+  hungry: 'hazy',
+}
+
+// Late at night a calm Sunny is a sleepy Sunny.
+const isNight = () => {
+  const h = new Date().getHours()
+  return h >= 23 || h < 6
+}
+
+const short = (a: string) => `${a.slice(0, 4)}…${a.slice(-4)}`
 
 let chatIds = 1
 
@@ -149,19 +164,23 @@ function saveBond(v: number) {
   }
 }
 
+// A hello that never claims anything about the wallet; the real status line follows.
 function greeting() {
   const h = new Date().getHours()
-  if (h < 5) return 'Up late? I’m awake too. Your wallet is safe.'
-  if (h < 12) return 'Good morning! I kept watch overnight. Nothing to worry about.'
-  if (h < 19) return 'Good afternoon! Missed you. Everything is in order.'
-  return 'Good evening! Your wallet had a calm day.'
+  if (h < 5) return 'Up late? I’m awake too. ☀️'
+  if (h < 12) return 'Good morning! ☀️ I’m here.'
+  if (h < 19) return 'Good afternoon! Missed you. ☀️'
+  return 'Good evening! Nice to see you. ☀️'
 }
 
 // The mood picker is a demo tool: shown with ?demo, and keys 1–5 switch moods for recordings.
 const DEMO = new URLSearchParams(window.location.search).has('demo')
 
 export default function App() {
-  const [mood, setMood] = useState<Mood>('happy')
+  // Real data drives Sunny's mood; in ?demo mode a picked mood overrides it with sample scenes.
+  const [demoMood, setDemoMood] = useState<Mood | null>(null)
+  const [home, setHome] = useState<Home | null>(null)
+  const [scan, setScan] = useState<{ open: boolean; mode: ScanMode; input?: string }>({ open: false, mode: 'check' })
   const [reaction, setReaction] = useState<Reaction | null>(null)
   // Opens with a hello that fades back to Sunny's status line.
   const [said, setSaid] = useState<string | null>(greeting)
@@ -177,7 +196,30 @@ export default function App() {
   const [suggestions, setSuggestions] = useState<string[]>([])
   const timers = useRef<number[]>([])
   const lastTouch = useRef(0)
-  const scene = SCENES[mood]
+  const liveMood: Mood = home ? (home.mood === 'happy' && isNight() ? 'sleepy' : home.mood) : 'happy'
+  const mood: Mood = demoMood ?? liveMood
+  const demo = demoMood ? SCENES[demoMood] : null
+  const weather = MOOD_WEATHER[mood]
+
+  const refreshHome = useCallback(async (wallet?: string | null) => {
+    try {
+      const h = await fetchHome(wallet)
+      setHome(h)
+      return h
+    } catch (err) {
+      console.warn('[sunny] home failed', err)
+      return null
+    }
+  }, [])
+
+  // Load the real home screen now and keep it fresh while the app is open.
+  useEffect(() => {
+    void refreshHome()
+    const t = window.setInterval(() => {
+      if (document.visibilityState === 'visible') void refreshHome()
+    }, 90_000)
+    return () => clearInterval(t)
+  }, [refreshHome])
 
   useEffect(() => {
     const t = window.setTimeout(() => setSaid(null), 4200)
@@ -203,14 +245,16 @@ export default function App() {
   }, [])
 
   useEffect(() => {
-    document.documentElement.dataset.weather = scene.weather
-  }, [scene.weather])
+    document.documentElement.dataset.weather = weather
+  }, [weather])
 
   useEffect(() => {
+    if (!DEMO) return
     const onKey = (e: KeyboardEvent) => {
+      if ((e.target as HTMLElement | null)?.closest?.('input, textarea')) return
       const i = Number(e.key) - 1
       if (i < 0 || i >= MOODS.length) return
-      setMood(MOODS[i].mood)
+      setDemoMood(MOODS[i].mood)
       setToppedUp(false)
       setSaid(null)
     }
@@ -225,7 +269,7 @@ export default function App() {
   }
 
   const changeMood = (next: Mood) => {
-    setMood(next)
+    setDemoMood(next)
     setToppedUp(false)
     setSaid(null)
   }
@@ -278,7 +322,7 @@ export default function App() {
       ms: 1600,
       bond: 3,
     })
-    if (mood === 'hungry') later(() => setMood('happy'), 1700)
+    if (demoMood === 'hungry') later(() => setDemoMood('happy'), 1700)
   }
 
   const onFreeze = () => {
@@ -297,30 +341,67 @@ export default function App() {
     })
   }
 
-  const onSafetyCheck = () => {
-    setStatusOverride({ tone: 'info', text: 'Checking $FROG · holders, mint, liquidity…' })
-    play({ reaction: 'scan', line: 'On it. Checking $FROG’s holders, mint and liquidity…', haptic: 'light', ms: 2000 })
-    later(() => {
-      setStatusOverride(null)
-      changeMood('worried')
-      haptic('warning')
-    }, 2000)
+  const openScan = (mode: ScanMode, input?: string) => {
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+    setChatOpen(false)
+    setScan({ open: true, mode, input })
+    haptic('light')
+  }
+
+  const closeScan = useCallback(() => setScan((s) => ({ ...s, open: false, input: undefined })), [])
+
+  // Sunny reacts to whatever you scanned or pasted.
+  const onScanResult = (r: Inspection | null) => {
+    const warn = (text: string) => {
+      play({ reaction: 'alarm', haptic: 'warning', ms: 1800, bond: 1 })
+      setStatusOverride({ tone: 'warn', text })
+      later(() => setStatusOverride(null), 8000)
+    }
+    if (!r) return play({ reaction: 'blush', ms: 900 })
+    if (r.kind === 'link' && (r.link.verdict === 'known_scam' || r.link.verdict === 'suspicious')) {
+      return warn(`${r.link.verdict === 'known_scam' ? 'Scam site' : 'Suspicious link'} · ${r.link.domain}`)
+    }
+    if (r.kind === 'token' && r.found && r.card.risk !== 'low') {
+      return warn(`${r.card.risk === 'high' ? 'High' : 'Medium'} risk · $${r.card.symbol}`)
+    }
+    if (r.kind === 'wallet' && r.report.risk !== 'low') return warn(`Wallet risk · ${short(r.report.address)}`)
+    play({ reaction: 'giggle', particles: ['sparkle', 4], haptic: 'light', ms: 1000, bond: 1 })
+  }
+
+  const linkWallet = async (address: string) => {
+    closeScan()
+    setStatusOverride({ tone: 'info', text: 'Linking your wallet…' })
+    play({ reaction: 'scan', ms: 15_000 })
+    const h = await refreshHome(address)
+    setStatusOverride(null)
+    if (!h) return play({ reaction: 'blush', line: 'I couldn’t link that wallet. Try again?', ms: 1200 })
+    play({
+      reaction: 'giggle',
+      line: `Got it! I’m watching ${short(address)} now. ☀️`,
+      particles: ['heart', 6],
+      haptic: 'success',
+      ms: 1400,
+      bond: 3,
+    })
   }
 
   const sunnySays = (text: string, error = false): ChatMessage => ({ id: chatIds++, from: 'sunny', text, error })
 
-  const openChat = (topic: 'ask' | 'watch') => {
+  const openChat = (topic: 'ask' | 'watch', symbol?: string) => {
     window.scrollTo({ top: 0, behavior: 'smooth' })
+    closeScan()
     setChatOpen(true)
     haptic('light')
     if (topic === 'watch') {
       setChat((prev) => [
         ...prev,
         sunnySays(
-          'Which token should I keep an eye on, and what move matters to you? Live alerts arrive this week; until then I’ll tell you what to watch for.',
+          symbol
+            ? `How should I watch ${symbol}? Pick one or tell me your own, and I’ll message you in Telegram when it happens.`
+            : 'Which token should I keep an eye on? Tell me the move that matters, and I’ll message you in Telegram when it happens.',
         ),
       ])
-      setSuggestions(WATCH_SUGGESTIONS)
+      setSuggestions(symbol ? [`Watch ${symbol} for a 10% drop`, `Watch ${symbol} for a 20% rise`] : WATCH_SUGGESTIONS)
     } else if (chat.length === 0) {
       setChat([
         sunnySays(
@@ -353,6 +434,7 @@ export default function App() {
         })
         later(() => setStatusOverride(null), 8000)
       } else if (alerts.length) {
+        void refreshHome()
         play({ reaction: 'giggle', particles: ['sparkle', 6], haptic: 'success', ms: 1100, bond: 2 })
         setStatusOverride({ tone: 'ok', text: `Watching ${alerts[0].symbol} · alert set` })
         later(() => setStatusOverride(null), 8000)
@@ -374,24 +456,39 @@ export default function App() {
     }
   }
 
-  const line = said ?? (dozing ? DOZE_LINE : scene.line)
+  const askFromScan = (question: string) => {
+    openChat('ask')
+    void sendChat(question)
+  }
+
+  const line = said ?? (dozing ? DOZE_LINE : (demo?.line ?? home?.line ?? 'Waking up… checking the sky for you.'))
   const status: Status =
-    statusOverride ?? (frozen ? { tone: 'info', text: 'Pocket frozen · Sunny can’t spend' } : scene.status)
-  const pocketLeft = toppedUp ? POCKET_LIMIT : scene.pocketLeft
+    statusOverride ??
+    (frozen
+      ? { tone: 'info', text: 'Pocket frozen · Sunny can’t spend' }
+      : (demo?.status ?? home?.status ?? { tone: 'info', text: 'Checking the sky…' }))
+  // Pocket money goes on-chain next; until then the card shows a preview allowance.
+  const pocketLeft = toppedUp ? POCKET_LIMIT : (demo?.pocketLeft ?? 7.2)
 
   return (
-    <div className="app" data-chat={chatOpen ? 'open' : undefined}>
+    <div className="app" data-chat={chatOpen || scan.open ? 'open' : undefined}>
       <section className="stage">
-        <Sky weather={scene.weather} />
+        <Sky weather={weather} />
 
         <header className="topbar">
           <div className="brand">
             <SunMark />
             <span>Sunny</span>
           </div>
-          <button className="wallet-pill" type="button" aria-label="Connected wallet 7xKp…3fQa on Solana">
+          <button
+            className="wallet-pill"
+            type="button"
+            data-linked={home?.wallet ? 'true' : undefined}
+            onClick={() => openScan('link')}
+            aria-label={home?.wallet ? `Linked wallet ${home.wallet}. Tap to change.` : 'Link your wallet'}
+          >
             <SolanaMark size={15} />
-            7xKp…3fQa
+            {home?.wallet ? short(home.wallet) : 'Link wallet'}
           </button>
         </header>
 
@@ -446,10 +543,16 @@ export default function App() {
 
       <main className="content">
         <CareCard energy={(pocketLeft / POCKET_LIMIT) * 100} frozen={frozen} wellbeing={WELLBEING[mood]} bond={bond} />
-        <ForecastCard mood={mood} />
-        <Watchlist tokens={WATCHLIST} />
+        <ForecastCard home={home} demo={demoMood} onLink={() => openScan('link')} />
+        <Watchlist
+          tokens={demo ? WATCHLIST.map(demoToken) : (home?.tokens ?? [])}
+          linked={Boolean(home?.wallet)}
+          loading={!home && !demo}
+          onSelect={(mint) => openScan('check', mint)}
+          onAdd={() => openChat('watch')}
+        />
         <PocketCard left={pocketLeft} frozen={frozen} onTopUp={onTopUp} onFreeze={onFreeze} />
-        <ActivityCard items={ACTIVITY} />
+        <ActivityCard items={demo ? ACTIVITY.map(demoActivity) : (home?.activity ?? [])} />
         <div className="built-on">
           <SolanaMark size={14} /> Built on Solana
         </div>
@@ -469,10 +572,22 @@ export default function App() {
         onClose={closeChat}
       />
 
+      <ScanSheet
+        open={scan.open}
+        mode={scan.mode}
+        initialInput={scan.input}
+        onClose={closeScan}
+        onChecking={() => play({ reaction: 'scan', ms: 15_000 })}
+        onResult={onScanResult}
+        onLinkWallet={(a) => void linkWallet(a)}
+        onAsk={askFromScan}
+        onWatch={(symbol) => openChat('watch', symbol)}
+      />
+
       <nav className="dock" aria-label="Quick actions">
-        <button type="button" className="dock-btn" onClick={onSafetyCheck}>
+        <button type="button" className="dock-btn" onClick={() => openScan('check')}>
           <ShieldIcon />
-          <span>Safety check</span>
+          <span>Scan & check</span>
         </button>
         <button type="button" className="dock-main" onClick={() => openChat('ask')}>
           <SunMark size={24} />
@@ -587,39 +702,70 @@ function Delta({ value }: { value: number }) {
   )
 }
 
-function ForecastCard({ mood }: { mood: Mood }) {
-  const scene = SCENES[mood]
-  const [whole, cents] = usd(scene.value).split('.')
+function ago(iso: string) {
+  const min = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 60_000))
+  if (min < 1) return 'just now'
+  if (min < 60) return `${min} min`
+  if (min < 48 * 60) return `${Math.round(min / 60)} h`
+  return `${Math.round(min / 1440)} d`
+}
+
+type ForecastProps = { home: Home | null; demo: Mood | null; onLink: () => void }
+
+/** Wallet weather: the linked wallet's real value and 24h curve, or Solana today. */
+function ForecastCard({ home, demo, onLink }: ForecastProps) {
+  const scene = demo ? SCENES[demo] : null
+  const linked = Boolean(home?.wallet) || Boolean(scene)
+  const value = scene ? scene.value : home?.value
+  const change = scene ? scene.change : home?.change24h
+  const spark = scene ? scene.spark : home?.spark
+  const forecast = scene ? scene.forecast : home?.forecast
+  const risk = scene ? scene.risk : (home?.risk ?? 'Low')
+  const watching = scene ? WATCHLIST.length : (home?.tokens.length ?? 0)
+  const [whole, cents] = value != null ? usd(value).split('.') : ['—', '']
+
   return (
     <section className="card forecast">
       <div className="card-head">
-        <span className="eyebrow">Wallet weather</span>
-        <span className="forecast-tag">{scene.forecast}</span>
+        <span className="eyebrow">{linked ? 'Wallet weather' : 'Solana today'}</span>
+        {forecast && <span className="forecast-tag">{forecast}</span>}
       </div>
       <div className="forecast-value">
         <span className="big-num">
           {whole}
-          <span className="cents">.{cents}</span>
+          {cents && <span className="cents">.{cents}</span>}
         </span>
+        {!linked && <span className="forecast-sub">SOL price</span>}
       </div>
-      <Sparkline points={scene.spark} />
+      {spark && spark.length > 1 ? <Sparkline points={spark} /> : <div className="sparkline sparkline--empty" />}
       <dl className="metrics">
         <div>
           <dt>24h</dt>
-          <dd>
-            <Delta value={scene.change} />
-          </dd>
+          <dd>{change != null ? <Delta value={change} /> : '—'}</dd>
         </div>
         <div>
           <dt>Risk</dt>
-          <dd className={`risk risk--${scene.risk.toLowerCase()}`}>{scene.risk}</dd>
+          <dd className={`risk risk--${risk.toLowerCase()}`}>{risk}</dd>
         </div>
         <div>
-          <dt>Watching</dt>
-          <dd>{WATCHLIST.length} tokens</dd>
+          <dt>{linked ? 'Watching' : 'Market'}</dt>
+          <dd>
+            {linked ? `${watching} tokens` : home?.fearGreed ? `${home.fearGreed.label} ${home.fearGreed.value}` : '—'}
+          </dd>
         </div>
       </dl>
-      <p className="source">Updated 2 min ago · Prices from Jupiter</p>
+      {!linked && home && (
+        <button type="button" className="btn btn--primary forecast-link" onClick={onLink}>
+          <SolanaMark size={15} /> Link your wallet
+        </button>
+      )}
+      <p className="source">
+        {scene
+          ? 'Sample data · demo mode'
+          : home
+            ? `Updated ${ago(home.updatedAt)} · Prices from Jupiter${home.fearGreed && linked ? ` · Market mood ${home.fearGreed.label.toLowerCase()}` : ''}`
+            : 'Checking the sky…'}
+      </p>
     </section>
   )
 }
@@ -631,7 +777,7 @@ function Sparkline({ points }: { points: number[] }) {
   const lo = Math.min(...points)
   const hi = Math.max(...points)
   const mid = (lo + hi) / 2
-  const half = Math.max((hi - lo) / 2, mid * 0.12)
+  const half = Math.max((hi - lo) / 2, mid * 0.025)
   const min = mid - half
   const max = mid + half
   const xy = points.map((p, i) => [(i / (points.length - 1)) * w, h - 8 - ((p - min) / (max - min)) * (h - 18)])
@@ -663,35 +809,85 @@ function Sparkline({ points }: { points: number[] }) {
   )
 }
 
-function Watchlist({ tokens }: { tokens: Token[] }) {
+const HUES = [268, 150, 30, 20, 110, 200, 330, 45]
+const hueOf = (symbol: string) => HUES[[...symbol].reduce((a, c) => a + c.charCodeAt(0), 0) % HUES.length]
+
+function demoToken(t: Token): WatchToken {
+  return {
+    mint: t.symbol,
+    symbol: t.symbol,
+    name: t.name,
+    price: t.price,
+    change: t.change,
+    risk: t.safety === 'risky' ? 'high' : 'low',
+    held: true,
+    alert: false,
+  }
+}
+
+type WatchlistProps = {
+  tokens: WatchToken[]
+  linked: boolean
+  loading: boolean
+  onSelect: (mint: string) => void
+  onAdd: () => void
+}
+
+/** The tokens Sunny watches: what you hold plus anything you set an alert on. Tap one to check it. */
+function Watchlist({ tokens, linked, loading, onSelect, onAdd }: WatchlistProps) {
   return (
     <section className="watch">
       <div className="section-head">
-        <h2>Sunny is watching</h2>
-        <button type="button" className="ghost-btn">
-          <PlusIcon size={16} /> Add
+        <h2>{linked ? 'Sunny is watching' : 'Popular on Solana'}</h2>
+        <button type="button" className="ghost-btn" onClick={onAdd}>
+          <PlusIcon size={16} /> Alert
         </button>
       </div>
       <div className="watch-row">
+        {loading && [0, 1, 2].map((i) => <article key={i} className="token token--loading" aria-hidden="true" />)}
         {tokens.map((t) => (
-          <article key={t.symbol} className="token" data-safety={t.safety}>
+          <button
+            key={t.mint}
+            type="button"
+            className="token"
+            data-safety={t.risk === 'low' ? 'safe' : 'risky'}
+            onClick={() => onSelect(t.mint)}
+            aria-label={`${t.symbol}: tap to check`}
+          >
             <div className="token-top">
-              <span className="token-avatar" style={{ ['--h' as string]: t.hue }}>
-                {t.symbol[0]}
-              </span>
-              <span className={`token-safety token-safety--${t.safety}`}>
-                {t.safety === 'safe' ? (
+              {t.icon ? (
+                <img
+                  className="token-avatar token-avatar--img"
+                  src={t.icon}
+                  alt=""
+                  loading="lazy"
+                  referrerPolicy="no-referrer"
+                />
+              ) : (
+                <span className="token-avatar" style={{ ['--h' as string]: hueOf(t.symbol) }}>
+                  {t.symbol[0]}
+                </span>
+              )}
+              <span className={`token-safety token-safety--${t.risk === 'low' ? 'safe' : 'risky'}`}>
+                {t.risk === 'low' ? (
                   <CheckIcon size={12} strokeWidth={2.6} />
                 ) : (
                   <AlertIcon size={12} strokeWidth={2.4} />
                 )}
-                {t.safety === 'safe' ? 'Checked' : 'Risky'}
+                {t.risk === 'low' ? 'Checked' : t.risk === 'high' ? 'Risky' : 'Careful'}
               </span>
             </div>
-            <div className="token-symbol">{t.symbol}</div>
-            <div className="token-price">{formatPrice(t.price)}</div>
-            <Delta value={t.change} />
-          </article>
+            <div className="token-symbol">
+              {t.symbol}
+              {t.alert && (
+                <span className="token-bell" title="Price alert set">
+                  🔔
+                </span>
+              )}
+            </div>
+            <div className="token-price">{t.price != null ? formatPrice(t.price) : '—'}</div>
+            {t.change != null ? <Delta value={t.change} /> : <span className="delta delta--flat">• —</span>}
+          </button>
         ))}
       </div>
     </section>
@@ -786,48 +982,53 @@ function PocketCard({ left, frozen, onTopUp, onFreeze }: PocketProps) {
   )
 }
 
-const ACTIVITY_ICON: Record<Activity['kind'], typeof ShieldIcon> = {
-  x402: ShieldIcon,
-  blocked: StopIcon,
-  swap: SwapIcon,
+const ACTIVITY_ICON: Record<ActivityItem['kind'], typeof ShieldIcon> = {
+  check: ShieldIcon,
+  scam: StopIcon,
+  alert: EyeIcon,
+  wallet: SwapIcon,
   watch: EyeIcon,
 }
 
-function ActivityCard({ items }: { items: Activity[] }) {
+const DEMO_KIND: Record<Activity['kind'], ActivityItem['kind']> = {
+  x402: 'check',
+  blocked: 'scam',
+  swap: 'wallet',
+  watch: 'watch',
+}
+
+function demoActivity(a: Activity): ActivityItem {
+  return { kind: DEMO_KIND[a.kind], text: a.text, meta: a.meta, at: '' }
+}
+
+/** A real log of what Sunny did for you: checks, flagged scams, alerts, linked wallets. */
+function ActivityCard({ items }: { items: ActivityItem[] }) {
   return (
     <section className="card activity">
       <div className="card-head">
         <span className="eyebrow">What Sunny did</span>
       </div>
-      <ul>
-        {items.map((a) => {
-          const IconCmp = ACTIVITY_ICON[a.kind]
-          return (
-            <li key={a.text} className={`activity-item activity-item--${a.kind}`}>
-              <span className="activity-icon">
-                <IconCmp size={17} />
-              </span>
-              <span className="activity-text">
-                {a.text}
-                <small>
-                  {a.meta}
-                  {a.sig && (
-                    <>
-                      {' · '}
-                      <a href="#" onClick={(e) => e.preventDefault()} className="sig">
-                        <SolanaMark size={11} />
-                        {a.sig}
-                        <ExternalIcon size={12} />
-                      </a>
-                    </>
-                  )}
-                </small>
-              </span>
-              <span className="activity-time">{a.time}</span>
-            </li>
-          )
-        })}
-      </ul>
+      {items.length === 0 ? (
+        <p className="activity-empty">Nothing yet. Ask me to check a token, or scan a wallet or a link.</p>
+      ) : (
+        <ul>
+          {items.slice(0, 6).map((a) => {
+            const IconCmp = ACTIVITY_ICON[a.kind]
+            return (
+              <li key={`${a.at}-${a.text}`} className={`activity-item activity-item--${a.kind}`}>
+                <span className="activity-icon">
+                  <IconCmp size={17} />
+                </span>
+                <span className="activity-text">
+                  {a.text}
+                  <small>{a.meta}</small>
+                </span>
+                {a.at && <span className="activity-time">{ago(a.at)}</span>}
+              </li>
+            )
+          })}
+        </ul>
+      )}
     </section>
   )
 }

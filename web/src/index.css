@@ -2746,3 +2746,239 @@ ul {
 .link-card--official strong {
   color: var(--ok);
 }
+
+/* ───────────────────────── Real data: home, watchlist, scanner ───────────────────────── */
+
+.forecast-sub {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink-faint);
+}
+
+.forecast-link {
+  width: 100%;
+  margin-top: 14px;
+}
+
+.sparkline--empty {
+  height: 74px;
+  margin-top: 10px;
+  border-radius: 12px;
+  background: linear-gradient(90deg, var(--card-edge), transparent, var(--card-edge));
+  background-size: 200% 100%;
+  animation: shimmer 1.4s linear infinite;
+  opacity: 0.6;
+}
+
+button.token {
+  display: block;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  transition: transform 0.15s ease, background-color 0.8s ease, border-color 0.8s ease;
+}
+
+button.token:active {
+  transform: scale(0.97);
+}
+
+.token--loading {
+  height: 132px;
+  background: linear-gradient(90deg, var(--card), var(--card-edge), var(--card));
+  background-size: 200% 100%;
+  animation: shimmer 1.4s linear infinite;
+}
+
+.token-avatar--img {
+  object-fit: cover;
+  background: var(--card-edge);
+}
+
+.token-bell {
+  margin-left: 5px;
+  font-size: 11px;
+}
+
+.activity-empty {
+  margin: 10px 0 2px;
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--ink-faint);
+}
+
+.activity-item--scam .activity-icon {
+  color: #c4472a;
+  background: color-mix(in oklab, var(--coral) 18%, transparent);
+}
+
+.activity-item--alert .activity-icon,
+.activity-item--watch .activity-icon {
+  color: var(--ice-ink);
+  background: var(--ice);
+}
+
+.activity-item--wallet .activity-icon {
+  color: var(--sol-purple);
+  background: color-mix(in oklab, var(--sol-purple) 12%, transparent);
+}
+
+.wallet-pill:not([data-linked]) {
+  background: color-mix(in oklab, var(--card) 85%, transparent);
+  font-weight: 750;
+}
+
+/* Scan & check sheet (shares the chat sheet frame). */
+.scan-sheet {
+  height: min(72dvh, 640px);
+}
+
+.scan-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px 14px 16px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.scan-qr {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px;
+  border-radius: 20px;
+  text-align: left;
+  color: var(--on-espresso);
+  background: linear-gradient(180deg, var(--espresso-2), var(--espresso));
+  box-shadow: 0 12px 24px -14px rgba(43, 26, 16, 0.8);
+  transition: transform 0.15s ease;
+}
+
+.scan-qr:active {
+  transform: scale(0.98);
+}
+
+.scan-qr strong {
+  display: block;
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.scan-qr small {
+  font-size: 12.5px;
+  font-weight: 600;
+  opacity: 0.75;
+}
+
+.scan-hint,
+.scan-note {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--ink-faint);
+}
+
+.scan-note {
+  padding: 8px 12px;
+  border-radius: 12px;
+  color: var(--ink-soft);
+  background: color-mix(in oklab, var(--honey) 16%, transparent);
+}
+
+.scan-input {
+  padding: 0;
+  border-top: 0;
+}
+
+.scan-input input {
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-size: 14px;
+}
+
+.scan-try {
+  align-items: center;
+  padding: 0;
+}
+
+.scan-try > span {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--ink-faint);
+}
+
+.scan-pending {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  font-weight: 650;
+  color: var(--ink-soft);
+}
+
+.scan-pending .chat-typing {
+  padding: 0 !important;
+}
+
+.scan-error {
+  margin: 0;
+  padding: 12px;
+  border-radius: 14px;
+  font-size: 14px;
+  color: var(--warn);
+  background: var(--warn-bg);
+}
+
+.scan-result {
+  display: grid;
+  gap: 10px;
+}
+
+.scan-actions {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 10px;
+}
+
+.wallet-card-icon {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: color-mix(in oklab, var(--sol-purple) 12%, var(--card));
+}
+
+.wallet-card-top {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.wallet-chip {
+  padding: 4px 9px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ink-soft);
+  background: color-mix(in oklab, var(--card-edge) 65%, transparent);
+}
+
+.wallet-chip b {
+  color: var(--ink);
+}
+
+.wallet-chip--high {
+  color: var(--warn);
+  background: var(--warn-bg);
+}
+
+@keyframes shimmer {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
