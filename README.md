@@ -33,7 +33,8 @@ Built solo for Colosseum's **Crypto World's Fair** hackathon (Solana track). Eve
 4. Open the chat and ask: *"take $500 from your pocket"*. Sunny tries, and **Solana refuses**: it's over the per-payment limit. Ask for *"$2 for a safety report"* and it goes through, with a transaction link.
 5. Tap the ❄ under Sunny's energy to freeze the pocket, then ask again.
 6. Ask *"what happened in my wallet?"* to get your transactions read back from the chain in plain words.
-7. Try **Scan & check**: paste `raydlum.io`, `BONK` or any wallet address, or scan a QR code. **Watch a wallet** to add your real Phantom wallet (read-only) to Sunny's wallet weather.
+7. Ask for a *"deep scan of BONK"*. Sunny pays $0.10 from its pocket to a paid scan API over **x402**, then shows who holds the token, with both transactions linked.
+8. Try **Scan & check**: paste `raydlum.io`, `BONK` or any wallet address, or scan a QR code. **Watch a wallet** to add your real Phantom wallet (read-only) to Sunny's wallet weather.
 
 Everything runs on **devnet with test USDC**. It speaks English and Spanish.
 
@@ -54,6 +55,7 @@ Everything runs on **devnet with test USDC**. It speaks English and Spanish.
 - **Sunny wallet:** a self-custodial wallet made inside Telegram and locked with your password.
 - **Pocket money:** an on-chain allowance. Sunny's agent key can draw only within your per-payment and daily limits, only into its own account, and nothing while frozen. You can top up, change limits, freeze or take everything back at any time.
 - **Watched wallets:** up to five of your other wallets, read-only, combined into one wallet weather.
+- **Pays for tools over x402:** a deep token scan costs $0.10, paid per request from the pocket. That means the program's limits and freeze apply to everything Sunny buys.
 
 ## How it works
 
@@ -100,15 +102,33 @@ This is the same model as [OculusVault](https://github.com/jmgomezl/oculusvaultw
 - **Locks itself.** The unlocked key lives only in memory and is wiped after 10 minutes.
 - **What you sign is checked on the phone.** The server prepares each transaction with Sunny's wallet as fee payer, so you never need SOL. Before you sign, the phone decodes the actual message bytes, refuses anything that isn't a pocket, token-account or compute-budget instruction (or that belongs to someone else), and shows you a plain-language summary of what you're about to do. The server then checks your signature, adds the fee payer's and sends it.
 
+### Paying for tools with x402
+
+Sunny's deep scan is a real [x402](https://www.x402.org) API, built with the official SDK (`@x402/core`, `@x402/svm`, `@x402/fetch`). It uses protocol v2 and the `exact` scheme on Solana devnet. Ask without paying and you get `402 Payment Required`:
+
+```bash
+curl -i "https://sunny.aivylabs.xyz/api/x402/deep-scan?mint=DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263"
+```
+
+That returns the price (0.10 test USDC), the treasury it's paid to, and Sunny's fee wallet as the sponsor, so payers need no SOL. Any x402 client can pay it.
+
+When you ask Sunny for a deep scan:
+1. **It draws $0.10 from your pocket.** The program checks the limits and the freeze.
+2. **It pays the API from its own wallet** through the official fetch wrapper, whose spend controls allow only test USDC, at most $0.50 a request.
+3. **The server checks the payment.** It verifies the partially signed `TransferChecked`, runs the scan, and only then settles on-chain, so a failed scan never charges anyone.
+4. **The receipt** comes back in `PAYMENT-RESPONSE`, and both transactions are linked on the card.
+
+What the deep scan adds over the free check: who holds the token (top holders, insiders, insider networks), the creator's stake, mint and freeze authority, mutable metadata, transfer fees, the LP lock on the deepest market, and every risk RugCheck lists.
+
 ### Sunny's agent key
 
 Sunny has to act while you sleep, so its key per owner is derived on the server (`HMAC-SHA256(server seed, owner)`). That's the honest trade-off, and it's why the pocket exists: a stolen or confused agent key can draw at most your per-payment limit, at most your daily limit, only into its own account, and nothing at all once you freeze it.
 
 ### Sunny's brain and guardrails
 
-Sunny is an LLM (`anthropic/claude-haiku-4.5` through OpenRouter, swappable in `.env`) in a short tool loop with 12 tools:
+Sunny is an LLM (`anthropic/claude-haiku-4.5` through OpenRouter, swappable in `.env`) in a short tool loop with 13 tools:
 - **Live data:** tokens, the market, links, any wallet, your own wallets and your pocket.
-- **Actions:** price alerts, watched wallets and pocket draws.
+- **Actions:** price alerts, watched wallets, pocket draws and paid deep scans.
 
 An action only counts when a tool confirms it in that turn.
 
@@ -148,7 +168,7 @@ The full flow against the live server on devnet, as a fresh Telegram user:
 2. Open the pocket and top up.
 3. Draws inside and over the limits.
 4. Freeze, unfreeze and withdraw.
-5. Finally *"what happened in my wallet?"*, read back from the chain.
+5. A deep scan paid over x402, then *"what happened in my wallet?"*, read back from the chain.
 
 ## Run it yourself
 
@@ -181,12 +201,12 @@ To build the program yourself: `cd onchain && anchor build --arch v0`. Anchor 1.
 - **Devnet only, with test USDC.** The program is unaudited.
 - **No password reset.** Not even Sunny can open your wallet. Keep pocket amounts small.
 - **The agent key lives on the server,** bounded by the program as described above.
-- **Not live yet:** paying for premium tools with x402 from the pocket, and swaps. For now, money Sunny draws just sits in its own wallet, visibly.
+- **Not live yet:** swaps. Pocket money Sunny draws without spending, for example when you just ask it to take some, stays in its own wallet, in plain view.
 - **The model can be wrong.** That's why money rules live on-chain and actions only count when a tool confirms them.
 
 ## What's next
 
-- **x402:** Sunny pays for deep token scans from its pocket, per request.
+- **More x402 tools:** more paid APIs Sunny can buy from its pocket, and listing its deep scan in the x402 Bazaar so other agents can find it.
 - **Morning brief:** a daily note on your wallets' weather.
 - **One-tap revoke** for risky token approvals.
 - **Mainnet** with an audited program and spending categories.

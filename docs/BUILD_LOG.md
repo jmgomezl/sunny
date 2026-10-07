@@ -58,6 +58,18 @@ The first real devnet run failed: a brand-new wallet has 0 SOL and couldn't pay 
 | `cc81bed` `3e73b78` | Up to five watched wallets, combined into one wallet weather |
 | `d1c40dc` | Guardrails: Sunny stays a Solana guardian (see the README) |
 
+## Oct 7, 10:22–11:07 · A body, an outfit, and x402
+
+| Commit | What |
+|---|---|
+| `73f8170` | This README and build log |
+| `476cdfa` `29666ed` | Sunny gets chubby arms with mitten hands and bean feet, all driven by the existing mood and reaction animations (hands up when worried, hugging itself when frozen, happy kicks) |
+| `b757893` `a760006` | A subtle Solana outfit: sneakers with the three-bar logo and a gradient sole, plus sweatbands |
+| `41c9b8c` | **x402**: Sunny's deep scan becomes a paid API (x402 v2, `exact` scheme on Solana devnet, official SDK). The server verifies, scans, then settles, so a failed scan never charges anyone. Sunny is also a paying client |
+| `a1d0966` | Sunny buys deep scans with its pocket money: draw from the pocket (limits apply), then pay over x402. The e2e test buys one too |
+| `ff6975c` | Deep scan card in the chat, and a "Deep scan · $0.10" button in Scan & check |
+| `4515210` | More memory headroom for the bot (the SDK added about 25 MB) |
+
 ## Decisions, and why
 
 - **Money rules live in a program, not in the prompt.** A model can be talked into things; a program can't. Sunny is told to always *try* the draw you ask for, because watching Solana refuse a $500 draw is the whole point.
@@ -66,6 +78,8 @@ The first real devnet run failed: a brand-new wallet has 0 SOL and couldn't pay 
 - **Check what's signed on the device.** The phone decodes every transaction the server prepares and refuses anything unexpected, so even a compromised server can't trick you into signing a transfer.
 - **Two kinds of wallet, named clearly.** Your *Sunny wallet* is yours, self-custodial. *Watched wallets* (up to five) are read-only. "Link wallet" was confusing, so it became "Watch a wallet".
 - **Claude Haiku 4.5 through OpenRouter.** It's fast and cheap, and reliable at tool calls. The model is one line in `.env`.
+- **x402 with the official SDK, settled in-process.** Sunny's server is the resource server and its own facilitator, so it can verify, run the scan and only then settle. That means a failed scan costs nothing, and it works with our devnet test USDC. Any standard x402 client can pay the same endpoint.
+- **Every purchase goes through the pocket.** Before paying an API, Sunny draws the price from your pocket, so the program's limits and freeze cover what it buys, not just what it takes.
 - **Gentle guardrails.** Blocked attempts get a friendly refusal and only a short break, because curious people (and judges) will poke at it.
 
 ## Problems I hit, and the fixes
@@ -85,6 +99,8 @@ The first real devnet run failed: a brand-new wallet has 0 SOL and couldn't pay 
 | Batched RPC replies arrived out of order and mislabeled transactions | Matched by signature | `38c215d` |
 | The model sometimes went silent right after a tool call | It's asked once for its answer | `cc81bed` |
 | The Telegram first name went into the system prompt, so anyone could rename themselves "Ignore your rules…" | Names reduced to plain letters before they reach the prompt | `d1c40dc` |
+| The x402 client refused to pay in our test USDC: its spend controls only allow known assets | Allow exactly our test-USDC mint, capped at $0.50 a request | `41c9b8c` |
+| The x402 SDK pushed the bot close to its 160 MB PM2 limit | Measured at 138 MB in production; limit raised to 240 MB for Sunny's process only | `4515210` |
 
 ## How it was tested
 
@@ -102,7 +118,7 @@ The first real devnet run failed: a brand-new wallet has 0 SOL and couldn't pay 
 
 ## Still to do before Oct 12
 
-- x402: Sunny pays for deep token scans from its pocket.
+- News and security alerts from free sources (in progress).
 - A morning brief, and one-tap revoke of risky approvals.
 - First testers.
 - The pitch and demo videos, then submission.
