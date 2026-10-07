@@ -10,6 +10,8 @@ export type Gesture = 'boop' | 'head' | 'cheek' | 'ray' | 'double' | 'pet' | 'di
 
 const INK = '#3A2114'
 const BLUSH = '#FF7C8C'
+// A soft warm edge that keeps hands and feet readable against the rays.
+const LIMB_EDGE = '#D9761F'
 
 // Soft "flame petal" rays, pointing up; rotated around the body.
 const LONG_RAY = 'M -12 -56 C -15 -74 -7 -90 0 -98 C 7 -90 15 -74 12 -56 Z'
@@ -304,6 +306,11 @@ export function Sunny({ mood, reaction = null, frozen = false, dozing = false, s
                       <stop offset="0" stopColor="#FFD066" />
                       <stop offset="1" stopColor="#F59A33" />
                     </radialGradient>
+                    <radialGradient id={ref('mitten')} cx="38%" cy="30%" r="75%">
+                      <stop offset="0" stopColor="#FFF0C2" />
+                      <stop offset="0.45" stopColor="#FFCF62" />
+                      <stop offset="1" stopColor="#F29230" />
+                    </radialGradient>
                     <linearGradient id={ref('drop')} x1="0" y1="0" x2="0" y2="1">
                       <stop offset="0" stopColor="#D8F1FF" />
                       <stop offset="1" stopColor="#7FC4F2" />
@@ -363,11 +370,14 @@ export function Sunny({ mood, reaction = null, frozen = false, dozing = false, s
                     </g>
                   </motion.g>
 
-                  <g className="sunny-arm sunny-arm--l">
-                    <ellipse cx="-61" cy="26" rx="12" ry="8.5" transform="rotate(-28 -61 26)" fill={url('arm')} />
-                  </g>
-                  <g className="sunny-arm sunny-arm--r">
-                    <ellipse cx="61" cy="26" rx="12" ry="8.5" transform="rotate(28 61 26)" fill={url('arm')} />
+                  {/* Little plush arms with mitten hands. Each turns at its shoulder, hidden under the body. */}
+                  <Arm side="l" url={url} />
+                  <Arm side="r" url={url} />
+
+                  {/* Bean feet peeking out from under the body, like a plush toy sitting down. */}
+                  <g className="sunny-feet">
+                    <Foot side="l" url={url} />
+                    <Foot side="r" url={url} />
                   </g>
 
                   <circle r="62" fill={url('body')} />
@@ -435,6 +445,64 @@ export function Sunny({ mood, reaction = null, frozen = false, dozing = false, s
         <div className="sunny-shadow" />
       </motion.div>
     </motion.button>
+  )
+}
+
+type LimbProps = { side: 'l' | 'r'; url: (name: string) => string }
+
+/** An arm from the shoulder at (±56, 20), ending in a round mitten with a little thumb. */
+function Arm({ side, url }: LimbProps) {
+  const k = side === 'l' ? -1 : 1
+  const arm = `M ${56 * k} 20 Q ${66 * k} 26 ${73 * k} 36`
+  return (
+    <g className={`sunny-arm sunny-arm--${side}`}>
+      <path d={arm} fill="none" stroke={LIMB_EDGE} strokeOpacity="0.5" strokeWidth="15" strokeLinecap="round" />
+      <path d={arm} fill="none" stroke={url('arm')} strokeWidth="12.4" strokeLinecap="round" />
+      <ellipse
+        cx={68 * k}
+        cy="35"
+        rx="4"
+        ry="5.2"
+        transform={`rotate(${-38 * k} ${68 * k} 35)`}
+        fill={url('mitten')}
+        stroke={LIMB_EDGE}
+        strokeOpacity="0.55"
+        strokeWidth="1.2"
+      />
+      <ellipse
+        cx={76.5 * k}
+        cy="41.5"
+        rx="10.6"
+        ry="9.8"
+        transform={`rotate(${28 * k} ${76.5 * k} 41.5)`}
+        fill={url('mitten')}
+        stroke={LIMB_EDGE}
+        strokeOpacity="0.55"
+        strokeWidth="1.2"
+      />
+      <ellipse cx={79 * k} cy="37.5" rx="4" ry="2.4" fill="#fff" opacity="0.5" />
+    </g>
+  )
+}
+
+/** A bean-shaped foot, its top tucked under the body so only the toes and sole show. */
+function Foot({ side, url }: LimbProps) {
+  const k = side === 'l' ? -1 : 1
+  return (
+    <g className={`sunny-foot sunny-foot--${side}`}>
+      <ellipse
+        cx={24 * k}
+        cy="65"
+        rx="15.5"
+        ry="10"
+        transform={`rotate(${12 * k} ${24 * k} 65)`}
+        fill={url('mitten')}
+        stroke={LIMB_EDGE}
+        strokeOpacity="0.5"
+        strokeWidth="1.3"
+      />
+      <ellipse cx={28 * k} cy="68" rx="5.5" ry="2.4" fill="#fff" opacity="0.4" />
+    </g>
   )
 }
 
