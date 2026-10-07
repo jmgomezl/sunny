@@ -128,6 +128,8 @@ async function readJson(req: IncomingMessage, maxBytes = MAX_BODY_BYTES): Promis
 }
 
 function send(res: ServerResponse, status: number, body: unknown) {
+  // A handler that already started answering can't change its status any more.
+  if (res.headersSent) return void res.end()
   res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' })
   res.end(JSON.stringify(body))
 }
@@ -323,8 +325,13 @@ async function demoBlinkRoute(req: IncomingMessage, res: ServerResponse) {
     res.writeHead(400, ACTION_HEADERS)
     return res.end(JSON.stringify({ message: 'Send the account that would sign.' }))
   }
-  res.writeHead(200, ACTION_HEADERS)
-  res.end(JSON.stringify(await demoBlinkTransaction(body.account)))
+  // Built before any header goes out, so a failure can still answer properly.
+  const tx = await demoBlinkTransaction(body.account).catch((err) => {
+    console.error('[sunny] demo blink failed', err)
+    return null
+  })
+  res.writeHead(tx ? 200 : 500, ACTION_HEADERS)
+  res.end(JSON.stringify(tx ?? { message: 'The demo couldn’t build its transaction right now.' }))
 }
 
 export function startApi(port: number, botToken: string) {

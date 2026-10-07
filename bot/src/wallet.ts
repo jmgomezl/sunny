@@ -1,3 +1,4 @@
+import { PublicKey } from '@solana/web3.js'
 import {
   getJson,
   MAINNET_RPC,
@@ -14,7 +15,16 @@ import {
 // Jupiter prices, a 24h value curve rebuilt from each token's 5m/1h/6h/24h moves,
 // on-chain activity from the public RPC, and plain-language red flags.
 
-export const isAddress = (s: string) => /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(s)
+/** A Solana address: base58 that decodes to exactly 32 bytes (44 "z"s pass a regex but aren't a key). */
+export function isAddress(s: string) {
+  if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(s)) return false
+  try {
+    new PublicKey(s)
+    return true
+  } catch {
+    return false
+  }
+}
 
 export type Holding = {
   mint: string

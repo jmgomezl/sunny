@@ -249,6 +249,9 @@ async function main() {
 }
 
 for (const signal of ['SIGINT', 'SIGTERM'] as const) process.once(signal, () => bot.stop())
+// One request gone wrong must never take Sunny down for everyone: log it and keep going.
+process.on('unhandledRejection', (err) => console.error('[sunny] unhandled rejection', err))
+process.on('uncaughtException', (err) => console.error('[sunny] uncaught exception', err))
 
 main().catch((err) => {
   console.error('[sunny] failed to start', err)
