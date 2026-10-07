@@ -20,7 +20,7 @@ export type PocketState = {
 }
 
 export type PocketAction =
-  | { action: 'open'; daily: number; perTx: number }
+  | { action: 'open'; daily: number; perTx: number; amount?: number }
   | { action: 'topup'; amount: number }
   | { action: 'withdraw'; amount: number }
   | { action: 'limits'; daily: number; perTx: number }

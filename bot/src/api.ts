@@ -263,13 +263,22 @@ async function pocketRoute(req: IncomingMessage, res: ServerResponse, botToken: 
   if (body.op === 'prepare') {
     const action = String(body.action)
     if (!ACTIONS.has(action)) throw new ApiError(400, 'Unknown pocket action.')
+    // Real amounts only: no true-as-1, and nothing that rounds to zero cents.
     const num = (v: unknown, max: number) => {
-      const n = Number(v)
-      if (!Number.isFinite(n) || n <= 0 || n > max) throw new ApiError(400, 'That amount doesn’t look right.')
+      const n = typeof v === 'number' || typeof v === 'string' ? Number(v) : NaN
+      if (!Number.isFinite(n) || n < 0.01 || n > max) throw new ApiError(400, 'That amount doesn’t look right.')
       return n
     }
     const a = (
-      action === 'open' || action === 'limits'
+      action === 'open'
+        ? {
+            action,
+            daily: num(body.daily, 1000),
+            perTx: num(body.perTx, 1000),
+            // Opening can carry the first pocket money, so it's one signature (feeding Sunny a coin).
+            ...(body.amount !== undefined ? { amount: num(body.amount, 10_000) } : {}),
+          }
+        : action === 'limits'
         ? { action, daily: num(body.daily, 1000), perTx: num(body.perTx, 1000) }
         : action === 'topup' || action === 'withdraw'
           ? { action, amount: num(body.amount, 10_000) }

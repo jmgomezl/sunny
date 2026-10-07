@@ -138,7 +138,7 @@ export async function pocketState(ownerAddress: string): Promise<PocketState> {
 // ── Owner actions: prepared here, signed on the owner's device ──────────────
 
 export type OwnerAction =
-  | { action: 'open'; daily: number; perTx: number }
+  | { action: 'open'; daily: number; perTx: number; amount?: number }
   | { action: 'topup'; amount: number }
   | { action: 'withdraw'; amount: number }
   | { action: 'limits'; daily: number; perTx: number }
@@ -154,6 +154,12 @@ function ownerInstructions(owner: PublicKey, a: OwnerAction): TransactionInstruc
   const vault = vaultPda(pocket)
   const mint = usdcMint()
   const meta = (pubkey: PublicKey, isSigner: boolean, isWritable: boolean) => ({ pubkey, isSigner, isWritable })
+  const topUp = (amount: number) =>
+    new TransactionInstruction({
+      programId: POCKET_PROGRAM,
+      keys: [meta(owner, true, false), meta(pocket, false, false), meta(vault, false, true), meta(mint, false, false), meta(ata(owner), false, true), meta(TOKEN_PROGRAM, false, false)],
+      data: Buffer.concat([disc('top_up'), u64(toBase(amount))]),
+    })
   switch (a.action) {
     case 'open':
       return [
@@ -171,15 +177,11 @@ function ownerInstructions(owner: PublicKey, a: OwnerAction): TransactionInstruc
           ],
           data: Buffer.concat([disc('open_pocket'), agentFor(owner).publicKey.toBuffer(), u64(toBase(a.daily)), u64(toBase(a.perTx))]),
         }),
+        // The first pocket money in the same transaction: the pocket exists by the time it runs.
+        ...(a.amount ? [topUp(a.amount)] : []),
       ]
     case 'topup':
-      return [
-        new TransactionInstruction({
-          programId: POCKET_PROGRAM,
-          keys: [meta(owner, true, false), meta(pocket, false, false), meta(vault, false, true), meta(mint, false, false), meta(ata(owner), false, true), meta(TOKEN_PROGRAM, false, false)],
-          data: Buffer.concat([disc('top_up'), u64(toBase(a.amount))]),
-        }),
-      ]
+      return [topUp(a.amount)]
     case 'withdraw':
       return [
         createAtaIdempotent(owner, feePayer().publicKey),

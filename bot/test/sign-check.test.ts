@@ -25,6 +25,12 @@ test('describes each pocket action in plain words', async () => {
     const p = await prepareOwnerTx(owner, action as never)
     assert.deepEqual(describeTransaction(p.message, owner), [expected])
   }
+  // Feeding Sunny its first coin opens the pocket and fills it in one signature.
+  const fed = await prepareOwnerTx(owner, { action: 'open', daily: 10, perTx: 5, amount: 5 })
+  assert.deepEqual(describeTransaction(fed.message, owner), [
+    'Open Sunny’s pocket: up to $10 a day, $5 per payment',
+    'Put $5 into Sunny’s pocket',
+  ])
 })
 
 test('refuses a transaction that moves SOL out of the wallet', () => {

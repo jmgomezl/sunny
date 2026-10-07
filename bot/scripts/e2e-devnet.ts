@@ -43,8 +43,9 @@ async function ownerDoes(action: object) {
 const faucet = await call<{ amount: number; explorer: string }>('pocket', { op: 'faucet' })
 console.log(`2. faucet: +${faucet.amount} test USDC  ${faucet.explorer}`)
 console.log('3. owner actions, signed on the device:')
-await ownerDoes({ action: 'open', daily: 10, perTx: 5 })
-await ownerDoes({ action: 'topup', amount: 15 })
+// Opening carries the first $5 (feeding Sunny a coin: one signature), then a $10 top-up.
+await ownerDoes({ action: 'open', daily: 10, perTx: 5, amount: 5 })
+await ownerDoes({ action: 'topup', amount: 10 })
 
 const draw = async (usd: number) => {
   try {
