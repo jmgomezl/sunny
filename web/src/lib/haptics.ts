@@ -3,7 +3,16 @@ type TelegramHaptics = {
   notificationOccurred: (type: 'error' | 'success' | 'warning') => void
 }
 
+type TelegramBackButton = {
+  show: () => void
+  hide: () => void
+  onClick: (cb: () => void) => void
+  offClick: (cb: () => void) => void
+}
+
 type TelegramWebApp = {
+  initData?: string
+  BackButton?: TelegramBackButton
   ready: () => void
   expand: () => void
   setHeaderColor?: (color: string) => void

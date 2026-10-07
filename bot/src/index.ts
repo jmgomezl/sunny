@@ -2,30 +2,27 @@ import { existsSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { Bot, GrammyError, HttpError, InlineKeyboard, InputFile } from 'grammy'
-import { forget, reply } from './brain.js'
+import { startApi } from './api.js'
+import { forget, hasBrain, reply } from './brain.js'
+import { allow, HOUR } from './limits.js'
 
 const token = process.env.TELEGRAM_BOT_TOKEN
 if (!token) throw new Error('TELEGRAM_BOT_TOKEN is missing; add it to .env')
 // Without an OpenRouter key Sunny still runs (commands, Mini App), it just can't chat freely yet.
-const HAS_BRAIN = Boolean(process.env.OPENROUTER_API_KEY)
+const HAS_BRAIN = hasBrain()
 if (!HAS_BRAIN) console.warn('[sunny] OPENROUTER_API_KEY is not set: free chat is off until it is added to .env')
 
 const MINI_APP_URL = process.env.MINI_APP_URL || 'https://sunny.aivylabs.xyz'
 const AVATAR = join(dirname(fileURLToPath(import.meta.url)), 'sunny-avatar.png')
 
-// Protects the OpenRouter budget: each person gets a steady trickle of AI replies.
-const RATE_WINDOW_MS = 60 * 60 * 1000
-const RATE_MAX = 40
-const usage = new Map<number, number[]>()
+// The Mini App's chat API runs in this same process, so both share Sunny's memory.
+const API_PORT = Number(process.env.SUNNY_API_PORT || 8820)
+// Set BOT_POLLING=off to run only the API locally while the server instance owns the bot.
+const POLLING = process.env.BOT_POLLING !== 'off'
 
-function allowed(userId: number) {
-  const now = Date.now()
-  const recent = (usage.get(userId) ?? []).filter((t) => now - t < RATE_WINDOW_MS)
-  if (recent.length >= RATE_MAX) return false
-  recent.push(now)
-  usage.set(userId, recent)
-  return true
-}
+// Protects the OpenRouter budget: each person gets a steady trickle of AI replies,
+// counted together across the Telegram chat and the Mini App.
+const allowed = (userId: number) => allow(`u:${userId}`, 40, HOUR)
 
 const openSky = () => new InlineKeyboard().webApp('Open Sunny’s sky ☀️', MINI_APP_URL)
 
@@ -127,6 +124,11 @@ bot.catch((err) => {
 })
 
 async function main() {
+  startApi(API_PORT, token!)
+  if (!POLLING) {
+    console.log('[sunny] BOT_POLLING=off: API only')
+    return
+  }
   await bot.api.setMyCommands(COMMANDS)
   await bot.api.setChatMenuButton({ menu_button: { type: 'web_app', text: 'Sunny ☀️', web_app: { url: MINI_APP_URL } } })
   const me = await bot.api.getMe()

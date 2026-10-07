@@ -1,6 +1,6 @@
 # /etc/nginx/sites-available/sunny.aivylabs
-# Sunny's Telegram Mini App (static). The bot runs under PM2 as sunny-bot and uses
-# long polling, so it needs no route here.
+# Sunny's Telegram Mini App (static) plus its chat API. The bot runs under PM2 as
+# sunny-bot: it talks to Telegram with long polling and serves /api/ on 127.0.0.1:8820.
 # HTTP only: certbot --nginx adds the TLS server block and the redirect.
 server {
     server_name sunny.aivylabs.xyz;
@@ -9,6 +9,18 @@ server {
 
     root /var/www/sunny;
     index index.html;
+
+    # Sunny's chat API (the sunny-bot process). Replies come from the model, so allow time.
+    location /api/ {
+        proxy_pass http://127.0.0.1:8820;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_read_timeout 60s;
+        client_max_body_size 16k;
+        add_header Cache-Control "no-store";
+    }
 
     # Hashed build files never change, so browsers can keep them for a year.
     location /assets/ {

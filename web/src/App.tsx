@@ -3,6 +3,8 @@ import { motion } from 'motion/react'
 import { Sunny, type Gesture, type Mood, type Reaction } from './components/Sunny'
 import { CloudBank, Sky } from './components/Sky'
 import { Particles, burst, type Particle, type ParticleKind } from './components/Particles'
+import { ChatSheet, type ChatMessage } from './components/ChatSheet'
+import { askSunny, inTelegram } from './lib/chat'
 import { haptic, type Haptic } from './lib/haptics'
 import {
   AlertIcon,
@@ -107,6 +109,21 @@ const GESTURES: Record<Gesture, () => Play> = {
   }),
 }
 
+const ASK_SUGGESTIONS = [
+  'Is this airdrop a scam?',
+  'What’s a rug pull?',
+  'How does your pocket money work?',
+  'Explain staking simply',
+]
+
+const WATCH_SUGGESTIONS = [
+  'Watch BONK for a 10% drop',
+  'What should I watch on a new token?',
+  'Which red flags make a token risky?',
+]
+
+let chatIds = 1
+
 const BOND_LEVELS = ['New friends', 'Buddies', 'Close pals', 'Best friends', 'Sunshine soulmates']
 const bondLevel = (bond: number) => Math.min(BOND_LEVELS.length - 1, Math.floor(bond / 20))
 
@@ -154,6 +171,10 @@ export default function App() {
   const [statusOverride, setStatusOverride] = useState<Status | null>(null)
   const [bond, setBond] = useState(loadBond)
   const [dozing, setDozing] = useState(false)
+  const [chatOpen, setChatOpen] = useState(false)
+  const [chat, setChat] = useState<ChatMessage[]>([])
+  const [chatPending, setChatPending] = useState(false)
+  const [suggestions, setSuggestions] = useState<string[]>([])
   const timers = useRef<number[]>([])
   const lastTouch = useRef(0)
   const scene = SCENES[mood]
@@ -286,21 +307,50 @@ export default function App() {
     }, 2000)
   }
 
-  const onWatch = () =>
-    play({
-      reaction: 'giggle',
-      line: 'Tell me the token in Telegram and I’ll watch it day and night.',
-      particles: ['sparkle', 4],
-      haptic: 'light',
-    })
+  const sunnySays = (text: string, error = false): ChatMessage => ({ id: chatIds++, from: 'sunny', text, error })
 
-  const onAsk = () =>
-    play({
-      reaction: 'giggle',
-      line: 'Ask me anything in Telegram. I’m one tap away.',
-      particles: ['sparkle', 4],
-      haptic: 'light',
-    })
+  const openChat = (topic: 'ask' | 'watch') => {
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+    setChatOpen(true)
+    haptic('light')
+    if (topic === 'watch') {
+      setChat((prev) => [
+        ...prev,
+        sunnySays(
+          'Which token should I keep an eye on, and what move matters to you? Live alerts arrive this week; until then I’ll tell you what to watch for.',
+        ),
+      ])
+      setSuggestions(WATCH_SUGGESTIONS)
+    } else if (chat.length === 0) {
+      setChat([
+        sunnySays(
+          inTelegram()
+            ? 'Hi! Ask me anything. This is the same chat as Telegram, so we can pick up right where we left off ☀️'
+            : 'Hi! Ask me anything about Solana, your wallet or staying safe ☀️',
+        ),
+      ])
+      setSuggestions(ASK_SUGGESTIONS)
+    }
+  }
+
+  const closeChat = useCallback(() => setChatOpen(false), [])
+
+  const sendChat = async (text: string) => {
+    setChat((prev) => [...prev, { id: chatIds++, from: 'you', text }])
+    setSuggestions([])
+    setChatPending(true)
+    setDozing(false)
+    try {
+      const { reply } = await askSunny(text)
+      setChat((prev) => [...prev, sunnySays(reply)])
+      play({ reaction: 'giggle', particles: ['sparkle', 3], haptic: 'light', ms: 900, bond: 1 })
+    } catch (err) {
+      setChat((prev) => [...prev, sunnySays(err instanceof Error ? err.message : String(err), true)])
+      haptic('warning')
+    } finally {
+      setChatPending(false)
+    }
+  }
 
   const line = said ?? (dozing ? DOZE_LINE : scene.line)
   const status: Status =
@@ -308,7 +358,7 @@ export default function App() {
   const pocketLeft = toppedUp ? POCKET_LIMIT : scene.pocketLeft
 
   return (
-    <div className="app">
+    <div className="app" data-chat={chatOpen ? 'open' : undefined}>
       <section className="stage">
         <Sky weather={scene.weather} />
 
@@ -357,7 +407,14 @@ export default function App() {
         </div>
 
         <div className="sunny-slot">
-          <Sunny mood={mood} reaction={reaction} frozen={frozen} dozing={dozing} size={200} onGesture={onGesture} />
+          <Sunny
+            mood={mood}
+            reaction={reaction ?? (chatPending ? 'scan' : null)}
+            frozen={frozen}
+            dozing={dozing}
+            size={200}
+            onGesture={onGesture}
+          />
           <Particles items={particles} onDone={(id) => setParticles((prev) => prev.filter((p) => p.id !== id))} />
         </div>
 
@@ -380,16 +437,26 @@ export default function App() {
         </p>
       </main>
 
+      <ChatSheet
+        open={chatOpen}
+        messages={chat}
+        pending={chatPending}
+        suggestions={suggestions}
+        sameAsTelegram={inTelegram()}
+        onSend={sendChat}
+        onClose={closeChat}
+      />
+
       <nav className="dock" aria-label="Quick actions">
         <button type="button" className="dock-btn" onClick={onSafetyCheck}>
           <ShieldIcon />
           <span>Safety check</span>
         </button>
-        <button type="button" className="dock-main" onClick={onAsk}>
+        <button type="button" className="dock-main" onClick={() => openChat('ask')}>
           <SunMark size={24} />
           <span>Ask Sunny</span>
         </button>
-        <button type="button" className="dock-btn" onClick={onWatch}>
+        <button type="button" className="dock-btn" onClick={() => openChat('watch')}>
           <EyeIcon />
           <span>Watch</span>
         </button>
