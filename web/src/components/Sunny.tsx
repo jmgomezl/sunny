@@ -35,10 +35,20 @@ type SunnyProps = {
   frozen?: boolean
   dozing?: boolean
   size?: number
+  /** Keeps Sunny waving (used by the sticker stage). */
+  wave?: boolean
   onGesture?: (gesture: Gesture) => void
 }
 
-export function Sunny({ mood, reaction = null, frozen = false, dozing = false, size = 220, onGesture }: SunnyProps) {
+export function Sunny({
+  mood,
+  reaction = null,
+  frozen = false,
+  dozing = false,
+  size = 220,
+  wave = false,
+  onGesture,
+}: SunnyProps) {
   const uid = useId().replace(/[^a-zA-Z0-9]/g, '')
   const ref = (name: string) => `${uid}-${name}`
   const url = (name: string) => `url(#${ref(name)})`
@@ -257,7 +267,7 @@ export function Sunny({ mood, reaction = null, frozen = false, dozing = false, s
   if (reaction) classes.push(`sunny--r-${reaction}`)
   else if (dozing) classes.push('sunny--dozing')
   if (frozen) classes.push('sunny--frozen')
-  if (idleWave) classes.push('sunny--wave')
+  if (idleWave || wave) classes.push('sunny--wave')
 
   return (
     <motion.button

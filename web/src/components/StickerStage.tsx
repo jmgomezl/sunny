@@ -1,0 +1,40 @@
+import { Sunny, type Mood, type Reaction } from './Sunny'
+
+// Sunny's Telegram sticker pack is drawn from the real character: open the Mini App with
+// ?sticker=<pose> and it renders just Sunny, in that pose, on a transparent 512×512 stage
+// with a caption. A headless browser captures each pose as a PNG (bot/scripts/stickers.ts).
+
+type Pose = {
+  mood: Mood
+  reaction?: Reaction
+  frozen?: boolean
+  dozing?: boolean
+  wave?: boolean
+  caption: string
+  emoji: string
+}
+
+export const POSES: Record<string, Pose> = {
+  gm: { mood: 'happy', wave: true, caption: 'gm', emoji: '☀️' },
+  love: { mood: 'happy', reaction: 'love', caption: 'love it', emoji: '😍' },
+  wagmi: { mood: 'excited', caption: 'wagmi', emoji: '🙌' },
+  scam: { mood: 'worried', caption: 'scam alert!', emoji: '😱' },
+  no: { mood: 'worried', reaction: 'shiver', caption: 'Solana said no', emoji: '🙅' },
+  frozen: { mood: 'happy', frozen: true, caption: 'brrr', emoji: '🥶' },
+  yum: { mood: 'happy', reaction: 'yum', caption: 'pocket money!', emoji: '🤑' },
+  dyor: { mood: 'happy', reaction: 'scan', caption: 'DYOR', emoji: '🔍' },
+  dizzy: { mood: 'happy', reaction: 'dizzy', caption: 'too many charts', emoji: '😵' },
+  thanks: { mood: 'happy', reaction: 'blush', caption: 'thank you!', emoji: '☺️' },
+  hug: { mood: 'happy', reaction: 'pat', caption: 'I got you', emoji: '🤗' },
+  gn: { mood: 'sleepy', dozing: true, caption: 'gn', emoji: '😴' },
+}
+
+export function StickerStage({ pose }: { pose: string }) {
+  const p = POSES[pose] ?? POSES.gm
+  return (
+    <div className="sticker" data-pose={pose}>
+      <Sunny mood={p.mood} reaction={p.reaction ?? null} frozen={p.frozen} dozing={p.dozing} wave={p.wave} size={470} />
+      <span className="sticker-caption">{p.caption}</span>
+    </div>
+  )
+}
