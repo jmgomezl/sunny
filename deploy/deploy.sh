@@ -44,9 +44,10 @@ bot() {
   ssh "$HOST" 'chmod 600 /opt/sunny/.env && cd /opt/sunny && if pm2 describe sunny-bot >/dev/null 2>&1; then pm2 restart sunny-bot --max-memory-restart 240M; else \
     pm2 start bot.mjs --name sunny-bot --node-args="--env-file=/opt/sunny/.env" --max-memory-restart 240M \
       --exp-backoff-restart-delay=2000; fi && pm2 save >/dev/null'
-  # Health check: the bot must still be online a few seconds later, or we show why and stop.
-  sleep 8
-  ssh "$HOST" 'pm2 jlist | python3 -c "import json,sys; p=[p for p in json.load(sys.stdin) if p[\"name\"]==\"sunny-bot\"][0][\"pm2_env\"]; print(\"sunny-bot:\", p[\"status\"], \"restarts:\", p[\"restart_time\"]); sys.exit(p[\"status\"]!=\"online\")" \
+  # Health check: the bot must have stayed up since the restart. 'online' alone isn't enough:
+  # a crash loop with backoff also looks online for a moment (it happened on 2026-10-07).
+  sleep 15
+  ssh "$HOST" 'pm2 jlist | python3 -c "import json,sys,time; p=[p for p in json.load(sys.stdin) if p[\"name\"]==\"sunny-bot\"][0][\"pm2_env\"]; up=(time.time()*1000-p[\"pm_uptime\"])/1000; print(\"sunny-bot:\", p[\"status\"], \"up\", round(up), \"s, restarts:\", p[\"restart_time\"]); sys.exit(p[\"status\"]!=\"online\" or up<12)" \
     || { pm2 logs sunny-bot --err --lines 15 --nostream; exit 1; }'
 }
 
