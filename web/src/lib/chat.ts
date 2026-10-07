@@ -1,5 +1,5 @@
 import { post } from './api'
-import type { WalletReport } from './home'
+import type { BlinkReport, WalletReport } from './home'
 
 export type TokenFlag = { level: 'high' | 'medium'; text: string }
 
@@ -88,6 +88,7 @@ export type ChatReply = {
   mine: MyWallet | null
   wallets: WalletReport[]
   scans: DeepScan[]
+  blinks: BlinkReport[]
   /** Sunny started or stopped watching a wallet, so the home should reload. */
   watchChanged: boolean
   live: boolean
@@ -108,6 +109,7 @@ export async function askSunny(message: string): Promise<ChatReply> {
     mine: data.mine ?? null,
     wallets: data.wallets ?? [],
     scans: data.scans ?? [],
+    blinks: data.blinks ?? [],
     watchChanged: Boolean(data.watchChanged),
     live: Boolean(data.live),
     guest: Boolean(data.guest),

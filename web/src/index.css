@@ -3519,3 +3519,40 @@ button.token:active {
   font-weight: 700;
   opacity: 0.55;
 }
+
+/* "Should I sign this?" */
+.blink-summary {
+  margin: 10px 0 0;
+  font-size: 14px;
+  font-weight: 650;
+  line-height: 1.45;
+}
+
+.blink-flows {
+  display: grid;
+  gap: 4px;
+  margin-top: 10px;
+}
+
+.blink-flows li {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--ink-soft);
+}
+
+.blink-flows b {
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+
+.blink-flows li[data-dir='out'] b {
+  color: var(--warn);
+}
+
+.blink-flows li[data-dir='in'] b {
+  color: var(--ok);
+}

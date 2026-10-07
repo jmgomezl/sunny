@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from 'motion/react'
 import { SunMark } from './Icons'
 import {
   AlertCardView,
+  BlinkCardView,
   DeepScanView,
   LinkCardView,
   MyWalletView,
@@ -11,7 +12,7 @@ import {
   WalletCardView,
 } from './Cards'
 import type { AlertCard, DeepScan, LinkCheck, MyWallet, PocketEvent, TokenCard } from '../lib/chat'
-import type { WalletReport } from '../lib/home'
+import type { BlinkReport, WalletReport } from '../lib/home'
 
 export type ChatMessage = {
   id: number
@@ -25,6 +26,7 @@ export type ChatMessage = {
   mine?: MyWallet | null
   wallets?: WalletReport[]
   scans?: DeepScan[]
+  blinks?: BlinkReport[]
   live?: boolean
 }
 
@@ -137,6 +139,9 @@ export function ChatSheet({ open, messages, pending, suggestions, sameAsTelegram
                     <p>{m.text}</p>
                     {m.links?.map((l) => (
                       <LinkCardView key={l.domain} link={l} />
+                    ))}
+                    {m.blinks?.map((b) => (
+                      <BlinkCardView key={b.actionUrl} report={b} />
                     ))}
                     {m.scans?.map((s) => (
                       <DeepScanView key={s.paymentTx} scan={s} />

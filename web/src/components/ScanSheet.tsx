@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
 import { SunMark } from './Icons'
-import { LinkCardView, TokenCardView, WalletCardView } from './Cards'
+import { BlinkCardView, LinkCardView, TokenCardView, WalletCardView } from './Cards'
 import { inspectInput, type Inspection } from '../lib/home'
 
 export type ScanMode = 'check' | 'link'
@@ -269,6 +269,20 @@ export function ScanSheet(props: ScanSheetProps) {
                           type="button"
                           className="btn btn--ice"
                           onClick={() => onAsk(`What do you think of this wallet? ${result.report.address}`)}
+                        >
+                          Ask Sunny
+                        </button>
+                      </div>
+                    </>
+                  )}
+                  {result.kind === 'blink' && (
+                    <>
+                      <BlinkCardView report={result.report} />
+                      <div className="scan-actions">
+                        <button
+                          type="button"
+                          className="btn btn--ice"
+                          onClick={() => onAsk(`Should I sign this Blink? ${result.report.link}`)}
                         >
                           Ask Sunny
                         </button>

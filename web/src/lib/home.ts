@@ -79,11 +79,36 @@ export type WalletReport = {
   flags: TokenFlag[]
 }
 
+/** "Should I sign this?": what a Blink would do to your wallet, read and simulated by Sunny. */
+export type BlinkReport = {
+  link: string
+  actionUrl: string
+  host: string
+  registry: 'trusted' | 'malicious' | 'unknown'
+  phishing: 'known_scam' | 'suspicious' | 'official' | 'unknown' | null
+  title: string
+  description: string
+  icon?: string
+  buttons: string[]
+  tried: string | null
+  wallet: string | null
+  yourWallet: boolean
+  outcome: 'simulated' | 'would_fail' | 'not_simulated' | 'unavailable'
+  failReason?: string
+  sends: { symbol: string; mint: string; amount: number; usd: number | null }[]
+  receives: { symbol: string; mint: string; amount: number; usd: number | null }[]
+  programs: string[]
+  warnings: { level: 'danger' | 'caution'; text: string }[]
+  verdict: 'danger' | 'caution' | 'ok'
+  summary: string
+}
+
 export type Inspection =
   | { kind: 'token'; found: true; card: TokenCard; details: { exact_match: boolean; other_tokens_with_same_symbol: number } }
   | { kind: 'token'; found: false; query: string }
   | { kind: 'wallet'; report: WalletReport }
   | { kind: 'link'; link: LinkCheck }
+  | { kind: 'blink'; report: BlinkReport }
   | { kind: 'unknown'; message: string }
 
 /** Works out what a scanned or pasted value is (wallet, token or link) and reports on it. */

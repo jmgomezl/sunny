@@ -434,6 +434,7 @@ export default function App() {
       later(() => setStatusOverride(null), 8000)
     }
     if (!r) return play({ reaction: 'blush', ms: 900 })
+    if (r.kind === 'blink' && r.report.verdict === 'danger') return warn(`Don’t sign · ${r.report.host}`)
     if (r.kind === 'link' && (r.link.verdict === 'known_scam' || r.link.verdict === 'suspicious')) {
       return warn(`${r.link.verdict === 'known_scam' ? 'Scam site' : 'Suspicious link'} · ${r.link.domain}`)
     }
@@ -526,12 +527,13 @@ export default function App() {
         mine,
         wallets,
         scans,
+        blinks,
         watchChanged,
         live,
       } = await askSunny(text)
       setChat((prev) => [
         ...prev,
-        { ...sunnySays(reply), cards, links, alerts, pocket: draws, mine, wallets, scans, live },
+        { ...sunnySays(reply), cards, links, alerts, pocket: draws, mine, wallets, scans, blinks, live },
       ])
       if (draws.length || scans.length) void loadPocket()
       if (watchChanged) void refreshHome()

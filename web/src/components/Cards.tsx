@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { SolanaMark, SunMark } from './Icons'
 import { canShareStory, sendToChat, shareStory, type ShareSpec } from '../lib/share'
 import type { AlertCard, DeepScan, LinkCheck, MyWallet, PocketEvent, TokenCard } from '../lib/chat'
-import type { WalletReport } from '../lib/home'
+import type { BlinkReport, WalletReport } from '../lib/home'
 
 // Result cards shared by the chat and the scanner: tokens, links, alerts and wallets.
 
@@ -394,6 +394,101 @@ export function DeepScanView({ scan }: { scan: DeepScan }) {
           Pocket draw
         </a>
       </p>
+    </div>
+  )
+}
+
+const VERDICT_PILL = {
+  danger: { label: 'Don’t sign', risk: 'high' },
+  caution: { label: 'Be careful', risk: 'medium' },
+  ok: { label: 'Looks fine', risk: 'low' },
+} as const
+
+const REGISTRY_LABEL = {
+  trusted: 'Verified by Dialect',
+  malicious: 'Flagged as malicious',
+  unknown: 'Not in Dialect’s registry',
+}
+
+const amount = (c: BlinkReport['sends'][number]) =>
+  `${c.amount.toLocaleString('en-US', { maximumFractionDigits: c.amount < 1 ? 4 : 2 })} ${c.symbol}${c.usd !== null ? ` · ${formatUsd(c.usd)}` : ''}`
+
+/** "Should I sign this?": what a Blink would do to your wallet, before you sign anything. */
+export function BlinkCardView({ report }: { report: BlinkReport }) {
+  const [iconFailed, setIconFailed] = useState(false)
+  const pill = VERDICT_PILL[report.verdict]
+  const short = report.wallet ? `${report.wallet.slice(0, 4)}…${report.wallet.slice(-4)}` : ''
+  return (
+    <div className={`token-card blink-card token-card--${pill.risk}`}>
+      <div className="token-card-top">
+        {report.icon && !iconFailed ? (
+          <img
+            src={report.icon}
+            alt=""
+            width={30}
+            height={30}
+            loading="lazy"
+            referrerPolicy="no-referrer"
+            onError={() => setIconFailed(true)}
+          />
+        ) : (
+          <span className="token-card-letter">⚡</span>
+        )}
+        <div className="token-card-id">
+          <strong>Should I sign this?</strong>
+          <small>
+            {report.title} · {report.host}
+          </small>
+        </div>
+        <span className={`risk-pill risk-pill--${pill.risk}`}>{pill.label}</span>
+      </div>
+      <p className="blink-summary">{report.summary}</p>
+      {(report.sends.length > 0 || report.receives.length > 0) && (
+        <ul className="blink-flows">
+          {report.sends.map((c) => (
+            <li key={`s-${c.mint}`} data-dir="out">
+              <span>You’d send</span>
+              <b>−{amount(c)}</b>
+            </li>
+          ))}
+          {report.receives.map((c) => (
+            <li key={`r-${c.mint}`} data-dir="in">
+              <span>You’d get</span>
+              <b>+{amount(c)}</b>
+            </li>
+          ))}
+        </ul>
+      )}
+      {report.warnings.length > 0 && (
+        <ul className="token-card-flags">
+          {report.warnings.map((w) => (
+            <li key={w.text} data-level={w.level === 'danger' ? 'high' : 'medium'}>
+              {w.text.charAt(0).toUpperCase() + w.text.slice(1)}
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="token-card-meta">
+        <span>{REGISTRY_LABEL[report.registry]}</span>
+        <span>
+          {report.outcome === 'simulated' || report.outcome === 'would_fail'
+            ? `Simulated with your wallet ${short}`
+            : report.outcome === 'not_simulated'
+              ? 'Watch a wallet to simulate it'
+              : 'No transaction to read'}
+        </span>
+      </div>
+      {report.verdict === 'danger' && (
+        <ShareRow
+          spec={{
+            kicker: 'Drainer caught',
+            title: 'Sunny stopped me from signing a drainer',
+            detail: report.summary.replace(/^Don’t sign\. /, ''),
+            tone: 'warn',
+            caption: `This "${report.title}" Blink was a wallet drainer. Sunny read the transaction before I signed 🛡`,
+          }}
+        />
+      )}
     </div>
   )
 }
