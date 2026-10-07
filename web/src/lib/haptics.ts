@@ -21,6 +21,9 @@ type TelegramWebApp = {
   HapticFeedback?: TelegramHaptics
   showScanQrPopup?: (params: { text?: string }, callback?: (data: string) => boolean | void) => void
   closeScanQrPopup?: () => void
+  shareToStory?: (mediaUrl: string, params?: { text?: string }) => void
+  openTelegramLink?: (url: string) => void
+  isVersionAtLeast?: (version: string) => boolean
 }
 
 declare global {

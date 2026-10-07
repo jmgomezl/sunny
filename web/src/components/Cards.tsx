@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { SolanaMark, SunMark } from './Icons'
+import { canShareStory, sendToChat, shareStory, type ShareSpec } from '../lib/share'
 import type { AlertCard, DeepScan, LinkCheck, MyWallet, PocketEvent, TokenCard } from '../lib/chat'
 import type { WalletReport } from '../lib/home'
 
@@ -91,8 +92,37 @@ const VERDICT = {
 } as const
 
 /** Verdict on a link the user asked about (phishing lists + impersonation checks). */
+/** Share buttons under a moment worth sharing: a Telegram Story card, or a note to a friend. */
+export function ShareRow({ spec }: { spec: ShareSpec }) {
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const story = async () => {
+    setBusy(true)
+    setError(null)
+    try {
+      await shareStory(spec)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'I couldn’t make the card. Try again?')
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <div className="share-row">
+      <button type="button" onClick={() => void story()} disabled={busy}>
+        {busy ? 'Making your card…' : canShareStory() ? '📸 Share to Story' : '📸 Share card'}
+      </button>
+      <button type="button" onClick={() => sendToChat(spec)}>
+        💬 Send to a friend
+      </button>
+      {error && <small>{error}</small>}
+    </div>
+  )
+}
+
 export function LinkCardView({ link }: { link: LinkCheck }) {
   const v = VERDICT[link.verdict]
+  const scam = link.verdict === 'known_scam'
   return (
     <div className={`link-card link-card--${link.verdict}`}>
       <div className="link-card-top">
@@ -109,6 +139,17 @@ export function LinkCardView({ link }: { link: LinkCheck }) {
           <li key={r}>{r}</li>
         ))}
       </ul>
+      {(scam || link.verdict === 'suspicious') && (
+        <ShareRow
+          spec={{
+            kicker: 'Scam caught',
+            title: `Sunny caught a ${scam ? 'phishing' : 'suspicious'} link`,
+            detail: `${link.domain}: ${link.reasons[0]}`,
+            tone: 'warn',
+            caption: `Sunny just warned me: ${link.domain} is ${scam ? 'a phishing site' : 'suspicious'} 🛡 My Solana guardian lives in Telegram:`,
+          }}
+        />
+      )}
     </div>
   )
 }
@@ -334,6 +375,15 @@ export function DeepScanView({ scan }: { scan: DeepScan }) {
           ))}
         </ul>
       )}
+      <ShareRow
+        spec={{
+          kicker: 'Deep scan',
+          title: `Sunny deep-scanned ${scan.symbol}: ${RISK_LABEL[scan.risk].toLowerCase()}`,
+          detail: `Top 10 holders own ${pct(h.top10Pct)}. Paid $${scan.price.toFixed(2)} from its own pocket money, over x402.`,
+          tone: 'sol',
+          caption: `My AI pet Sunny paid $${scan.price.toFixed(2)} from its pocket money to deep-scan ${scan.symbol} over x402 🔍`,
+        }}
+      />
       <p className="deep-scan-paid">
         <SolanaMark size={11} /> Paid ${scan.price.toFixed(2)} from my pocket over x402 ·{' '}
         <a href={scan.paymentTx} target="_blank" rel="noreferrer">
@@ -368,6 +418,17 @@ export function PocketEventView({ event }: { event: PocketEvent }) {
             </>
           )}
         </small>
+        {!event.ok && (
+          <ShareRow
+            spec={{
+              kicker: 'My AI can’t overspend',
+              title: `Solana stopped Sunny from spending $${event.amount}`,
+              detail: `${event.message}. The limits live on-chain, not in the AI.`,
+              tone: 'sol',
+              caption: `I asked my AI pet Sunny to spend $${event.amount}. Solana said no: ${event.message.toLowerCase()} ☀️`,
+            }}
+          />
+        )}
       </div>
     </div>
   )

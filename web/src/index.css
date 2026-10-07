@@ -3469,3 +3469,32 @@ button.token:active {
   font-weight: 650;
   color: var(--ink-faint);
 }
+
+/* Share a moment: a Telegram Story card, or a note to a friend. */
+.share-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.share-row button {
+  padding: 6px 11px;
+  border-radius: 999px;
+  font-size: 12.5px;
+  font-weight: 750;
+  color: var(--chip-ink);
+  background: var(--chip);
+  border: 1px solid var(--card-edge);
+}
+
+.share-row button:disabled {
+  opacity: 0.6;
+}
+
+.share-row small {
+  flex-basis: 100%;
+  font-size: 12px;
+  color: var(--warn);
+}
