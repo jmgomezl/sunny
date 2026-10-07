@@ -8,6 +8,7 @@ import { logActivity, MAX_WATCHED, unwatchAll, unwatchWallet, watchedOf, watchWa
 import { isAddress } from './wallet.js'
 import { faucet, hasChain, pocketState, prepareOwnerTx, submitOwnerTx, type OwnerAction } from './solana.js'
 import { saveVault, validRecord, vaultOf } from './vaults.js'
+import { DEEP_SCAN_PATH, deepScanRoute } from './x402.js'
 
 // Small HTTP API for the Mini App, served behind nginx at /api/.
 // Telegram users are identified from the signed initData, so chatting in the Mini App
@@ -142,6 +143,7 @@ async function chat(req: IncomingMessage, res: ServerResponse, botToken: string)
     pocket: answer.pocket,
     mine: answer.mine,
     wallets: answer.wallets,
+    scans: answer.scans,
     watchChanged: answer.watchChanged,
     live: answer.live,
     guest: person.guest,
@@ -266,6 +268,11 @@ export function startApi(port: number, botToken: string) {
       if (req.method === 'POST' && req.url === '/api/inspect') return await inspectRoute(req, res, botToken)
       if (req.method === 'POST' && req.url === '/api/vault') return await vaultRoute(req, res, botToken)
       if (req.method === 'POST' && req.url === '/api/pocket') return await pocketRoute(req, res, botToken)
+      // Public x402 API: anyone can pay for a deep scan, not just Sunny.
+      if (req.method === 'GET' && req.url?.startsWith(DEEP_SCAN_PATH)) {
+        if (!allow(`x402:${clientIp(req)}`, 120, HOUR)) return send(res, 429, { error: 'Too many scans. Try again later.' })
+        return await deepScanRoute(req, res)
+      }
       send(res, 404, { error: 'Not found' })
     } catch (err) {
       if (err instanceof ApiError) return send(res, err.status, { error: err.message })

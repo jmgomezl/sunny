@@ -81,6 +81,8 @@ test('only spends pocket money when the person asks for it', () => {
   assert.equal(asksForPocketMoney('take $2 from your pocket'), true)
   assert.equal(asksForPocketMoney('usa 5 dólares de tu bolsillo'), true)
   assert.equal(asksForPocketMoney('pay for a safety report on BONK'), true)
+  assert.equal(asksForPocketMoney('Deep scan BONK please'), true)
+  assert.equal(asksForPocketMoney('hazme un análisis profundo de WIF'), true)
   assert.equal(asksForPocketMoney('Is BONK safe?'), false)
   assert.equal(asksForPocketMoney('check this link https://claim-airdrop.xyz'), false)
 })

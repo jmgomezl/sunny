@@ -59,10 +59,16 @@ await draw(3)
 await draw(6)
 await draw(5)
 await draw(3)
-console.log('5. freeze:')
+console.log('5. freeze, unfreeze, then a deep scan paid over x402:')
 await ownerDoes({ action: 'freeze' })
 await draw(1)
 await ownerDoes({ action: 'unfreeze' })
+
+// A deep scan: Sunny draws $0.10 from the pocket and pays the scan API over x402.
+type Scan = { symbol: string; risk: string; paymentTx: string; drawTx: string }
+const scan = await call<{ reply: string; scans: Scan[] }>('chat', { message: 'Deep scan BONK please' })
+if (!scan.scans?.length) throw new Error(`No deep scan came back: ${scan.reply}`)
+console.log(`   ✓ deep scan of ${scan.scans[0].symbol} (${scan.scans[0].risk} risk), paid over x402  ${scan.scans[0].paymentTx}`)
 const s = await pocketState(record.address)
 console.log(`6. state: vault $${s.vault}, spent today $${s.spentToday}/${s.dailyLimit}, Sunny's wallet $${s.agentUsdc}, frozen ${s.frozen}`)
 await ownerDoes({ action: 'withdraw', amount: s.vault })

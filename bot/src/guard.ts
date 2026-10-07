@@ -101,6 +101,9 @@ export function cleanReply(text: string, persona: string, lang: string): string 
 // Words that show the person themselves asked for pocket money to be used.
 const POCKET_ASK =
   /\b(pocket|allowance|money|pay|spend|take|draw|use|buy|bolsillo|dinero|plata|paga|pagar|gasta|gastar|toma|tomar|usa|usar|saca|sacar|compra)\b|\$\s?\d|\d\s?(usd|usdc|dólares|dolares|dollars)\b/i
+// A deep scan has a price, so asking for one is asking to spend: "deep scan BONK", "reporte completo".
+const PAID_SCAN_ASK =
+  /\b(deep[ -]?scan|full (scan|report|check)|premium (scan|report)|(escaneo|análisis|analisis|scan|revisión|revision) (profundo|completo)|(reporte|informe) completo)\b/i
 
 /** Sunny only takes pocket money when the person's own message asks for it. */
-export const asksForPocketMoney = (text: string) => POCKET_ASK.test(text)
+export const asksForPocketMoney = (text: string) => POCKET_ASK.test(text) || PAID_SCAN_ASK.test(text)
