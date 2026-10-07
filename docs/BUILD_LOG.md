@@ -70,7 +70,7 @@ The first real devnet run failed: a brand-new wallet has 0 SOL and couldn't pay 
 | `ff6975c` | Deep scan card in the chat, and a "Deep scan · $0.10" button in Scan & check |
 | `4515210` | More memory headroom for the bot (the SDK added about 25 MB) |
 
-## Oct 7, 11:10–12:20 · News and warnings
+## Oct 7, 11:14 · News and warnings
 
 | Commit | What |
 |---|---|
@@ -79,7 +79,7 @@ The first real devnet run failed: a brand-new wallet has 0 SOL and couldn't pay 
 | `092eb7c` | Sunny reads the news in chat: security first, opportunities without hype and always "not financial advice" |
 | `c2f47a7` | A "What's happening" card on the home screen |
 
-## Oct 7, 12:30–14:30 · Reaching more people: groups, mornings, sharing
+## Oct 7, 11:31–11:37 · Reaching more people: groups, mornings, sharing
 
 | Commit | What |
 |---|---|
