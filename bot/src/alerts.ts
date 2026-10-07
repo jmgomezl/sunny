@@ -1,6 +1,7 @@
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { currentPrices } from './market.js'
+import { logActivity } from './users.js'
 
 // Price alerts ("watch BONK for a 10% drop"), saved to disk so they survive restarts,
 // checked every minute against live Jupiter prices. When one triggers, Sunny messages
@@ -114,6 +115,8 @@ export function startAlertChecker(notify: (userId: number, text: string) => Prom
       a.triggeredAt = new Date().toISOString()
       a.triggeredPrice = price
       changed = true
+      // Also in the activity feed (and the Mini App's "While you slept" card).
+      logActivity(a.userId, 'alert', `Your ${a.symbol} alert fired`, `${a.direction === 'drop' ? 'Dropped' : 'Rose'} to ${fmt(price)}`)
       await notify(a.userId, message(a, price)).catch((err) => console.error('[sunny] alert notify failed', err))
     }
     if (changed) save()
