@@ -146,6 +146,7 @@ export function LinkCardView({ link }: { link: LinkCheck }) {
             title: `Sunny caught a ${scam ? 'phishing' : 'suspicious'} link`,
             detail: `${link.domain}: ${link.reasons[0]}`,
             tone: 'warn',
+            pose: 'scam',
             caption: `Sunny just warned me: ${link.domain} is ${scam ? 'a phishing site' : 'suspicious'} 🛡 My Solana guardian lives in Telegram:`,
           }}
         />
@@ -381,6 +382,8 @@ export function DeepScanView({ scan }: { scan: DeepScan }) {
           title: `Sunny deep-scanned ${scan.symbol}: ${RISK_LABEL[scan.risk].toLowerCase()}`,
           detail: `Top 10 holders own ${pct(h.top10Pct)}. Paid $${scan.price.toFixed(2)} from its own pocket money, over x402.`,
           tone: 'sol',
+          pose: 'dyor',
+          proof: scan.paymentTx,
           caption: `My AI pet Sunny paid $${scan.price.toFixed(2)} from its pocket money to deep-scan ${scan.symbol} over x402 🔍`,
         }}
       />
@@ -495,6 +498,7 @@ export function BlinkCardView({ report }: { report: BlinkReport }) {
             title: 'Sunny stopped me from signing a drainer',
             detail: report.summary.replace(/^Don’t sign\. /, ''),
             tone: 'warn',
+            pose: 'scam',
             caption: `This "${report.title}" Blink was a wallet drainer. Sunny read the transaction before I signed 🛡`,
           }}
         />
@@ -530,6 +534,8 @@ export function PocketEventView({ event }: { event: PocketEvent }) {
               title: `Solana stopped Sunny from spending $${event.amount}`,
               detail: `${event.message}. The limits live on-chain, not in the AI.`,
               tone: 'sol',
+              // Caught overspending: a sheepish blush.
+              pose: 'thanks',
               caption: `I asked my AI pet Sunny to spend $${event.amount}. Solana said no: ${event.message.toLowerCase()} ☀️`,
             }}
           />
