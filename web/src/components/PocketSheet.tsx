@@ -28,8 +28,8 @@ export type PocketEventKind = 'created' | 'opened' | 'topup' | 'freeze' | 'unfre
 type PocketSheetProps = {
   open: boolean
   state: PocketState | null
-  /** Optional action to jump to, e.g. from the home card's Top up / Freeze buttons. */
-  intent?: 'topup' | 'freeze' | 'unfreeze'
+  /** Optional action to jump to from the care card; 'hello' is the first visit, when Sunny offers a wallet. */
+  intent?: 'topup' | 'freeze' | 'unfreeze' | 'hello'
   onClose: () => void
   onChanged: (state: PocketState | null, event: PocketEventKind, sent?: Sent) => void
   onBusy: (busy: boolean) => void
@@ -38,6 +38,8 @@ type PocketSheetProps = {
 type Prepared = { id: string; message: string; summary: string[]; event: PocketEventKind }
 
 const usd = (n: number) => `$${n.toLocaleString('en-US', { maximumFractionDigits: 2 })}`
+
+const firstName = () => window.Telegram?.WebApp?.initDataUnsafe?.user?.first_name?.split(' ')[0]
 
 /** Your Sunny wallet (self-custodial, password-locked) and Sunny's pocket money. */
 export function PocketSheet({ open, state, intent, onClose, onChanged, onBusy }: PocketSheetProps) {
@@ -52,6 +54,7 @@ export function PocketSheet({ open, state, intent, onClose, onChanged, onBusy }:
   const [daily, setDaily] = useState('10')
   const [perTx, setPerTx] = useState('5')
   const [backup, setBackup] = useState<string | null>(null)
+  const [skipFaucet, setSkipFaucet] = useState(false)
 
   useEffect(() => {
     if (!open) return
@@ -154,6 +157,29 @@ export function PocketSheet({ open, state, intent, onClose, onChanged, onBusy }:
 
   const s = state
   const amountChips = [5, 10, 20]
+  // One step at a time: test money first, then the pocket.
+  const wantsFaucet = Boolean(s && !s.exists && s.ownerUsdc < 5 && !skipFaucet)
+  const name = firstName()
+  // Sunny walks you through every step in its own words.
+  const line = !inTelegram()
+    ? 'My wallet lives inside Telegram, where you’re verified. Open me from @SunnySolBot to make yours.'
+    : record === undefined
+      ? 'Looking for your wallet…'
+      : record === null
+        ? `${intent === 'hello' ? `Hi${name ? ` ${name}` : ''}! I’m Sunny ☀️ ` : ''}Let’s make your wallet together. It’s born right here on your phone and locked with a password only you know.`
+        : !unlocked
+          ? `Welcome back${name ? `, ${name}` : ''}! Tell me your password so I know it’s you.`
+          : prepared
+            ? 'Have a look before you sign. I read this on your phone, not on my server.'
+            : !s
+              ? 'Your wallet is ready! Let me check it on Solana…'
+              : wantsFaucet
+                ? 'Your wallet is ready! We’re on devnet, so money here is just for practice. Want 20 test USDC to play with?'
+                : !s.exists
+                  ? 'If you like, give me a small daily allowance. I can only spend inside these limits, and Solana checks every payment, not me.'
+                  : s.frozen
+                    ? 'Brrr, I’m frozen ❄ I can’t spend a cent until you warm me up.'
+                    : `I have ${usd(s.leftToday)} left today. Top me up, freeze me, or take it all back whenever you like.`
 
   return (
     <AnimatePresence>
@@ -181,7 +207,7 @@ export function PocketSheet({ open, state, intent, onClose, onChanged, onBusy }:
               <div className="chat-title">
                 <SunMark size={22} />
                 <div>
-                  <strong>Pocket money</strong>
+                  <strong>Sunny wallet</strong>
                   <small>
                     {record ? `Your wallet ${record.address.slice(0, 4)}…${record.address.slice(-4)} · ` : ''}
                     Solana {s?.cluster ?? 'devnet'}
@@ -196,24 +222,23 @@ export function PocketSheet({ open, state, intent, onClose, onChanged, onBusy }:
             </header>
 
             <div className="scan-body">
-              {!inTelegram() && (
-                <p className="scan-note">
-                  Your Sunny wallet lives inside Telegram, where you’re verified. Open me from @SunnySolBot to create
-                  it.
-                </p>
-              )}
-
-              {inTelegram() && record === undefined && <p className="scan-hint">Looking for your wallet…</p>}
+              <div className="chat-msg chat-msg--sunny sheet-says" aria-live="polite">
+                <span className="chat-avatar" aria-hidden="true">
+                  <SunMark size={18} />
+                </span>
+                <motion.p
+                  key={line}
+                  initial={{ opacity: 0, y: 6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ type: 'spring', stiffness: 420, damping: 30 }}
+                >
+                  {line}
+                </motion.p>
+              </div>
 
               {/* 1. Create a self-custodial wallet, OculusVault-style. */}
               {inTelegram() && record === null && (
                 <form className="pocket-form" onSubmit={create}>
-                  <h3>Create your Sunny wallet</h3>
-                  <ul className="pocket-points">
-                    <li>Made on this phone, no app to install</li>
-                    <li>Locked with your password; Sunny’s server can’t open it</li>
-                    <li>Network fees are on Sunny</li>
-                  </ul>
                   <input
                     type="password"
                     autoComplete="new-password"
@@ -229,22 +254,27 @@ export function PocketSheet({ open, state, intent, onClose, onChanged, onBusy }:
                     onChange={(e) => setConfirm(e.target.value)}
                   />
                   <p className="scan-hint">
-                    There’s no reset: if you forget it, this wallet is gone. Keep pocket amounts small.
+                    Not even I can open it, so there’s no reset: if you forget the password, the wallet is gone. Network
+                    fees are on me.
                   </p>
                   <button
                     className="btn btn--primary"
                     type="submit"
                     disabled={Boolean(busy) || password.length < MIN_PASSWORD}
                   >
-                    Create wallet
+                    Make my wallet
                   </button>
+                  {intent === 'hello' && (
+                    <button type="button" className="ghost-btn pocket-later" onClick={onClose}>
+                      Maybe later
+                    </button>
+                  )}
                 </form>
               )}
 
               {/* 2. Unlock. */}
               {record && !unlocked && (
                 <form className="pocket-form" onSubmit={unlock}>
-                  <h3>Unlock your wallet</h3>
                   <input
                     type="password"
                     autoComplete="current-password"
@@ -294,19 +324,28 @@ export function PocketSheet({ open, state, intent, onClose, onChanged, onBusy }:
                       <span>test USDC</span>
                     </div>
                     <div>
-                      <small>In Sunny’s pocket</small>
+                      <small>In my pocket</small>
                       <strong>{usd(s.vault)}</strong>
                       <span>{s.exists ? `${usd(s.leftToday)} left today` : 'not open yet'}</span>
                     </div>
                   </div>
 
                   {s.ownerUsdc < 5 && (
-                    <button type="button" className="btn btn--ice" onClick={getTestUsdc} disabled={Boolean(busy)}>
+                    <button
+                      type="button"
+                      className={`btn ${wantsFaucet ? 'btn--primary' : 'btn--ice'}`}
+                      onClick={getTestUsdc}
+                      disabled={Boolean(busy)}
+                    >
                       Get 20 test USDC
                     </button>
                   )}
 
-                  {!s.exists ? (
+                  {wantsFaucet ? (
+                    <button type="button" className="ghost-btn pocket-later" onClick={() => setSkipFaucet(true)}>
+                      Skip for now
+                    </button>
+                  ) : !s.exists ? (
                     <form
                       className="pocket-form"
                       onSubmit={(e) => {
@@ -314,10 +353,6 @@ export function PocketSheet({ open, state, intent, onClose, onChanged, onBusy }:
                         prepare({ action: 'open', daily: Number(daily), perTx: Number(perTx) }, 'opened')
                       }}
                     >
-                      <h3>Give Sunny pocket money</h3>
-                      <p className="scan-hint">
-                        Sunny can only spend inside these limits. Solana enforces them, not Sunny’s server.
-                      </p>
                       <div className="pocket-limits">
                         <label>
                           <span>Per day ($)</span>
@@ -329,7 +364,7 @@ export function PocketSheet({ open, state, intent, onClose, onChanged, onBusy }:
                         </label>
                       </div>
                       <button className="btn btn--primary" type="submit" disabled={Boolean(busy)}>
-                        Open pocket
+                        Open my pocket
                       </button>
                     </form>
                   ) : (
@@ -355,7 +390,7 @@ export function PocketSheet({ open, state, intent, onClose, onChanged, onBusy }:
                         }
                         disabled={Boolean(busy)}
                       >
-                        <SnowIcon size={16} /> {s.frozen ? 'Unfreeze' : 'Freeze'}
+                        <SnowIcon size={16} /> {s.frozen ? 'Warm me up' : 'Freeze me'}
                       </button>
                       <button
                         type="button"
