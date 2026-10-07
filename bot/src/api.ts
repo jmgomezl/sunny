@@ -2,7 +2,7 @@ import { createHash, createHmac, timingSafeEqual } from 'node:crypto'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { hasBrain, reply } from './brain.js'
 import { buildHome } from './home.js'
-import { inspect } from './inspect.js'
+import { accountKind, inspect } from './inspect.js'
 import { allow, DAY, HOUR } from './limits.js'
 import { logActivity, MAX_WATCHED, noteHabit, touch, unwatchAll, unwatchWallet, watchedOf, watchWallet } from './users.js'
 import { syncBadges } from './badges.js'
@@ -162,8 +162,13 @@ async function chat(req: IncomingMessage, res: ServerResponse, botToken: string)
 const clientIp = (req: IncomingMessage) => String(req.headers['x-real-ip'] ?? req.socket.remoteAddress ?? 'unknown')
 
 /** Starts watching a wallet for this person (read-only), or explains why not. */
-function startWatching(userId: number, address: string) {
+async function startWatching(userId: number, input: string) {
+  const address = input.trim()
   if (!isAddress(address)) throw new ApiError(400, 'That doesn’t look like a Solana wallet address.')
+  if (vaultOf(userId)?.address === address) throw new ApiError(400, 'That’s your Sunny wallet, I already look after it ☀️')
+  if ((await accountKind(address).catch(() => 'wallet')) === 'mint') {
+    throw new ApiError(400, 'That’s a token’s address, not a wallet. Paste it in Scan & check to see how safe the token is.')
+  }
   if (watchWallet(userId, address) === 'full') {
     throw new ApiError(400, `I can watch up to ${MAX_WATCHED} wallets. Stop watching one first.`)
   }
@@ -173,10 +178,10 @@ function startWatching(userId: number, address: string) {
 async function home(req: IncomingMessage, res: ServerResponse, botToken: string) {
   const body = await readJson(req)
   const person = identify(body, botToken, clientIp(req), 'home')
-  if (typeof body.watch === 'string' && body.watch) startWatching(person.id, body.watch)
+  if (typeof body.watch === 'string' && body.watch) await startWatching(person.id, body.watch)
   if (typeof body.unwatch === 'string' && body.unwatch) unwatchWallet(person.id, body.unwatch)
   // Older Mini App builds (Telegram caches them) still send `wallet`.
-  if (typeof body.wallet === 'string' && body.wallet) startWatching(person.id, body.wallet)
+  if (typeof body.wallet === 'string' && body.wallet) await startWatching(person.id, body.wallet)
   if (body.wallet === null) unwatchAll(person.id)
   send(res, 200, { ...(await buildHome(person.id, watchedOf(person.id))), guest: person.guest })
 }
@@ -184,7 +189,8 @@ async function home(req: IncomingMessage, res: ServerResponse, botToken: string)
 /** Scan or paste anything: token, wallet or link. */
 async function inspectRoute(req: IncomingMessage, res: ServerResponse, botToken: string) {
   const body = await readJson(req)
-  const input = typeof body.input === 'string' ? body.input.trim().slice(0, 300) : ''
+  const input = typeof body.input === 'string' ? body.input.trim() : ''
+  if (input.length > 2000) throw new ApiError(400, 'That’s too long for me to check. Paste just the link or address.')
   if (!input) throw new ApiError(400, 'Paste or scan something first ☀️')
   const person = identify(body, botToken, clientIp(req), 'inspect')
   const result = await inspect(input, person.guest ? null : (watchedOf(person.id)[0] ?? null))

@@ -5,6 +5,7 @@ import { checkLink, type LinkCheck } from './scams.js'
 import { logActivity, MAX_WATCHED, noteHabit, unwatchWallet, watchedOf, watchWallet } from './users.js'
 import { agentDraw, hasChain, pocketState, walletHistory, type WalletEvent } from './solana.js'
 import { vaultOf } from './vaults.js'
+import { accountKind } from './inspect.js'
 import { isAddress, walletReport, type WalletReport } from './wallet.js'
 import { asksForPocketMoney, cleanReply, cooldownReply, coolingDown, refuse, screen } from './guard.js'
 import type { DeepReport } from './deepscan.js'
@@ -519,6 +520,9 @@ async function runTool(name: string, rawArgs: string, ctx: Ctx): Promise<unknown
         const address = String(args.address ?? '').trim()
         if (!isAddress(address)) return { error: 'That doesn’t look like a Solana wallet address.' }
         if (vaultOf(ctx.userId)?.address === address) return { error: 'That’s their Sunny wallet; it’s already theirs.' }
+        if ((await accountKind(address).catch(() => 'wallet')) === 'mint') {
+          return { error: 'That address is a token (a mint), not a wallet. Offer to check the token with lookup_token instead.' }
+        }
         const result = watchWallet(ctx.userId, address)
         if (result === 'full') return { error: `Already watching ${MAX_WATCHED} wallets; ask which one to stop watching.` }
         ctx.watchChanged ||= result === 'added'

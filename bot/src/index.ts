@@ -248,7 +248,10 @@ async function main() {
   await bot.start({ drop_pending_updates: true, allowed_updates: ['message', 'my_chat_member'] })
 }
 
-for (const signal of ['SIGINT', 'SIGTERM'] as const) process.once(signal, () => bot.stop())
+// The API server would keep the process alive on its own, so shutting down exits explicitly.
+for (const signal of ['SIGINT', 'SIGTERM'] as const) {
+  process.once(signal, () => void Promise.resolve(bot.isRunning() ? bot.stop() : undefined).finally(() => process.exit(0)))
+}
 // One request gone wrong must never take Sunny down for everyone: log it and keep going.
 process.on('unhandledRejection', (err) => console.error('[sunny] unhandled rejection', err))
 process.on('uncaughtException', (err) => console.error('[sunny] uncaught exception', err))

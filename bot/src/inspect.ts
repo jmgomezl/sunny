@@ -20,14 +20,15 @@ export function extractAddress(input: string): string | null {
   const s = input.trim()
   // Solana Pay: solana:<address>?amount=…
   const pay = s.match(/^solana:([1-9A-HJ-NP-Za-km-z]{32,44})/i)
-  if (pay) return pay[1]
+  if (pay) return isAddress(pay[1]) ? pay[1] : null
   if (isAddress(s)) return s
   // Solscan, Explorer, Birdeye, Jupiter links that carry an address in the path.
   const inPath = s.match(/(?:solscan\.io|explorer\.solana\.com|birdeye\.so|jup\.ag)\/(?:token|account|address|tokens|swap)?\/?(?:[^/]*-)?([1-9A-HJ-NP-Za-km-z]{32,44})/i)
-  return inPath ? inPath[1] : null
+  return inPath && isAddress(inPath[1]) ? inPath[1] : null
 }
 
-async function accountKind(address: string): Promise<'mint' | 'wallet'> {
+/** Whether an address is a token's mint or a wallet. */
+export async function accountKind(address: string): Promise<'mint' | 'wallet'> {
   const res = await fetch(MAINNET_RPC, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -49,12 +50,15 @@ export async function inspect(input: string, watched: string | null = null): Pro
     return { kind: 'wallet', report: await walletReport(address) }
   }
 
-  if (/^solana-action:/i.test(text) || ((/^https?:\/\//i.test(text) || /\./.test(text)) && (await looksLikeBlink(text)))) {
+  // Blinks, and Solana Pay transaction requests (solana:https://…), which work the same way:
+  // the site builds a transaction for your wallet to sign.
+  if (/^solana(-action)?:https?:/i.test(text) || ((/^https?:\/\//i.test(text) || /\./.test(text)) && (await looksLikeBlink(text)))) {
     const report = await checkBlink(text, watched, probeAccount()).catch(() => null)
     if (report) return { kind: 'blink', report }
   }
 
-  if (/^https?:\/\//i.test(text) || /^[a-z0-9-]+(\.[a-z0-9-]+)+(\/\S*)?$/i.test(text)) {
+  // Domains can be written in any alphabet (phаntom.app with a Cyrillic "а" is a classic trick).
+  if (/^https?:\/\//i.test(text) || /^[\p{L}\p{N}-]+(\.[\p{L}\p{N}-]+)+\.?(\/\S*)?$/iu.test(text)) {
     const link = checkLink(text)
     if ('error' in link) return { kind: 'unknown', message: link.error }
     return { kind: 'link', link }

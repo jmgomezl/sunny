@@ -9,7 +9,7 @@ const REFRESH_MS = 6 * 60 * 60 * 1000
 const OFFICIAL: Record<string, string[]> = {
   phantom: ['phantom.app', 'phantom.com'],
   solflare: ['solflare.com'],
-  jupiter: ['jup.ag', 'jupiter.ag'],
+  jupiter: ['jup.ag'],
   jup: ['jup.ag'],
   raydium: ['raydium.io'],
   orca: ['orca.so'],
@@ -26,19 +26,46 @@ const OFFICIAL: Record<string, string[]> = {
   solscan: ['solscan.io'],
   bonk: ['bonkcoin.com'],
 }
-const TRUSTED = new Set([
-  ...Object.values(OFFICIAL).flat(),
-  'x.com',
-  'twitter.com',
-  'discord.com',
-  't.me',
-  'github.com',
+// Real Solana tools that aren't impersonation targets themselves, but whose names would
+// otherwise look like it (solana.fm has "solana" in it, bonkbot.io has "bonk").
+const KNOWN_GOOD = [
   'explorer.solana.com',
+  'solana.fm',
+  'solanabeach.io',
   'birdeye.so',
   'dexscreener.com',
   'rugcheck.xyz',
   'coingecko.com',
-])
+  'coinmarketcap.com',
+  'bonkbot.io',
+  'dial.to',
+  'dialect.to',
+  'helius.dev',
+  'tiplink.io',
+  'squads.so',
+  'sanctum.so',
+  'marginfi.com',
+  'metaplex.com',
+  'pyth.network',
+  'wormhole.com',
+]
+const TRUSTED = new Set([...Object.values(OFFICIAL).flat(), ...KNOWN_GOOD])
+// Sites where anyone can post: the site is real, but the page could be anyone's (fake
+// "support" bots live on t.me), so they're never called official.
+const PLATFORMS: Record<string, string> = {
+  't.me': 'Telegram',
+  'telegram.me': 'Telegram',
+  'x.com': 'X',
+  'twitter.com': 'X',
+  'discord.com': 'Discord',
+  'discord.gg': 'Discord',
+  'github.com': 'GitHub',
+  'medium.com': 'Medium',
+  'youtube.com': 'YouTube',
+  'linktr.ee': 'Linktree',
+  'docs.google.com': 'Google Docs',
+}
+const SUPPORT_BAIT = /support|help|desk|admin|recover|airdrop|claim|verify|validat/i
 const BAIT_WORDS = ['claim', 'airdrop', 'reward', 'bonus', 'free', 'giveaway', 'restore', 'validate', 'sync', 'rectify', 'unlock', 'eligib']
 const FREE_HOSTS = ['pages.dev', 'vercel.app', 'netlify.app', 'webflow.io', 'fleek.co', 'github.io', 'web.app', 'firebaseapp.com', 'glitch.me', 'replit.app', 'ipfs.io', 'gitbook.io']
 
@@ -72,6 +99,9 @@ export function startScamLists() {
   setInterval(() => load().catch(() => {}), REFRESH_MS).unref()
 }
 
+// Letters scammers swap in because they look alike: "phantorn" reads as "phantom".
+const unconfuse = (label: string) => label.replace(/rn/g, 'm').replace(/vv/g, 'w').replace(/0/g, 'o').replace(/1/g, 'l')
+
 function editDistance(a: string, b: string) {
   const dp = Array.from({ length: a.length + 1 }, (_, i) => [i, ...Array(b.length).fill(0)])
   for (let j = 1; j <= b.length; j++) dp[0][j] = j
@@ -87,16 +117,41 @@ export type LinkCheck = {
   reasons: string[]
 }
 
+const DISPLAY: Record<string, string> = { magiceden: 'Magic Eden', pump: 'Pump.fun', jup: 'Jupiter' }
+const brandName = (brand: string) => DISPLAY[brand] ?? `${brand[0].toUpperCase()}${brand.slice(1)}`
+
 export function checkLink(input: string): LinkCheck | { error: string } {
-  let host: string
+  let url: URL
   try {
-    host = new URL(/^[a-z]+:\/\//i.test(input.trim()) ? input.trim() : `https://${input.trim()}`).hostname.toLowerCase()
+    url = new URL(/^[a-z]+:\/\//i.test(input.trim()) ? input.trim() : `https://${input.trim()}`)
   } catch {
     return { error: 'That doesn’t look like a link.' }
   }
-  const domain = host.replace(/^www\./, '')
+  const domain = url.hostname.toLowerCase().replace(/\.$/, '').replace(/^www\./, '')
   const parents = domain.split('.').map((_, i, parts) => parts.slice(i).join('.')).filter((d) => d.includes('.'))
 
+  const platform = parents.map((d) => PLATFORMS[d]).find(Boolean)
+  if (platform) {
+    // A page on Telegram, X or GitHub is only as trustworthy as whoever made it.
+    const path = decodeURIComponent(url.pathname).toLowerCase()
+    const brand = Object.keys(OFFICIAL).find((b) => b.length >= 4 && path.includes(b))
+    if (brand && SUPPORT_BAIT.test(path)) {
+      return {
+        domain,
+        verdict: 'suspicious',
+        reasons: [`Uses ${brandName(brand)}’s name on ${platform}, where anyone can make an account. Real support never messages you first`],
+      }
+    }
+    const bait = BAIT_WORDS.filter((w) => path.includes(w))
+    if (bait.length) {
+      return {
+        domain,
+        verdict: 'suspicious',
+        reasons: [`A “${bait[0]}” page on ${platform}, where anyone can post. Real airdrops are announced on the project’s own site`],
+      }
+    }
+    return { domain, verdict: 'unknown', reasons: [`${platform} is real, but anyone can post there: trust this page only if it came from the project’s official site`] }
+  }
   if (parents.some((d) => TRUSTED.has(d)) && !parents.some((d) => blocked.has(d))) {
     return { domain, verdict: 'official', reasons: ['This is the real, official site'] }
   }
@@ -105,22 +160,28 @@ export function checkLink(input: string): LinkCheck | { error: string } {
   }
 
   const reasons: string[] = []
-  const label = domain.replace(/\.[^.]+$/, '')
+  const bait = BAIT_WORDS.filter((w) => domain.includes(w))
+  const freeHost = FREE_HOSTS.some((h) => domain.endsWith(`.${h}`))
+  const tld = domain.split('.').pop() ?? ''
+  const name = unconfuse(domain.split('.').slice(-2, -1)[0] ?? domain)
   for (const [brand, homes] of Object.entries(OFFICIAL)) {
-    if (brand.length < 4) continue
+    if (brand.length < 3) continue
+    // "solana" shows up in plenty of honest names, so on its own it needs bait or free hosting.
+    const named = brand.length >= 4 && domain.includes(brand) && (brand !== 'solana' || bait.length > 0 || freeHost)
     const lookalike = homes.some((h) => {
-      const base = h.replace(/\.[^.]+$/, '')
-      return base.length >= 5 && editDistance(label.split('.').pop() ?? label, base) === 1
+      const base = h.split('.')[0]
+      const distance = editDistance(name, base)
+      // Long names: one letter off anywhere. Short ones (jup): only with the same ending (jupp.ag).
+      return (distance === 0 && domain !== h) || (distance === 1 && (base.length >= 5 || h.endsWith(`.${tld}`)))
     })
-    if (domain.includes(brand) || lookalike) {
-      reasons.push(`Pretends to be ${brand[0].toUpperCase()}${brand.slice(1)}, but the real site is ${homes[0]}`)
+    if (named || lookalike) {
+      reasons.push(`Pretends to be ${brandName(brand)}, but the real site is ${homes[0]}`)
       break
     }
   }
-  const bait = BAIT_WORDS.filter((w) => domain.includes(w))
   if (bait.length) reasons.push(`Uses bait words in the address (${bait.join(', ')})`)
   if (domain.includes('xn--')) reasons.push('Uses look-alike characters (punycode)')
-  if (FREE_HOSTS.some((h) => domain.endsWith(`.${h}`))) reasons.push('Hosted on a free site builder, common for throwaway scam pages')
+  if (freeHost) reasons.push('Hosted on a free site builder, common for throwaway scam pages')
 
   return {
     domain,

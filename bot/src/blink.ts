@@ -161,7 +161,7 @@ export async function looksLikeBlink(input: string) {
 /** Is this a Blink? Returns the Action API URL behind it, or null. */
 export async function resolveAction(input: string): Promise<string | null> {
   const text = input.trim()
-  if (/^solana-action:/i.test(text)) return decodeURIComponent(text.replace(/^solana-action:/i, ''))
+  if (/^solana(-action)?:https?:/i.test(text)) return decodeURIComponent(text.replace(/^solana(-action)?:/i, ''))
   let url: URL
   try {
     url = new URL(/^https?:\/\//i.test(text) ? text : `https://${text}`)
@@ -446,7 +446,8 @@ export async function checkBlink(link: string, watched: string | null, probe: st
   const host = new URL(actionUrl).hostname
   const pageHost = (() => {
     try {
-      return new URL(/^https?:\/\//i.test(link) ? link : `https://${link.replace(/^solana-action:/i, '')}`).hostname
+      const page = link.replace(/^solana(-action)?:/i, '')
+      return new URL(/^https?:\/\//i.test(page) ? page : `https://${page}`).hostname
     } catch {
       return host
     }
@@ -481,7 +482,8 @@ export async function checkBlink(link: string, watched: string | null, probe: st
   }
   const m = meta.body
   Object.assign(base, {
-    title: m.title ?? 'Untitled Action',
+    // Solana Pay transaction requests call it a label.
+    title: m.title ?? m.label ?? 'Untitled Action',
     description: (m.description ?? '').slice(0, 280),
     icon: m.icon,
     buttons: (m.links?.actions ?? []).map((a) => a.label).slice(0, 6),
