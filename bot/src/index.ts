@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { Bot, GrammyError, HttpError, InlineKeyboard, InputFile } from 'grammy'
+import { Bot, GrammyError, HttpError, InlineKeyboard, InputFile, type Context } from 'grammy'
 import { startApi } from './api.js'
 import { startAlertChecker } from './alerts.js'
 import { forget, hasBrain, reply } from './brain.js'
@@ -54,7 +54,8 @@ bot.command('start', async (ctx) => {
     `Hi ${name}! I’m Sunny ☀️\n\n` +
     `I’m a little sun that keeps your Solana wallet warm and safe. I watch your tokens, ` +
     `warn you about scams, and explain the market in plain words.\n\n` +
-    `I only spend the pocket money you give me, and Solana makes sure I can’t go over it.\n\n` +
+    `Open my sky to make your Sunny wallet: it takes a password and a few seconds. ` +
+    `Then you can give me pocket money, and Solana makes sure I never spend more than you allow.\n\n` +
     `Ask me anything, or open my sky below.`
   const keyboard = openSky()
   if (avatarFileId || existsSync(AVATAR)) {
@@ -71,57 +72,49 @@ bot.command('help', (ctx) =>
   ctx.reply(
     'Here’s what I can do ☀️\n\n' +
       '• Chat with me about Solana, wallets and staying safe\n' +
-      '• /home opens my sky: your wallet’s weather, the tokens I watch and my pocket money\n\n' +
-      '• Ask me if a token is safe, how the market is, or paste a link and I’ll check it for scams\n' +
-      '• /watch BONK 10% and I’ll message you if it drops 10%\n\n' +
-      'Arriving this week: /pocket and /freeze, my on-chain allowance.',
+      '• /home opens my sky: your Sunny wallet, my pocket money and the wallets I watch\n' +
+      '• /check BONK and I’ll tell you how risky a token is, or paste a link and I’ll check it for scams\n' +
+      '• /watch BONK 10% and I’ll message you if it drops 10%\n' +
+      '• /pocket shows my allowance; /freeze stops me from spending anything',
   ),
 )
 
-const comingSoon = (what: string) =>
-  `${what} is arriving this week ☀️ I’m learning to do it safely first. For now, ask me anything, or open my sky.`
-
-bot.command('check', (ctx) => ctx.reply(comingSoon('Token safety checks'), { reply_markup: openSky() }))
-bot.command('watch', async (ctx) => {
-  if (!HAS_BRAIN || !allowed(ctx.from!.id)) return ctx.reply('Tell me later which token to watch ☀️')
-  const ask = ctx.match ? `Watch ${ctx.match}` : 'Which price alerts do I have?'
-  await ctx.replyWithChatAction('typing')
-  const answer = await reply(ctx.chat.id, ctx.from!.first_name, ask, ctx.from!.language_code)
-  await ctx.reply(answer.text)
-})
-bot.command('pocket', (ctx) =>
-  ctx.reply(
-    'My pocket money is a small daily allowance you give me on Solana. A program on-chain enforces the limit, ' +
-      'so I can pay for safety reports and small swaps but can never spend more than you allowed. ' +
-      'Connecting it is arriving this week ☀️',
-    { reply_markup: openSky() },
-  ),
-)
-bot.command('freeze', (ctx) =>
-  ctx.reply(
-    'Freezing stops me from spending anything until you unfreeze me. It goes live together with my pocket money ' +
-      'this week ❄️',
-  ),
-)
-
-bot.on('message:text', async (ctx) => {
+/** Answers through Sunny's brain, exactly like a chat message. */
+async function askBrain(ctx: Context, text: string) {
   if (!HAS_BRAIN) {
     await ctx.reply('My chatty side is still waking up ☀️ For now, try /help or open my sky.', { reply_markup: openSky() })
     return
   }
-  if (!allowed(ctx.from.id)) {
+  if (!allowed(ctx.from!.id)) {
     await ctx.reply('I need a little rest to save my energy ☀️ Let’s pick this up in a bit.')
     return
   }
   await ctx.replyWithChatAction('typing')
   try {
-    const answer = await reply(ctx.chat.id, ctx.from.first_name, ctx.message.text, ctx.from.language_code)
+    const answer = await reply(ctx.chat!.id, ctx.from!.first_name, text, ctx.from!.language_code)
     await ctx.reply(answer.live ? `${answer.text}\n\n📡 Live from Jupiter` : answer.text)
   } catch (err) {
     console.error('[sunny] brain error', err)
     await ctx.reply('My thoughts got cloudy for a second. Try me again? ☁️')
   }
+}
+
+bot.command('check', async (ctx) => {
+  if (!ctx.match) return ctx.reply('Which token? Try /check BONK, paste a mint address, or scan a QR in my sky ☀️')
+  await askBrain(ctx, `Is ${ctx.match} safe?`)
 })
+bot.command('watch', (ctx) => askBrain(ctx, ctx.match ? `Watch ${ctx.match}` : 'Which price alerts do I have?'))
+bot.command('pocket', (ctx) => askBrain(ctx, 'How is my pocket money?'))
+// Freezing is signed by the owner's own key, which only lives on their phone, so it happens in the sky.
+bot.command('freeze', (ctx) =>
+  ctx.reply(
+    'Only you can freeze me, with your own password ❄️ Open my sky and tap the snowflake under my energy: ' +
+      'Solana stops me from spending anything until you warm me up.',
+    { reply_markup: openSky() },
+  ),
+)
+
+bot.on('message:text', (ctx) => askBrain(ctx, ctx.message.text))
 
 bot.on('message', (ctx) => ctx.reply('I can only read text for now ☀️ Tell me what’s on your mind.'))
 
