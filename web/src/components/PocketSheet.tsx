@@ -33,6 +33,8 @@ type PocketSheetProps = {
   onClose: () => void
   onChanged: (state: PocketState | null, event: PocketEventKind, sent?: Sent) => void
   onBusy: (busy: boolean) => void
+  /** Called when the key backup is shown, which earns the Key Keeper badge. */
+  onBackup?: () => void
 }
 
 type Prepared = { id: string; message: string; summary: string[]; event: PocketEventKind }
@@ -42,7 +44,7 @@ const usd = (n: number) => `$${n.toLocaleString('en-US', { maximumFractionDigits
 const firstName = () => window.Telegram?.WebApp?.initDataUnsafe?.user?.first_name?.split(' ')[0]
 
 /** Your Sunny wallet (self-custodial, password-locked) and Sunny's pocket money. */
-export function PocketSheet({ open, state, intent, onClose, onChanged, onBusy }: PocketSheetProps) {
+export function PocketSheet({ open, state, intent, onClose, onChanged, onBusy, onBackup }: PocketSheetProps) {
   const [record, setRecord] = useState<VaultRecord | null | undefined>(undefined)
   const [unlocked, setUnlocked] = useState(isUnlocked())
   const [password, setPassword] = useState('')
@@ -409,7 +411,10 @@ export function PocketSheet({ open, state, intent, onClose, onChanged, onBusy }:
                   <button
                     type="button"
                     className="ghost-btn pocket-backup"
-                    onClick={() => setBackup((b) => (b ? null : exportKey()))}
+                    onClick={() => {
+                      if (!backup) onBackup?.()
+                      setBackup((b) => (b ? null : exportKey()))
+                    }}
                   >
                     {backup ? 'Hide backup key' : 'Back up my key'}
                   </button>

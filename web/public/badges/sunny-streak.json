@@ -1,0 +1,17 @@
+{
+  "name": "Sunny badge: Sunny Streak",
+  "symbol": "SSTREAK",
+  "description": "Visited Sunny three days in a row. A non-transferable good-habit badge from Sunny, your Solana guardian in Telegram (t.me/SunnySolBot).",
+  "image": "https://sunny.aivylabs.xyz/badges/sunny-streak.png",
+  "external_url": "https://t.me/SunnySolBot",
+  "attributes": [
+    {
+      "trait_type": "Badge",
+      "value": "Sunny Streak"
+    },
+    {
+      "trait_type": "Transferable",
+      "value": "No"
+    }
+  ]
+}

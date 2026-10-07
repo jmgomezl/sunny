@@ -29,12 +29,21 @@ export const POSES: Record<string, Pose> = {
   gn: { mood: 'sleepy', dozing: true, caption: 'gn', emoji: '😴' },
 }
 
-export function StickerStage({ pose }: { pose: string }) {
+/** `caption` overrides the pose's own words (badge art uses the badge's name). */
+export function StickerStage({ pose, caption, wearAll }: { pose: string; caption?: string | null; wearAll?: boolean }) {
   const p = POSES[pose] ?? POSES.gm
   return (
     <div className="sticker" data-pose={pose}>
-      <Sunny mood={p.mood} reaction={p.reaction ?? null} frozen={p.frozen} dozing={p.dozing} wave={p.wave} size={470} />
-      <span className="sticker-caption">{p.caption}</span>
+      <Sunny
+        mood={p.mood}
+        reaction={p.reaction ?? null}
+        frozen={p.frozen}
+        dozing={p.dozing}
+        wave={p.wave}
+        wear={wearAll ? { shades: true, shield: true, key: true } : {}}
+        size={470}
+      />
+      <span className="sticker-caption">{caption ?? p.caption}</span>
     </div>
   )
 }

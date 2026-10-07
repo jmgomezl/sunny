@@ -12,9 +12,16 @@ telegram?.setHeaderColor?.('#86cdfb')
 telegram?.setBackgroundColor?.('#fff8ec')
 
 // ?sticker=<pose> renders a single sticker for the pack (see StickerStage).
-const sticker = new URLSearchParams(window.location.search).get('sticker')
+const params = new URLSearchParams(window.location.search)
+const sticker = params.get('sticker')
 if (sticker) document.documentElement.classList.add('sticker-mode')
 
 createRoot(document.getElementById('root')!).render(
-  <StrictMode>{sticker ? <StickerStage pose={sticker} /> : <App />}</StrictMode>,
+  <StrictMode>
+    {sticker ? (
+      <StickerStage pose={sticker} caption={params.get('caption')} wearAll={params.get('wear') === 'all'} />
+    ) : (
+      <App />
+    )}
+  </StrictMode>,
 )

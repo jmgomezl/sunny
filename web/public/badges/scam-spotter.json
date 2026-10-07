@@ -1,0 +1,17 @@
+{
+  "name": "Sunny badge: Scam Spotter",
+  "symbol": "SSCAM",
+  "description": "Sunny caught a scam before it caught them. A non-transferable good-habit badge from Sunny, your Solana guardian in Telegram (t.me/SunnySolBot).",
+  "image": "https://sunny.aivylabs.xyz/badges/scam-spotter.png",
+  "external_url": "https://t.me/SunnySolBot",
+  "attributes": [
+    {
+      "trait_type": "Badge",
+      "value": "Scam Spotter"
+    },
+    {
+      "trait_type": "Transferable",
+      "value": "No"
+    }
+  ]
+}

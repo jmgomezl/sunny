@@ -37,8 +37,12 @@ type SunnyProps = {
   size?: number
   /** Keeps Sunny waving (used by the sticker stage). */
   wave?: boolean
+  /** Accessories from the good-habit badges Sunny's friend earned. */
+  wear?: Wear
   onGesture?: (gesture: Gesture) => void
 }
+
+export type Wear = { shades?: boolean; shield?: boolean; key?: boolean }
 
 export function Sunny({
   mood,
@@ -47,6 +51,7 @@ export function Sunny({
   dozing = false,
   size = 220,
   wave = false,
+  wear = {},
   onGesture,
 }: SunnyProps) {
   const uid = useId().replace(/[^a-zA-Z0-9]/g, '')
@@ -318,6 +323,11 @@ export function Sunny({
                       <stop offset="1" stopColor="#F59A33" />
                     </radialGradient>
                     {/* Sunny's little outfit: Solana sneakers and sweatbands. */}
+                    <linearGradient id={ref('sol-pin')} x1="0" y1="0" x2="1" y2="1">
+                      <stop offset="0" stopColor="#9945FF" />
+                      <stop offset="0.55" stopColor="#43B4CA" />
+                      <stop offset="1" stopColor="#14F195" />
+                    </linearGradient>
                     <linearGradient id={ref('sol')} x1="0" y1="0" x2="1" y2="0">
                       <stop offset="0" stopColor="#9945FF" />
                       <stop offset="0.55" stopColor="#43B4CA" />
@@ -429,6 +439,64 @@ export function Sunny({
                   </motion.g>
 
                   <circle className="sunny-frost" r="62" fill={url('frost')} />
+
+                  {/* Earned with good habits: a key necklace, a shield pin, sunglasses resting on its head. */}
+                  {wear.key && (
+                    <g className="sunny-wear sunny-wear--key">
+                      <path d="M -30 34 Q 0 58 30 34" fill="none" stroke="#9A5B1E" strokeWidth="1.6" opacity="0.8" />
+                      <circle cx="0" cy="48" r="4.6" fill="none" stroke="#C98612" strokeWidth="2.4" />
+                      <path
+                        d="M 0 52.6 V 60 M 0 57 H 3.4 M 0 60 H 2.6"
+                        stroke="#C98612"
+                        strokeWidth="2.4"
+                        strokeLinecap="round"
+                      />
+                    </g>
+                  )}
+                  {wear.shield && (
+                    <g className="sunny-wear sunny-wear--shield" transform="translate(-38 27) rotate(-12)">
+                      <path
+                        d="M 0 -10 L 8.5 -6.5 V 1 C 8.5 6.5 4.5 10 0 12 C -4.5 10 -8.5 6.5 -8.5 1 V -6.5 Z"
+                        fill={url('sol-pin')}
+                        stroke="#fff"
+                        strokeWidth="1.4"
+                      />
+                      <path
+                        d="M -3.6 0.6 L -0.8 3.6 L 4 -2.4"
+                        fill="none"
+                        stroke="#fff"
+                        strokeWidth="1.8"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </g>
+                  )}
+                  {wear.shades && (
+                    <g className="sunny-wear sunny-wear--shades" transform="translate(0 -43) rotate(-6)">
+                      <path
+                        d="M -6 -1 Q 0 -4 6 -1"
+                        fill="none"
+                        stroke="#2A1A10"
+                        strokeWidth="2.2"
+                        strokeLinecap="round"
+                      />
+                      <path
+                        d="M -29 -2 L -37 -6 M 29 -2 L 37 -6"
+                        stroke="#2A1A10"
+                        strokeWidth="2.2"
+                        strokeLinecap="round"
+                      />
+                      <rect x="-29" y="-6" width="23" height="14" rx="6.5" fill="#2A1A10" />
+                      <rect x="6" y="-6" width="23" height="14" rx="6.5" fill="#2A1A10" />
+                      <path
+                        d="M -25 -2.5 L -19 -2.5 M 10 -2.5 L 16 -2.5"
+                        stroke="#fff"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        opacity="0.65"
+                      />
+                    </g>
+                  )}
 
                   <motion.g style={{ x: cheekX, y: faceY }}>
                     <g className="sunny-cheeks" filter={url('blur-s')}>

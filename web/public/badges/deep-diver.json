@@ -1,0 +1,17 @@
+{
+  "name": "Sunny badge: Deep Diver",
+  "symbol": "SDIVE",
+  "description": "Bought a deep scan over x402 with pocket money. A non-transferable good-habit badge from Sunny, your Solana guardian in Telegram (t.me/SunnySolBot).",
+  "image": "https://sunny.aivylabs.xyz/badges/deep-diver.png",
+  "external_url": "https://t.me/SunnySolBot",
+  "attributes": [
+    {
+      "trait_type": "Badge",
+      "value": "Deep Diver"
+    },
+    {
+      "trait_type": "Transferable",
+      "value": "No"
+    }
+  ]
+}

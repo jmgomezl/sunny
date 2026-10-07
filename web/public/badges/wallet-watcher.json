@@ -1,0 +1,17 @@
+{
+  "name": "Sunny badge: Wallet Watcher",
+  "symbol": "SWATCH",
+  "description": "Asked Sunny to watch over a wallet. A non-transferable good-habit badge from Sunny, your Solana guardian in Telegram (t.me/SunnySolBot).",
+  "image": "https://sunny.aivylabs.xyz/badges/wallet-watcher.png",
+  "external_url": "https://t.me/SunnySolBot",
+  "attributes": [
+    {
+      "trait_type": "Badge",
+      "value": "Wallet Watcher"
+    },
+    {
+      "trait_type": "Transferable",
+      "value": "No"
+    }
+  ]
+}

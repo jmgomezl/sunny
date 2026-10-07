@@ -7,6 +7,7 @@ import { ChatSheet, type ChatMessage } from './components/ChatSheet'
 import { ScanSheet, type ScanMode } from './components/ScanSheet'
 import { PocketSheet, type PocketEventKind } from './components/PocketSheet'
 import { fetchPocket, PROGRAM_URL, type PocketState } from './lib/pocket'
+import { syncBadges, type Badge } from './lib/badges'
 import { inTelegram as insideTelegram } from './lib/api'
 import { askSunny, inTelegram } from './lib/chat'
 import {
@@ -232,6 +233,8 @@ export default function App() {
   const [toppedUp, setToppedUp] = useState(false)
   const [statusOverride, setStatusOverride] = useState<Status | null>(null)
   const [bond, setBond] = useState(loadBond)
+  const [badges, setBadges] = useState<Badge[] | null>(null)
+  const earnedBadge = (id: string) => Boolean(badges?.find((b) => b.id === id)?.earned)
   const [dozing, setDozing] = useState(false)
   const [chatOpen, setChatOpen] = useState(false)
   const [chat, setChat] = useState<ChatMessage[]>([])
@@ -271,6 +274,11 @@ export default function App() {
     const next = p ?? { wallet: null, state: null }
     if (p || !insideTelegram()) setPocket(next)
     return p ?? null
+  }, [])
+
+  useEffect(() => {
+    void refreshBadges()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   useEffect(() => {
@@ -442,8 +450,12 @@ export default function App() {
       later(() => setStatusOverride(null), 8000)
     }
     if (!r) return play({ reaction: 'blush', ms: 900 })
-    if (r.kind === 'blink' && r.report.verdict === 'danger') return warn(`Don’t sign · ${r.report.host}`)
+    if (r.kind === 'blink' && r.report.verdict === 'danger') {
+      void refreshBadges()
+      return warn(`Don’t sign · ${r.report.host}`)
+    }
     if (r.kind === 'link' && (r.link.verdict === 'known_scam' || r.link.verdict === 'suspicious')) {
+      void refreshBadges()
       return warn(`${r.link.verdict === 'known_scam' ? 'Scam site' : 'Suspicious link'} · ${r.link.domain}`)
     }
     if (r.kind === 'token' && r.found && r.card.risk !== 'low') {
@@ -465,6 +477,31 @@ export default function App() {
     }
   }
 
+  /** Checks for newly earned badges; a new one gets a little celebration. */
+  const refreshBadges = async (op: 'sync' | 'backup' = 'sync') => {
+    if (!insideTelegram() || DEMO) return
+    try {
+      const r = await syncBadges(op)
+      setBadges(r.badges)
+      const fresh = r.badges.filter((b) => r.newly.includes(b.id))
+      if (fresh.length) {
+        later(
+          () =>
+            play({
+              reaction: 'love',
+              line: `New badge: ${fresh.map((b) => `${b.emoji} ${b.name}`).join(', ')}! It’s in your Sunny wallet, on Solana.`,
+              particles: ['sparkle', 8],
+              haptic: 'success',
+              ms: 2000,
+            }),
+          1800,
+        )
+      }
+    } catch (err) {
+      console.warn('[sunny] badges failed', err)
+    }
+  }
+
   const watchWallet = async (address: string) => {
     closeScan()
     setStatusOverride({ tone: 'info', text: 'Getting to know this wallet…' })
@@ -472,6 +509,7 @@ export default function App() {
     const ok = await changeWatch({ watch: address })
     setStatusOverride(null)
     if (!ok) return
+    void refreshBadges()
     play({
       reaction: 'giggle',
       line: `Got it! I’m watching ${short(address)} now. ☀️`,
@@ -545,6 +583,8 @@ export default function App() {
       ])
       if (draws.length || scans.length) void loadPocket()
       if (watchChanged) void refreshHome()
+      const caughtScam = links.some((l) => l.verdict === 'known_scam' || l.verdict === 'suspicious')
+      if (watchChanged || scans.length || caughtScam || blinks.some((b) => b.verdict === 'danger')) void refreshBadges()
       const risky = cards.find((c) => c.risk !== 'low')
       const scam = links.find((l) => l.verdict === 'known_scam' || l.verdict === 'suspicious')
       const stopped = draws.find((d) => !d.ok)
@@ -636,6 +676,7 @@ export default function App() {
     setPocket((prev) => ({ wallet: state?.owner ?? prev?.wallet ?? null, state: state ?? prev?.state ?? null }))
     if (event === 'created') void loadPocket()
     play(POCKET_REACTIONS[event])
+    void refreshBadges()
   }
 
   const frozen = demo ? demoFrozen : Boolean(ps?.frozen)
@@ -757,6 +798,11 @@ export default function App() {
             frozen={frozen}
             dozing={dozing}
             size={200}
+            wear={{
+              shades: earnedBadge('sunny-streak'),
+              shield: earnedBadge('scam-spotter'),
+              key: earnedBadge('key-keeper'),
+            }}
             onGesture={onGesture}
           />
           <Particles items={particles} onDone={(id) => setParticles((prev) => prev.filter((p) => p.id !== id))} />
@@ -774,6 +820,7 @@ export default function App() {
           pocket={pocketView}
           onPocket={managePocket}
         />
+        {!demo && badges && <BadgesCard badges={badges} />}
         <ForecastCard
           home={home}
           demo={demoMood}
@@ -820,6 +867,7 @@ export default function App() {
         onClose={closePocket}
         onChanged={onPocketChanged}
         onBusy={(busy) => busy && play({ reaction: 'scan', ms: 20_000 })}
+        onBackup={() => void refreshBadges('backup')}
       />
 
       <ScanSheet
@@ -1364,6 +1412,37 @@ function NewsCard({ items }: { items: NewsItem[] }) {
         ))}
       </ul>
       <p className="source">News, not financial advice. Sunny isn’t an investment advisor.</p>
+    </section>
+  )
+}
+
+/** Good habits, on Solana: non-transferable badges minted to your Sunny wallet. */
+function BadgesCard({ badges }: { badges: Badge[] }) {
+  const count = badges.filter((b) => b.earned).length
+  return (
+    <section className="card badges">
+      <div className="card-head">
+        <span className="eyebrow">Good habits, on Solana</span>
+        <span className="chain-tag">
+          <SolanaMark size={13} /> {count} of {badges.length}
+        </span>
+      </div>
+      <ul className="badge-grid">
+        {badges.map((b) => (
+          <li key={b.id} className="badge" data-earned={b.earned || undefined}>
+            <img src={`/badges/${b.id}.png`} alt="" width={64} height={64} loading="lazy" />
+            <strong>{b.name}</strong>
+            {b.tx ? (
+              <a href={b.tx} target="_blank" rel="noreferrer">
+                On Solana ↗
+              </a>
+            ) : (
+              <small>{b.earned ? 'Earned: make your wallet to collect it' : b.how}</small>
+            )}
+          </li>
+        ))}
+      </ul>
+      <p className="source">Non-transferable tokens in your Sunny wallet · devnet</p>
     </section>
   )
 }

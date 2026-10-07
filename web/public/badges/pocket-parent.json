@@ -1,0 +1,17 @@
+{
+  "name": "Sunny badge: Pocket Parent",
+  "symbol": "SPOCKET",
+  "description": "Gave Sunny its first pocket money, with limits enforced on Solana. A non-transferable good-habit badge from Sunny, your Solana guardian in Telegram (t.me/SunnySolBot).",
+  "image": "https://sunny.aivylabs.xyz/badges/pocket-parent.png",
+  "external_url": "https://t.me/SunnySolBot",
+  "attributes": [
+    {
+      "trait_type": "Badge",
+      "value": "Pocket Parent"
+    },
+    {
+      "trait_type": "Transferable",
+      "value": "No"
+    }
+  ]
+}
