@@ -5,7 +5,7 @@
 import { createHmac } from 'node:crypto'
 import { ed25519 } from '@noble/curves/ed25519.js'
 import { agentDraw, pocketState } from '../src/solana.js'
-import { createWallet, describeTransaction } from '../../web/src/lib/vault.js'
+import { createWallet, describeTransaction, walletProof } from '../../web/src/lib/vault.js'
 
 const API = process.env.E2E_API || 'http://127.0.0.1:8820/api'
 const user = { id: 990000000 + Math.floor(Math.random() * 1e6), first_name: 'E2E', language_code: 'en' }
@@ -29,7 +29,7 @@ async function call<T>(path: string, body: object): Promise<T> {
 }
 
 const { record, seed } = await createWallet('correct horse battery')
-await call('vault', { op: 'put', record })
+await call('vault', { op: 'put', record, proof: walletProof(seed, user.id) })
 console.log('1. wallet created on "device", backup stored:', record.address)
 
 const sign = (message: string) => Buffer.from(ed25519.sign(Buffer.from(message, 'base64'), seed)).toString('base64')

@@ -1,5 +1,8 @@
 import { createHash, createHmac, timingSafeEqual } from 'node:crypto'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
+import { ed25519 } from '@noble/curves/ed25519.js'
+import { base58 } from '@scure/base'
+import { PublicKey } from '@solana/web3.js'
 import { hasBrain, reply } from './brain.js'
 import { buildHome } from './home.js'
 import { accountKind, inspect } from './inspect.js'
@@ -9,7 +12,7 @@ import { syncBadges } from './badges.js'
 import { isAddress } from './wallet.js'
 import { faucet, hasChain, pocketState, prepareOwnerTx, submitOwnerTx, type OwnerAction } from './solana.js'
 import { saveVault, validRecord, vaultOf } from './vaults.js'
-import { DEEP_SCAN_PATH, deepScanRoute } from './x402.js'
+import { DEEP_SCAN_PATH, deepScanPreflight, deepScanRoute } from './x402.js'
 import { MAX_SHARE_BYTES, readShare, saveShare, startShareCleanup } from './shares.js'
 import { DEMO_BLINK_PATH, demoBlinkMeta, demoBlinkTransaction } from './demoblink.js'
 
@@ -223,11 +226,27 @@ async function vaultRoute(req: IncomingMessage, res: ServerResponse, botToken: s
     if (existing && existing.address !== body.record.address) {
       throw new ApiError(409, 'You already have a Sunny wallet. Unlock it instead of creating a new one.')
     }
+    // A new wallet proves it holds its key, so nobody can claim someone else's address
+    // (and its test money and badges).
+    if (!existing && !ownsAddress(body.record.address, person.id, body.proof)) {
+      throw new ApiError(400, 'I couldn’t confirm this new wallet. Close my sky and open it again, then try once more ☀️')
+    }
     saveVault(person.id, body.record)
     if (!existing) logActivity(person.id, 'wallet', `Created your Sunny wallet ${short(body.record.address)}`, 'Locked with your password')
     return send(res, 200, { ok: true })
   }
   throw new ApiError(400, 'Unknown vault request.')
+}
+
+/** Checks a new wallet's signature over "Sunny wallet for Telegram user <id>". */
+function ownsAddress(address: string, userId: number, proof: unknown) {
+  if (typeof proof !== 'string' || proof.length > 100) return false
+  try {
+    const message = new TextEncoder().encode(`Sunny wallet for Telegram user ${userId}`)
+    return ed25519.verify(base58.decode(proof), message, new PublicKey(address).toBytes())
+  } catch {
+    return false
+  }
 }
 
 const ACTIONS = new Set(['open', 'topup', 'withdraw', 'limits', 'freeze', 'unfreeze'])
@@ -284,7 +303,8 @@ const PUBLIC_URL = process.env.MINI_APP_URL || 'https://sunny.aivylabs.xyz'
 async function badgesRoute(req: IncomingMessage, res: ServerResponse, botToken: string) {
   const body = await readJson(req)
   const person = identify(body, botToken, clientIp(req), 'badges')
-  if (body.op === 'backup' && !person.guest) noteHabit(person.id, 'keyBackup')
+  // Backing up a key needs a key: no Sunny wallet, no Key Keeper badge.
+  if (body.op === 'backup' && !person.guest && vaultOf(person.id)) noteHabit(person.id, 'keyBackup')
   send(res, 200, await syncBadges(person.id))
 }
 
@@ -355,6 +375,7 @@ export function startApi(port: number, botToken: string) {
       if (req.url?.split('?')[0] === DEMO_BLINK_PATH) return await demoBlinkRoute(req, res)
       if (req.method === 'GET' && req.url?.startsWith('/api/share/')) return shareImage(req, res)
       // Public x402 API: anyone can pay for a deep scan, not just Sunny.
+      if (req.method === 'OPTIONS' && req.url?.startsWith(DEEP_SCAN_PATH)) return deepScanPreflight(res)
       if (req.method === 'GET' && req.url?.startsWith(DEEP_SCAN_PATH)) {
         if (!allow(`x402:${clientIp(req)}`, 120, HOUR)) return send(res, 429, { error: 'Too many scans. Try again later.' })
         return await deepScanRoute(req, res)

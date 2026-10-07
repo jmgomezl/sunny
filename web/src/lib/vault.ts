@@ -133,10 +133,18 @@ export async function loadRecord(): Promise<VaultRecord | null> {
   return remote.record
 }
 
-/** Saves the encrypted record in both places. */
-export async function saveRecord(record: VaultRecord) {
+/** The message a new wallet signs to show the server it really holds the key. */
+export const ownershipMessage = (userId: number) => `Sunny wallet for Telegram user ${userId}`
+
+/** Proof that this device holds the new wallet's key, bound to this Telegram user. */
+export function walletProof(seed: Uint8Array, userId: number) {
+  return base58.encode(ed25519.sign(utf8(ownershipMessage(userId)), seed))
+}
+
+/** Saves the encrypted record in both places. A new wallet comes with its ownership proof. */
+export async function saveRecord(record: VaultRecord, proof?: string) {
   await cloudSet(JSON.stringify(record))
-  await post('/api/vault', { op: 'put', record })
+  await post('/api/vault', { op: 'put', record, proof })
 }
 
 // ── The unlocked key, held in memory only and wiped after a while ────────────

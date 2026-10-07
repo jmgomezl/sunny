@@ -12,7 +12,7 @@ type TelegramBackButton = {
 
 type TelegramWebApp = {
   initData?: string
-  initDataUnsafe?: { user?: { first_name?: string } }
+  initDataUnsafe?: { user?: { id?: number; first_name?: string } }
   BackButton?: TelegramBackButton
   ready: () => void
   expand: () => void

@@ -12,6 +12,7 @@ import {
   saveRecord,
   unlockWallet,
   type VaultRecord,
+  walletProof,
 } from '../lib/vault'
 import {
   pocketFaucet,
@@ -102,7 +103,8 @@ export function PocketSheet({ open, state, intent, onClose, onChanged, onBusy, o
     if (password !== confirm) return setError('The passwords don’t match.')
     void run('Creating your wallet…', async () => {
       const { record: r, seed } = await createWallet(password)
-      await saveRecord(r)
+      const userId = window.Telegram?.WebApp?.initDataUnsafe?.user?.id ?? 0
+      await saveRecord(r, walletProof(seed, userId))
       holdKey(seed, r.address)
       setRecord(r)
       setUnlocked(true)
