@@ -38,7 +38,7 @@ AI agents are getting wallets, and AI companions are getting cute (Meta's Muse, 
 | Agents need to pay for tools without a card. | **x402 payments from the pocket.** A deep token scan costs $0.10, paid per request over x402 v2, so the program's limits apply to everything Sunny buys. | [GIF](#solana-says-no) | [x402 payment tx](https://solscan.io/tx/5Ge1mcrz7jhvfNW15ikR6hUkXMES7S7Ah5yA88bNq1B1j9Yq2hVFzjNKmLxaynMnkJnbkqcQwikvUgbhnt3J1Avw?cluster=devnet) · `curl` below |
 
 <p align="center">
-  <img src="docs/media/guardrails.svg" width="860" alt="Pocket money is a delegated allowance with on-chain guardrails: you fund it and set the rules, Sunny can spend within them, and a tricked AI asking for $500 is refused by the program" />
+  <img src="docs/media/guardrails.svg" width="860" alt="Pocket money is a delegated allowance with on-chain guardrails: you fund it and set the rules, Sunny can spend within them, and someone talking Sunny into taking $500 is refused by the program, on-chain" />
 </p>
 
 And it's a pet people want to open every day. Its energy *is* the pocket money you feed it, its sky is your wallet's weather, it sleeps with a lantern, and it wears sunglasses in dark mode.
