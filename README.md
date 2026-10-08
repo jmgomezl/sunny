@@ -13,6 +13,7 @@
   <img alt="Tests" src="https://img.shields.io/badge/tests-36%20passing-2f8f5b" />
   <a href="docs/BUILD_LOG.md"><img alt="Build log" src="https://img.shields.io/badge/built%20in-the%20hackathon%20window-ffb43c" /></a>
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-2f6fb0" /></a>
+  <a href="https://github.com/jmgomezl/sunny/releases/tag/v1.0.0"><img alt="Android app" src="https://img.shields.io/badge/Android%20%2F%20Seeker-APK-3ddc84?logo=android&logoColor=white" /></a>
 </p>
 
 <p align="center">
@@ -57,7 +58,7 @@ And it's a pet people want to open every day. Its energy *is* the pocket money y
 3. Open the chat and say *"take $7 from your pocket"*. **Solana refuses**: it's over the $5 per-payment limit. Say *"take $2"* and it goes through, with a transaction link.
 4. In **Scan & check**, paste `https://sunny.aivylabs.xyz/api/blinks/free-airdrop` (Sunny's harmless drainer demo) or `raydlum.io` (a real phishing site).
 
-**On a Seeker or any Android phone:** open [sunny.aivylabs.xyz](https://sunny.aivylabs.xyz) in Chrome (or install the Android app, below) and tap **Connect wallet**. You sign in with the wallet already on the phone (Seed Vault on a Seeker, or Phantom and Solflare) through Mobile Wallet Adapter, and **that wallet owns the pocket**: no Sunny wallet, no password, the same on-chain guardrails. On a computer, a wallet extension works the same way.
+**On a Seeker or any Android phone:** open [sunny.aivylabs.xyz](https://sunny.aivylabs.xyz) in Chrome, or install the **[Android app](https://github.com/jmgomezl/sunny/releases/tag/v1.0.0)** (APK, 2 MB), and tap **Connect wallet**. You sign in with the wallet already on the phone (Seed Vault on a Seeker, or Phantom and Solflare) through Mobile Wallet Adapter, and **that wallet owns the pocket**: no Sunny wallet, no password, the same on-chain guardrails. On a computer, a wallet extension works the same way.
 
 **No Telegram and no wallet?** Open the **[web preview](https://sunny.aivylabs.xyz/?demo)**. The chat and every check work, and the chips at the top (keys 1–5) cycle Sunny's moods. Guests share a **demo pocket on devnet** with the same guardrails, so *"take $500 from your pocket"* gets the same on-chain refusal, with its transaction link.
 
@@ -171,7 +172,7 @@ curl -i "https://sunny.aivylabs.xyz/api/x402/deep-scan?mint=DezXAZ8z7PnrnRJjz3wX
   <img src="docs/media/seeker-android.jpg" width="760" alt="Sunny's Android app: sign in with the wallet on the phone, Solana refusing a $500 draw, and the pocket's guardrails" />
 </p>
 
-Sunny is packaged for the **Solana dApp Store** with Solana Mobile's webshell ([`android/`](android/README.md)), and the listing kit is in [`docs/dapp-store/`](docs/dapp-store/LISTING.md). Outside Telegram, Sunny signs you in with the wallet already on the phone through **Mobile Wallet Adapter** ([`web/src/lib/wallets.ts`](web/src/lib/wallets.ts)). The wallet signs a Sign In With Solana message ([`bot/src/walletAuth.ts`](bot/src/walletAuth.ts)), then:
+Sunny is packaged for the **Solana dApp Store** with Solana Mobile's webshell ([`android/`](android/README.md)): **[download the APK](https://github.com/jmgomezl/sunny/releases/tag/v1.0.0)** to install it on a Seeker or any Android phone. The listing kit is in [`docs/dapp-store/`](docs/dapp-store/LISTING.md). Outside Telegram, Sunny signs you in with the wallet already on the phone through **Mobile Wallet Adapter** ([`web/src/lib/wallets.ts`](web/src/lib/wallets.ts)). The wallet signs a Sign In With Solana message ([`bot/src/walletAuth.ts`](bot/src/walletAuth.ts)), then:
 
 - **It owns your pocket.** Opening, top-ups and the freeze are signed by Seed Vault, after the phone decodes each transaction into plain words. If the wallet changes the transaction at all, nothing is sent.
 - **Sunny watches it.** The same address is your real wallet on mainnet, so the wallet weather and "Should I sign this?" use your actual balances.
