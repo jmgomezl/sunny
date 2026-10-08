@@ -388,7 +388,9 @@ async function badgesRoute(req: IncomingMessage, res: ServerResponse, botToken: 
   // Backing up a key needs a key: no Sunny wallet, no Key Keeper badge.
   if (body.op === 'backup' && !person.guest && vaultOf(person.id)) noteHabit(person.id, 'keyBackup')
   // Each badge mint costs the fee wallet rent; wallet sign-ins share a daily ceiling.
-  send(res, 200, await syncBadges(person.id, person.wallet ? () => allow('fee:badges:wallets', WALLET_PAID_ACTIONS_PER_DAY * 2, DAY) : undefined))
+  const sync = await syncBadges(person.id, person.wallet ? () => allow('fee:badges:wallets', WALLET_PAID_ACTIONS_PER_DAY * 2, DAY) : undefined)
+  // Key Keeper is for backing up a Sunny wallet's key; a signed-in wallet has none to back up.
+  send(res, 200, person.wallet ? { ...sync, badges: sync.badges.filter((b) => b.id !== 'key-keeper') } : sync)
 }
 
 /** POST /api/share { image: base64 JPEG }: stores a share card and returns its public link. */

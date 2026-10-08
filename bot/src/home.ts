@@ -148,7 +148,8 @@ export async function buildHome(userId: number, wallets: string[]): Promise<Home
       spark: unreadable ? [] : interpolate(anchors),
       sparkLabel: 'SOL price',
       forecast: unreadable ? '' : 'Solana today',
-      risk: unreadable ? null : 'Low',
+      // No wallet watched: nothing to rate, so no made-up "Low".
+      risk: null,
       mood: 'happy',
       status: unreadable
         ? { tone: 'warn', text: 'I can’t read that wallet' }
@@ -229,8 +230,8 @@ export async function buildHome(userId: number, wallets: string[]): Promise<Home
     status = { tone: 'ok', text: `All clear · up ${change.toFixed(1)}% today` }
     line = `${many ? 'Your wallets are' : 'Your wallet is'} up ${change.toFixed(1)}% today. Golden hour! I checked every token; nothing risky.`
   } else if (!held.length) {
-    status = { tone: 'info', text: `Empty wallet${many ? 's' : ''} · nothing to guard yet` }
-    line = `${many ? 'These wallets are' : 'This wallet is'} empty for now. When tokens arrive, I’ll check each one.`
+    status = { tone: 'info', text: `Nothing on mainnet yet · nothing to guard` }
+    line = `${many ? 'These wallets are' : 'This wallet is'} empty on mainnet for now. When tokens arrive, I’ll check each one.`
   } else {
     status = { tone: 'ok', text: `All clear · ${held.length} token${held.length > 1 ? 's' : ''} checked` }
     line =
