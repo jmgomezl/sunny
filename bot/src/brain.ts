@@ -3,7 +3,7 @@ import { activeFor, cancelAlerts, createAlert, triggerPrice, type Alert } from '
 import { currentPrices, lookupToken, marketOverview, walletSnapshot, type TokenCard } from './market.js'
 import { checkLink, type LinkCheck } from './scams.js'
 import { logActivity, MAX_WATCHED, noteHabit, unwatchWallet, watchedOf, watchWallet } from './users.js'
-import { agentDraw, hasChain, pocketState, walletHistory, type WalletEvent } from './solana.js'
+import { agentDraw, DEMO_LIMITS, ensureDemoPocket, hasChain, pocketState, walletHistory, type WalletEvent } from './solana.js'
 import { vaultOf } from './vaults.js'
 import { accountKind } from './inspect.js'
 import { isAddress, walletReport, type WalletReport } from './wallet.js'
@@ -337,6 +337,8 @@ export type PocketEvent = {
   /** The pocket's limits when Solana refused, so the card can say which number held. */
   perTx?: number
   daily?: number
+  /** The web preview's shared demo pocket, not the person's own money. */
+  demo?: boolean
 }
 
 /** A deep scan Sunny bought over x402, as shown in the Mini App chat. */
@@ -464,13 +466,29 @@ function summarize(r: DeepReport) {
   }
 }
 
+/**
+ * Whose pocket pays: the user's own Sunny wallet, or, for a guest in the web preview (no
+ * Telegram, no wallet), the shared demo pocket, so they can still watch Solana enforce the rules.
+ */
+async function pocketOwner(ctx: Ctx): Promise<{ wallet: string; demo: boolean } | null> {
+  const own = vaultOf(ctx.userId)?.address
+  if (own) return { wallet: own, demo: false }
+  if (ctx.userId >= 0 || !hasChain()) return null
+  // All guests share it, so it gets its own hourly cap on top of each guest's.
+  if (!allow('demo-pocket', 120, HOUR)) return null
+  return { wallet: await ensureDemoPocket(), demo: true }
+}
+
+const DEMO_NOTE = `Web preview: this was Sunny's shared demo pocket on devnet (test money, not the user's own), with the same on-chain guardrails: $${DEMO_LIMITS.perTx} a payment, $${DEMO_LIMITS.daily} a day. Call it "the demo pocket", not "your pocket".`
+
 /** Buys a deep scan with the user's pocket money, over x402. */
 async function deepScan(query: string, ctx: Ctx) {
   // Paid with the person's money, so only when they asked for it themselves.
   if (!asksForPocketMoney(ctx.ask) && !ctx.scanConsent) return { error: 'Only when the user asks for a deep scan in their own message.' }
-  const wallet = vaultOf(ctx.userId)?.address
   if (!hasChain()) return { error: 'Pocket money is offline right now.' }
-  if (!wallet) return { error: 'Deep scans are paid from pocket money: they need a Sunny wallet and a pocket first, made in your sky.' }
+  const payer = await pocketOwner(ctx)
+  if (!payer) return { error: 'Deep scans are paid from pocket money: they need a Sunny wallet and a pocket first, made in your sky.' }
+  const wallet = payer.wallet
   const found = await lookupToken(query)
   if (!found.found) return { error: `I couldn’t find a token called ${query}.` }
   if (!found.details.exact_match) {
@@ -482,7 +500,12 @@ async function deepScan(query: string, ctx: Ctx) {
     ctx.scans.push({ ...paid.report, price: paid.price, paymentTx: paid.paymentTx, drawTx: paid.drawTx })
     noteHabit(ctx.userId, 'deepScan')
     logActivity(ctx.userId, 'check', `Deep scan of $${paid.report.symbol} · ${paid.report.risk} risk`, `Paid $${paid.price.toFixed(2)} over x402`)
-    return { paid_usd: paid.price, paid_with: 'x402, from your pocket money', report: summarize(paid.report) }
+    return {
+      paid_usd: paid.price,
+      paid_with: payer.demo ? 'x402, from the demo pocket' : 'x402, from your pocket money',
+      ...(payer.demo ? { demo_pocket: DEMO_NOTE } : {}),
+      report: summarize(paid.report),
+    }
   } catch (err) {
     const why = err instanceof Error ? err.message : 'The payment failed'
     const refunded = (err as { refunded?: string | null }).refunded
@@ -653,10 +676,10 @@ async function runTool(name: string, rawArgs: string, ctx: Ctx): Promise<unknown
       case 'create_price_alert':
         return await createPriceAlert(args, ctx)
       case 'pocket_status': {
-        const wallet = vaultOf(ctx.userId)?.address
         if (!hasChain()) return { error: 'Pocket money is offline right now.' }
-        if (!wallet) return { no_wallet: true, hint: 'They can create a Sunny wallet in your sky (the Mini App) and open a pocket there.' }
-        return await pocketState(wallet)
+        const owner = await pocketOwner(ctx)
+        if (!owner) return { no_wallet: true, hint: 'They can create a Sunny wallet in your sky (the Mini App) and open a pocket there.' }
+        return { ...(await pocketState(owner.wallet)), ...(owner.demo ? { demo_pocket: DEMO_NOTE } : {}) }
       }
       case 'use_pocket_money': {
         // Money moves only on the person's own words: they asked (or said yes to Sunny's offer),
@@ -674,28 +697,30 @@ async function runTool(name: string, rawArgs: string, ctx: Ctx): Promise<unknown
         }
         if (ctx.draws >= 1) return { error: 'One draw per message.' }
         ctx.draws++
-        const wallet = vaultOf(ctx.userId)?.address
         const reason = String(args.reason ?? 'what you asked for').slice(0, 60)
         if (!hasChain()) return { error: 'Pocket money is offline right now.' }
-        if (!wallet) return { error: 'No Sunny wallet yet; they can create one in your sky.' }
         if (!Number.isFinite(amount) || amount <= 0) return { error: 'Invalid amount' }
         // Refused draws land on-chain (a small fee each), so they're limited too.
         if (!allow(`draw:${ctx.userId}`, 15, HOUR)) return { error: 'That’s a lot of pocket requests this hour; try again later.' }
+        const owner = await pocketOwner(ctx)
+        if (!owner) return { error: 'No Sunny wallet yet; they can create one in your sky.' }
+        const { wallet } = owner
+        const demo = owner.demo ? { demo_pocket: DEMO_NOTE } : {}
         try {
           const sent = await agentDraw(wallet, amount)
-          ctx.pocket.push({ amount, reason, ok: true, message: 'Approved by your pocket rules', explorer: sent.explorer })
+          ctx.pocket.push({ amount, reason, ok: true, message: 'Approved by your pocket rules', explorer: sent.explorer, demo: owner.demo || undefined })
           logActivity(ctx.userId, 'check', `Took $${amount} of pocket money`, reason)
-          return { ok: true, ...sent }
+          return { ok: true, ...sent, ...demo }
         } catch (err) {
           const why = err instanceof Error ? err.message : 'The transaction failed'
           // The refusal itself is a failed transaction on Solana: proof it was the program.
           const proof = (err as { explorer?: string }).explorer
           const now = await pocketFacts(wallet)
           const limits = now && 'per_payment_limit_usd' in now ? { perTx: now.per_payment_limit_usd, daily: now.daily_limit_usd } : {}
-          ctx.pocket.push({ amount, reason, ok: false, message: why, explorer: proof, ...limits })
+          ctx.pocket.push({ amount, reason, ok: false, message: why, explorer: proof, ...limits, demo: owner.demo || undefined })
           logActivity(ctx.userId, 'check', `Solana stopped a $${amount} draw`, why)
           // The real numbers, so the explanation never guesses ("you spent it all today").
-          return { refused_by_solana: true, rule: why, on_chain_proof: proof ?? null, pocket_now: now }
+          return { refused_by_solana: true, rule: why, on_chain_proof: proof ?? null, pocket_now: now, ...demo }
         }
       }
       case 'list_price_alerts': {

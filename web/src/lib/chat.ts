@@ -46,6 +46,8 @@ export type PocketEvent = {
   /** The pocket's limits when Solana refused. */
   perTx?: number
   daily?: number
+  /** The web preview's shared demo pocket. */
+  demo?: boolean
 }
 
 /** Something that happened in the user's Sunny wallet, described from the chain. */

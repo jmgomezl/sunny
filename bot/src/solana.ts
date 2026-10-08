@@ -384,6 +384,58 @@ export async function faucet(ownerAddress: string, usd: number) {
   return send(tx)
 }
 
+// ── The web preview's demo pocket ────────────────────────────────────────────
+
+/**
+ * Guests in the web preview have no wallet, so they share one demo pocket: owned by a key
+ * derived from the server secret, with the usual guardrails ($5 a payment, $10 a day). Their
+ * requests go through the same program, so "take $500" gets the same on-chain refusal.
+ */
+export function demoOwner(): Keypair {
+  const seed = createHmac('sha256', Buffer.from(process.env.SUNNY_AGENT_SEED!, 'hex')).update('sunny-demo-owner').digest()
+  return Keypair.fromSeed(seed)
+}
+
+export const DEMO_LIMITS = { daily: 10, perTx: 5 }
+let demoReady: Promise<string> | null = null
+
+/** Opens the demo pocket the first time, and tops it up with test USDC when it runs low. */
+export function ensureDemoPocket(): Promise<string> {
+  demoReady ??= (async () => {
+    if (CLUSTER === 'mainnet-beta') throw new Error('No demo pocket on mainnet')
+    const owner = demoOwner()
+    const address = owner.publicKey.toBase58()
+    const st = await pocketState(address)
+    if (st.exists && st.vault >= DEMO_LIMITS.daily) return address
+    const amount = 20
+    const tx = new Transaction({ feePayer: feePayer().publicKey }).add(
+      createAtaIdempotent(owner.publicKey, feePayer().publicKey),
+      // Test USDC for the demo owner (Sunny's fee wallet is the test mint's authority).
+      new TransactionInstruction({
+        programId: TOKEN_PROGRAM,
+        keys: [
+          { pubkey: usdcMint(), isSigner: false, isWritable: true },
+          { pubkey: ata(owner.publicKey), isSigner: false, isWritable: true },
+          { pubkey: feePayer().publicKey, isSigner: true, isWritable: false },
+        ],
+        data: Buffer.concat([Buffer.from([7]), u64(toBase(amount))]),
+      }),
+      ...ownerInstructions(
+        owner.publicKey,
+        st.exists ? { action: 'topup', amount } : { action: 'open', ...DEMO_LIMITS, amount },
+      ),
+    )
+    tx.recentBlockhash = (await connection.getLatestBlockhash()).blockhash
+    tx.sign(feePayer(), owner)
+    await send(tx)
+    return address
+  })().finally(() => {
+    // Checked again next time: the pocket may have run low since.
+    demoReady = null
+  })
+  return demoReady
+}
+
 // ── A Sunny wallet's history, described from the chain itself ───────────────
 
 export type WalletEvent = { at: string | null; what: string; amount: number | null; ok: boolean; explorer: string }

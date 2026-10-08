@@ -515,6 +515,7 @@ export function PocketEventView({ event }: { event: PocketEvent }) {
               : `Solana stopped a $${event.amount} draw`}
         </strong>
         <small>
+          {event.demo && <b className="pocket-demo">Demo pocket · devnet</b>}
           {event.ok ? `${event.reason} · ${event.message}` : event.refunded ? event.message : refusalFacts(event.amount, event.message, limits)}
           {(event.refunded || event.explorer) && (
             <>
