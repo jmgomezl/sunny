@@ -129,6 +129,23 @@ The visual reviewer suggested three ways to make Sunny more lovable. All three w
 | `07e8bd5` `2484166` | **Story cards that match the moment:** Sunny's pose is captured from the real character for each moment (alarmed with its shield, detective squint, sheepish blush, munching, frozen), and on-chain moments carry a Solana proof chip with the transaction's short id |
 | `07e8bd5` `ffbc41a` `3331fb3` | **Bedtime:** Sunny dozes at night holding a little lantern, wakes to a warning with a yawn first, and the first visit of the morning opens with *While you slept* |
 
+## Oct 7 night · Naps, dark mode, and a final QA round
+
+| Commit | What |
+|---|---|
+| `c564226` | The sky dims when Sunny dozes off: a cloudy lavender dusk by day, night after dark (never hiding a storm) |
+| `d9b605d` | **Dark mode, as the world through Sunny's sunglasses:** dark cards, a sky dimmed like a tinted lens, and Sunny in black shades that it lowers to peek over |
+
+Then four more Claude testers ran in parallel: a code reviewer of everything since the first round, a usability tester walking first-time journeys with touch input, a visual reviewer in both themes, and an accessibility and performance auditor (axe-core, Lighthouse on a throttled phone, idle CPU). The fixes, all verified before landing:
+
+| Commit | What |
+|---|---|
+| `63bb360` | A status warning could stay on screen for good (a reset timer was cleared by Sunny's next reaction); lines said behind an open sheet now show when it closes; no naps during a storm |
+| `a46a954` | A failed wallet load no longer offers to make a new wallet (which could have overwritten Telegram's copy of the key); new wallets save to the server first |
+| `4d70b94` | A "no thanks" right after Sunny offered a paid scan can never count as consent |
+| `614c33b` `1e5efd2` `496847a` | Honest data: no false "fake site" alarms on names like tenor.com, one risk level for home and the wallet card, badge mints no longer listed as money, real numbers when Solana refuses a draw |
+| `4a7b03d` `46aab6d` `ede5bb5` | Performance and accessibility: compressed delivery (first paint on a slow phone ~5.1 s → ~2.5 s), lighter fonts and badge images, wallet crypto loaded on demand, sheets as real dialogs, contrast that passes axe, spoken prices and scan results |
+
 ## Decisions, and why
 
 - **Money rules live in a program, not in the prompt.** A model can be talked into things; a program can't. Sunny is told to always *try* the draw you ask for, because watching Solana refuse a $500 draw is the whole point.
