@@ -186,6 +186,7 @@ Another round of parallel AI reviewers (QA, UX, bug hunting and a judge) went ov
 | `91cc1c9` | The repo review: refunds queued on disk and retried for about two hours, Node and pnpm pinned, devnet checked before any funding, and the warnings kept at the top of the README |
 | `d05ea14` → `42a7083` | **[CI on every push](https://github.com/jmgomezl/sunny/actions/workflows/ci.yml)**: 42 server tests, the web build, and the program build with its 7 LiteSVM tests |
 | `9c9a877` | A follow-up review: a crash right after the draw could still lose a refund, and a retry could pay one twice. Now the purchase is on disk before the draw, each refund transaction is saved before it's sent, and a retry asks the chain what happened before building another |
+| `5c3d0aa` | The same review's end-to-end run showed two more: "What happened in my wallet?" was answered with "I didn't move any money" (the money-claim guard couldn't tell history from a fresh claim), and the model sometimes judged a drainer Blink by its URL alone. Replies may now describe history read that turn, unless the person asked for money; a Blink-shaped link always runs the Blink reader first |
 
 ## Decisions, and why
 
@@ -237,7 +238,7 @@ Another round of parallel AI reviewers (QA, UX, bug hunting and a judge) went ov
 
 - **Program:** 7 LiteSVM tests (`cargo test -p sunny_pocket`).
 - **CI:** every push runs the server, web and program jobs ([Actions](https://github.com/jmgomezl/sunny/actions/workflows/ci.yml)).
-- **Server:** 45 tests (`pnpm test`), including wallet sign-in and refunds (a lost confirmation, a dropped transaction, a restart mid-purchase).
+- **Server:** 46 tests (`pnpm test`), including wallet sign-in and refunds (a lost confirmation, a dropped transaction, a restart mid-purchase).
   - The phone's transaction verifier, including what a compromised server might try (wrong wallet, foreign pocket).
   - Guardrails, covering attacks, pasted seeds and keys, and the ordinary questions that must still pass.
   - News, groups, streaks and the Blink reader.
