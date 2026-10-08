@@ -1,0 +1,18 @@
+{
+  "id": "/",
+  "name": "Sunny: your wallet's guardian",
+  "short_name": "Sunny",
+  "description": "An AI pet that catches Solana scams before they reach your wallet, and spends only inside limits Solana enforces.",
+  "start_url": "/?app=1",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#BDE7FF",
+  "theme_color": "#BDE7FF",
+  "categories": ["finance", "security", "lifestyle"],
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
