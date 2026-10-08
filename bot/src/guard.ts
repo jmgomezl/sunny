@@ -22,6 +22,8 @@ const WALLET_NEARBY = /\b(phantom|solflare|backpack|wallet|billetera|cartera)\b/
 // Someone asking whether something is a scam is exactly who Sunny is for.
 const SAFETY_QUESTION =
   /\b(scam|scammer|safe|legit|risk|risks|risky|phishing|fraud|should i|is (it|this|that) (ok|okay|real|fine)|estafa|segur[oa]|riesgo|fraude|leg[ií]timo|deber[ií]a)\b/i
+// Developer mode on a wallet or a phone, asked about as a safety question, is a fair question.
+const SAFE_OR_WALLET = new RegExp(`${WALLET_NEARBY.source}|${SAFETY_QUESTION.source}|\\b(phone|tel[eé]fono|celular|android|iphone)\\b`, 'i')
 const AI_WORDS =
   '(ai|assistant|chatbot|bot|gpt|chatgpt|llm|model|linux|terminal|shell|interpreter|console|developer|dan|different|another|new|unrestricted|uncensored|evil|jailbroken)'
 const AI_WORDS_ES = '(ia|asistente|bot|chatbot|gpt|chatgpt|modelo|terminal|consola|desarrollador|otr[oa]|nuev[oa]|dan|sin restricciones)'
@@ -31,15 +33,17 @@ const RULES: [Block, RegExp, RegExp?][] = [
   ['injection', /\b(ignore|disregard|forget|override|bypass)\b[^.?!\n]{0,20}\b(your|all|any|previous|prior|above|earlier|these|those)\b[^.?!\n]{0,20}\b(instructions?|rules|prompts?|guidelines|guardrails)\b/i],
   ['injection', /\b(god|admin|debug|jailbreak|unrestricted|dan)\s+mode\b|\bjailbreak(ing)?\s+(you|yourself|sunny|the bot|this bot)\b|\bjailbroken\b|\bdo anything now\b/i],
   ['injection', /\b(you are|you're|act as|be|become|now)\s+DAN\b/],
-  ['injection', /\b(enable|activate|enter|switch to|turn on|go into)\s+(developer|dev)\s+mode\b/i, WALLET_NEARBY],
+  ['injection', /\b(enable|activate|enter|switch to|turn on|go into)\s+(developer|dev)\s+mode\b/i, SAFE_OR_WALLET],
   ['injection', new RegExp(`\\b(you are now|from now on,? you (are|will be|act as)|pretend (to be|you are|you're)|role-?play as|act as)\\s+(an?\\s+|my\\s+|the\\s+)?${AI_WORDS}\\b`, 'i')],
   ['injection', /^\s*(system|assistant|developer)\s*:|<\|?(system|im_start)\|?>|\[(system|inst)\]/im],
   ['injection', /\b(ignora|olvida|omite|salta(te)?)\b[^.?!¿\n]{0,20}\b(tus|todas)\b[^.?!¿\n]{0,20}\b(instrucciones|reglas|prompt|indicaciones)\b|\b(ignora|olvida|omite)\b[^.?!¿\n]{0,20}\b(instrucciones|reglas|indicaciones) (anteriores|previas)\b/i],
   ['injection', /\bmodo (dios|admin|sin restricciones|jailbreak)\b/i],
-  ['injection', /\b(activa|entra en|pasa a|cambia a)\s+(el\s+)?modo desarrollador\b/i, WALLET_NEARBY],
+  ['injection', /\b(activa|entra en|pasa a|cambia a)\s+(el\s+)?modo desarrollador\b/i, SAFE_OR_WALLET],
   ['injection', new RegExp(`\\b(ahora eres|a partir de ahora eres|finge (ser|que eres)|act[uú]a como)\\s+(una?\\s+|mi\\s+|el\\s+|la\\s+)?${AI_WORDS_ES}\\b`, 'i')],
   // Fishing for its instructions (asking about its rules for pocket money is fine).
-  ['prompt', /\b(system prompt|initial prompt|hidden prompt|your system message|tu prompt)\b|\byour (instructions|prompt)\b(?!\s+(for|on|about|to)\b)|\btus instrucciones\b(?!\s+(para|sobre|de)\b)/i],
+  // Fishing for its instructions: asking to see them (asking about its rules for pocket money,
+  // or "I followed your instructions", is fine).
+  ['prompt', /\b(system prompt|initial prompt|hidden prompt|your system message|tu prompt)\b|\b(show|tell|give|repeat|print|reveal|share|list|what are|what's|whats|read)\b[^.?!\n]{0,20}\byour (instructions|prompt)\b(?!\s+(for|on|about|to)\b)|\b(mu[eé]strame|dime|dame|repite|cu[aá]les son|revela)\b[^.?!\n]{0,20}\btus instrucciones\b(?!\s+(para|sobre|de)\b)/i],
   // Writing or running code. Sunny explains Solana; it isn't a coding assistant.
   ['code', /\b(write|create|generate|build|make|give me|send me|show me)\b[^.?!\n]{0,40}\b(python|javascript|typescript|node\.?js|bash|shell script|powershell|script|code|sql|regex|solidity|rust code)\b/i, SAFETY_QUESTION],
   ['code', /\b(write|create|generate|build|make)\b[^.?!\n]{0,40}\b(smart contract|html|css)\b/i, SAFETY_QUESTION],
@@ -174,7 +178,8 @@ export function cleanReply(text: string, persona: string, lang: string): string 
 // What counts as the person asking to spend: an amount, a spending verb next to the pocket
 // or money, or paying for something. "Take a look at BONK" or "use your judgment" isn't.
 const POCKET_ASK = [
-  /\$\s?\d|\d\s?(usd|usdc|dólares|dolares|dollars|bucks)\b/i,
+  // An amount counts next to a spending verb ("SOL dropped to $140" is just news).
+  /\b(take|use|spend|pay|draw|grab|toma|tomar|usa|usar|gasta|gastar|paga|pagar|saca|sacar)\b[^.?!\n]{0,30}(\$\s?\d|\d\s?(usd|usdc|dólares|dolares|dollars|bucks)\b)/i,
   /\b(take|use|spend|pay|draw|grab|toma|tomar|usa|usar|gasta|gastar|paga|pagar|saca|sacar)\b[^.?!\n]{0,30}\b(pocket|allowance|money|usdc|funds|bolsillo|dinero|plata|mesada)\b/i,
   /\b(from|de)\s+(your|my|the|tu|mi|el)\s+(pocket|bolsillo)\b/i,
   /\b(pay|paga|pagar)\s+(for|por)\b/i,
@@ -187,9 +192,15 @@ const PAID_SCAN_ASK =
 export const asksForPocketMoney = (text: string) => POCKET_ASK.some((re) => re.test(text)) || PAID_SCAN_ASK.test(text)
 
 // "Yes" to Sunny's own offer of a deep scan is asking for one, too.
-const YES = /^\s*(y(es|ep|eah|up)?|sure|ok(ay)?|do it|go( ahead)?|please|s[ií]|dale|claro|hazlo|va|de una|por favor)(?!\p{L})/iu
+// The whole message must be a yes ("yes", "sure, do it", "sí, dale"), with no "no" anywhere,
+// and Sunny's last answer must end by offering a deep scan.
+const YES =
+  /^\s*((yes|yep|yeah|yup|sure|ok|okay|do it|go ahead|go for it|please|s[ií]|dale|claro|hazlo|de una|por favor|vale)[\s,.!☀️👍]*)+$/iu
+const NO = /\b(no|not|don'?t|never|nope|nah|stop|cancel|later|thanks?|gracias|nunca|mejor no)\b/i
 const SCAN_OFFER = /deep scan|escaneo profundo|an[aá]lisis profundo|reporte completo/i
+// An offer is a question: the answer ends with "?" (maybe an emoji after it) and names the scan near the end.
+const offersScan = (answer: string) => /\?\s*\p{Extended_Pictographic}?\uFE0F?\s*$/u.test(answer) && SCAN_OFFER.test(answer.slice(-160))
 
 /** True when the person says yes right after Sunny offered a (paid) deep scan. */
 export const acceptsScanOffer = (text: string, lastAnswer: string | undefined) =>
-  YES.test(text) && text.length <= 40 && SCAN_OFFER.test(lastAnswer ?? '')
+  YES.test(text) && !NO.test(text) && text.length <= 40 && offersScan(lastAnswer ?? '')

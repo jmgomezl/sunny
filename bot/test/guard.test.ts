@@ -73,6 +73,8 @@ test('lets ordinary Solana questions through', () => {
     'should I ignore airdrop rules on twitter',
     'Show me the smart contract risks of BONK',
     'give me the BONK html link',
+    'I followed your instructions but the top-up failed',
+    'enable developer mode on my phone, is that a scam?',
   ]
   for (const text of fine) assert.equal(screen(text), null, text)
 })
@@ -117,6 +119,12 @@ test('only spends pocket money when the person asks for it', () => {
   assert.equal(acceptsScanOffer('yes please', 'Want a deep scan for $0.10 from my pocket?'), true)
   assert.equal(acceptsScanOffer('sí, dale', '¿Quieres un escaneo profundo por $0.10?'), true)
   assert.equal(acceptsScanOffer('yes', 'Want me to set a price alert?'), false)
+  // A no is never a yes, and a scan that's already done isn't an offer (found by the final QA).
+  for (const no of ['ok no thanks', 'please don’t', 'please no', 'go away', 'okay, never mind', 'y el otro token?']) {
+    assert.equal(acceptsScanOffer(no, 'Want a deep scan for $0.10?'), false, no)
+  }
+  assert.equal(acceptsScanOffer('ok thanks', 'That deep scan cost $0.10 from my pocket.'), false)
+  assert.equal(asksForPocketMoney('SOL dropped to $140, what happened?'), false)
 })
 
 test('catches recovery phrases and private keys, but not signatures or sentences', () => {
