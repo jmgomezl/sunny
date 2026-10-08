@@ -66,6 +66,36 @@ test('flags a second signer, and leaves a plain transfer alone', () => {
   const tip = read([SystemProgram.transfer({ fromPubkey: wallet, toPubkey: thief, lamports: 1_000_000 })])
   assert.deepEqual(tip.warnings, [])
   assert.deepEqual(tip.programs, ['System'])
+
+  // A real amount of SOL leaving the wallet is named, even with nothing to simulate against.
+  const sweep = read([SystemProgram.transfer({ fromPubkey: wallet, toPubkey: thief, lamports: 250_000_000 })])
+  assert.equal(sweep.warnings.length, 1)
+  assert.match(sweep.warnings[0].text, /sends 0\.25 SOL from your wallet to/)
+  assert.equal(sweep.warnings[0].level, 'caution')
+})
+
+test('flags approvals and hand-overs your wallet signs, even with no balances to look at', () => {
+  // A token account Sunny never saw (a guest, a group), but the wallet signs as its owner.
+  const unknown = Keypair.generate().publicKey
+  const approve = new TransactionInstruction({
+    programId: TOKEN,
+    keys: [
+      { pubkey: unknown, isSigner: false, isWritable: true },
+      { pubkey: thief, isSigner: false, isWritable: false },
+      { pubkey: wallet, isSigner: true, isWritable: false },
+    ],
+    data: Buffer.concat([Buffer.from([4]), Buffer.alloc(8, 0xff)]),
+  })
+  const takeover = new TransactionInstruction({
+    programId: TOKEN,
+    keys: [
+      { pubkey: unknown, isSigner: false, isWritable: true },
+      { pubkey: wallet, isSigner: true, isWritable: false },
+    ],
+    data: Buffer.from([6, 2, 1, ...thief.toBytes()]),
+  })
+  const found = read([approve, takeover]).warnings.map((w) => w.code)
+  assert.deepEqual(found.sort(), ['approve', 'owner'])
 })
 
 test('turns findings into a verdict and one plain sentence', () => {
