@@ -3,10 +3,14 @@
 // compromised server might try. Run: node --env-file=../.env --import tsx --test test/sign-check.test.ts
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { createHash } from 'node:crypto'
+import { createHash, randomBytes } from 'node:crypto'
 import { Keypair, PublicKey, SystemProgram, Transaction, TransactionInstruction } from '@solana/web3.js'
+import { base58 } from '@scure/base'
 
+// Throwaway keys when there's no .env (CI): the transactions are only built and read, never sent.
 process.env.SUNNY_USDC_MINT ||= '4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU'
+process.env.SUNNY_FEE_PAYER ||= base58.encode(Keypair.generate().secretKey)
+process.env.SUNNY_AGENT_SEED ||= randomBytes(32).toString('hex')
 const { ata, feePayer, pocketPda, prepareOwnerTx, usdcMint, vaultPda } = await import('../src/solana.js')
 const { describeTransaction, pocketAccounts } = await import('../../web/src/lib/vault.js')
 
