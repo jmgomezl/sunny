@@ -246,6 +246,8 @@ const ERRORS: Record<number, string> = {
   6004: 'That’s over today’s limit',
   6005: 'Only Sunny’s agent key can draw',
   6006: 'Only the owner can do that',
+  // Anchor's own: the pocket account doesn't exist yet.
+  3012: 'There’s no pocket open yet',
 }
 
 /** Turns a failed transaction into the pocket rule that stopped it. */
