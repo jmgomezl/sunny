@@ -1,8 +1,9 @@
 import { useEffect, useRef } from 'react'
 
-export type Weather = 'clear' | 'golden' | 'storm' | 'night' | 'hazy'
+// 'nap' is the sky while Sunny dozes in the daytime: a cloudy lavender dusk.
+export type Weather = 'clear' | 'golden' | 'storm' | 'night' | 'hazy' | 'nap'
 
-const WEATHERS: Weather[] = ['clear', 'golden', 'storm', 'night', 'hazy']
+const WEATHERS: Weather[] = ['clear', 'golden', 'storm', 'night', 'hazy', 'nap']
 
 // Deterministic pseudo-random so stars/raindrops don't jump between renders.
 function seeded(n: number) {
@@ -37,6 +38,14 @@ const CLOUDS = [
   { top: 44, scale: 0.7, duration: 85, delay: -75 },
 ]
 
+// More clouds roll in while Sunny naps, big and slow, as if the sky tucked it in.
+const NAP_CLOUDS = [
+  { top: 20, scale: 1.15, duration: 150, delay: -40 },
+  { top: 52, scale: 0.95, duration: 130, delay: -95 },
+  { top: 2, scale: 0.8, duration: 170, delay: -120 },
+  { top: 36, scale: 1.05, duration: 160, delay: -10 },
+]
+
 export function Sky({ weather }: { weather: Weather }) {
   const ref = useRef<HTMLDivElement>(null)
 
@@ -60,7 +69,7 @@ export function Sky({ weather }: { weather: Weather }) {
 
       <div className="sky-sunbeam" />
 
-      <div className="sky-stars" data-active={weather === 'night'}>
+      <div className="sky-stars" data-active={weather === 'night' || weather === 'nap'}>
         {STARS.map((s, i) => (
           <span
             key={i}
@@ -80,6 +89,21 @@ export function Sky({ weather }: { weather: Weather }) {
           <div
             key={i}
             className="sky-cloud"
+            style={{
+              top: `${c.top}%`,
+              animationDuration: `${c.duration}s`,
+              animationDelay: `${c.delay}s`,
+              ['--s' as string]: c.scale,
+            }}
+          >
+            <CloudShape />
+          </div>
+        ))}
+        {NAP_CLOUDS.map((c, i) => (
+          <div
+            key={`nap-${i}`}
+            className="sky-cloud sky-cloud--nap"
+            data-active={weather === 'nap'}
             style={{
               top: `${c.top}%`,
               animationDuration: `${c.duration}s`,

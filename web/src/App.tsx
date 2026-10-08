@@ -144,6 +144,7 @@ const SKY_TOP: Record<Weather, string> = {
   storm: '#5d6c90',
   night: '#0b1129',
   hazy: '#e9a28f',
+  nap: '#6c72a6',
 }
 
 const MOOD_WEATHER: Record<Mood, Weather> = {
@@ -178,7 +179,7 @@ const bondLevel = (bond: number) => Math.min(BOND_LEVELS.length - 1, Math.floor(
 const WELLBEING: Record<Mood, number> = { happy: 86, excited: 96, worried: 32, hungry: 58, sleepy: 74 }
 
 const DOZE_AFTER_MS = 45_000
-const DOZE_LINE = 'Zzz… (tap me if you need anything)'
+const DOZE_LINE = 'Zzz… my lantern’s on. Tap me if you need anything.'
 
 function loadBond() {
   try {
@@ -299,7 +300,9 @@ export default function App() {
     : 'happy'
   const mood: Mood = demoMood ?? liveMood
   const demo = demoMood ? SCENES[demoMood] : null
-  const weather = MOOD_WEATHER[mood]
+  // When Sunny dozes off the sky dims with it: a cloudy dusk by day, full night after dark.
+  // A storm stays a storm: a warning is never hidden by a nap.
+  const weather: Weather = dozing && mood !== 'worried' ? (isNight() ? 'night' : 'nap') : MOOD_WEATHER[mood]
 
   const refreshHome = useCallback(async () => {
     try {
@@ -941,7 +944,7 @@ export default function App() {
             reaction={reaction ?? (nomming ? 'nom' : chatPending ? 'scan' : null)}
             frozen={frozen}
             dozing={dozing}
-            lantern={mood === 'sleepy'}
+            lantern={(mood === 'sleepy' || dozing) && !frozen}
             size={200}
             wear={{
               shades: earnedBadge('sunny-streak'),
