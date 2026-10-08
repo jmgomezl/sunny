@@ -147,10 +147,11 @@ Everything on-chain is public on devnet. A few transactions from the recordings 
 | The pocket program (every open, top-up, draw and freeze) | [`7RhPyrf1…4wvy`](https://solscan.io/account/7RhPyrf1C4t3QDce8hW19i6FK5wevEEPgBMne8Pt4wvy?cluster=devnet) |
 | A pocket opened **with its first $5 in one signature** (feeding the coin) | [`3dcahHAP…UAKS`](https://solscan.io/tx/3dcahHAPBweY3LHP1rczy7G63UMQ5WTw1hxZ4i4jp1Bdrh51kVTfBzJkXkB3HyBSfZNZ1K91mw2SYGxhEBNMUAKS?cluster=devnet) |
 | Sunny's agent drawing $2, inside the limits | [`66o1vXgq…EYHA`](https://solscan.io/tx/66o1vXgqhANnNPb5dkLAKNrjyxyQE4VjdB6Qbez1vfHR62SLijPYnrwJff34xguS1WAVtu1ZdCYEBB389vd5EYHA?cluster=devnet) |
+| **Sunny asking for $7 and the program refusing** (`OverPerPaymentLimit`, error 6003), as a failed transaction | [`2WSVAKYF…sjao`](https://solscan.io/tx/2WSVAKYFEYBVmRuJdCvNVP46hiHRFxNFRBA6vTuPTkfHPmVpvXUYqiybF7wpcPfA4d4B5N7PSbWpLbZsH1Eysjao?cluster=devnet) |
 | An x402 payment for a deep scan, from Sunny's wallet | [`5Ge1mcrz…1Avw`](https://solscan.io/tx/5Ge1mcrz7jhvfNW15ikR6hUkXMES7S7Ah5yA88bNq1B1j9Yq2hVFzjNKmLxaynMnkJnbkqcQwikvUgbhnt3J1Avw?cluster=devnet) |
 | A non-transferable Token-2022 badge minted (Pocket Parent) | [`2FwrRZsd…vaUp`](https://solscan.io/tx/2FwrRZsdjT6D6CotXu1P32vPeopY6YgdYKQ28FxKMEq5HQgNqjbofGZUs4Jfok3E5QQsUnfNds5UxFKTiCWQvaUp?cluster=devnet) · [mint](https://solscan.io/token/9qh8CL3vMAgcxnhH9eUdymMunKQ6P4KexWofWgbv4Jny?cluster=devnet) |
 
-A refused draw (like the $7 one) never lands: the program's own check rejects it before it's sent, and Sunny relays the program's reason.
+Refused draws land on-chain too, as failed transactions carrying the program's own error, so "Solana said no" is something you can check, not just something Sunny says.
 
 The x402 API is public. Ask without paying and you get `402 Payment Required` with the price and where to pay:
 
@@ -246,7 +247,7 @@ The same model as [OculusVault](https://github.com/jmgomezl/oculusvaultwallet), 
 
 - **Made on the phone.** The ed25519 key is generated in the Mini App and encrypted with **Argon2id** (64 MiB, 3 passes) and **XChaCha20-Poly1305**. A new wallet signs a proof that it holds its key before the server accepts it.
 - **Stored only as ciphertext**, in Telegram CloudStorage with a server backup. The server can't open it, and there's no password reset by design.
-- **What you sign is checked on the phone.** The server prepares each transaction (Sunny pays the fee, so you never need SOL). Before you sign, the phone decodes the actual bytes, refuses anything that isn't one of *your own* pocket's instructions (it derives your pocket's address itself), and shows a plain-language summary. Even a compromised server can't make it sign something else.
+- **What you sign is checked on the phone.** The server prepares each transaction (Sunny pays the fee, so you never need SOL). Before you sign, the phone decodes the actual bytes, refuses anything that isn't one of *your own* pocket's instructions (it derives your pocket's address itself), and shows a plain-language summary. A compromised API can't get it to sign something else. (Today the app's code is served from the same server; the mainnet plan moves the owner key to the wallet you already have, so we never serve signing code.)
 
 ### Paying for tools with x402
 
@@ -322,7 +323,8 @@ The bot serves the Mini App's API on port 8820 and Vite proxies `/api` to it. Ou
 
 - **Devnet only, with test USDC.** The program is unaudited.
 - **No password reset.** Not even Sunny can open your wallet. Keep pocket amounts small.
-- **The agent key lives on the server**, bounded by the program: a stolen or confused key can draw at most your limits, only to itself, and nothing once frozen.
+- **The agent key lives on the server**, bounded by the program: a stolen or confused key can draw at most your limits, only to itself, and nothing once frozen. Money Sunny draws sits in its spending wallet, a hot wallet our server holds, until it pays for something.
+- **The program's upgrade authority is a single key** on devnet; mainnet would put it behind a multisig or make the program immutable.
 - **Not live yet:** swaps.
 - **The model can be wrong.** That's why money rules live on-chain and actions only count when a tool confirms them.
 
