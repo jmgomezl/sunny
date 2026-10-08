@@ -52,7 +52,9 @@ const draw = async (usd: number) => {
     const r = await agentDraw(record.address, usd)
     console.log(`   ✓ Sunny drew $${usd}  ${r.explorer}`)
   } catch (err) {
-    console.log(`   ⛔ Sunny tried $${usd}: ${(err as Error).message}`)
+    // The refusal is itself a failed transaction on Solana, carrying the program's error.
+    const proof = (err as { explorer?: string }).explorer ?? ''
+    console.log(`   ⛔ Sunny tried $${usd}: ${(err as Error).message}  ${proof}`)
   }
 }
 console.log('4. Sunny draws (limits: $5/payment, $10/day):')

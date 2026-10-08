@@ -616,10 +616,12 @@ async function runTool(name: string, rawArgs: string, ctx: Ctx): Promise<unknown
           return { ok: true, ...sent }
         } catch (err) {
           const why = err instanceof Error ? err.message : 'The transaction failed'
-          ctx.pocket.push({ amount, reason, ok: false, message: why })
+          // The refusal itself is a failed transaction on Solana: proof it was the program.
+          const proof = (err as { explorer?: string }).explorer
+          ctx.pocket.push({ amount, reason, ok: false, message: why, explorer: proof })
           logActivity(ctx.userId, 'check', `Solana stopped a $${amount} draw`, why)
           // The real numbers, so the explanation never guesses ("you spent it all today").
-          return { refused_by_solana: true, rule: why, pocket_now: await pocketFacts(wallet) }
+          return { refused_by_solana: true, rule: why, on_chain_proof: proof ?? null, pocket_now: await pocketFacts(wallet) }
         }
       }
       case 'list_price_alerts': {

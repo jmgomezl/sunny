@@ -295,7 +295,32 @@ export async function agentDraw(ownerAddress: string, usd: number) {
   )
   tx.recentBlockhash = (await connection.getLatestBlockhash()).blockhash
   tx.sign(feePayer(), agent)
-  return send(tx)
+  return sendToChain(tx)
+}
+
+/**
+ * Sends straight to the chain, without the preflight check, so a refused draw lands as a
+ * failed transaction carrying the program's own error: on-chain proof that Solana said no,
+ * not just a server message. A refusal throws with `explorer` pointing at that transaction.
+ */
+async function sendToChain(tx: Transaction) {
+  const signature = await connection.sendRawTransaction(tx.serialize(), { skipPreflight: true })
+  const explorer = explorerTx(signature)
+  let failure: unknown = null
+  try {
+    failure = (await connection.confirmTransaction(signature, 'confirmed')).value.err
+  } catch (err) {
+    // web3.js throws the transaction's own error object ({InstructionError: …}) when it failed.
+    if (err && typeof err === 'object' && !(err instanceof Error)) failure = err
+    else throw Object.assign(new Error(explain(err)), { cause: err })
+  }
+  if (!failure) return { signature, explorer }
+  const logs =
+    (await connection.getTransaction(signature, { commitment: 'confirmed', maxSupportedTransactionVersion: 0 }).catch(() => null))?.meta
+      ?.logMessages ?? []
+  const custom = (failure as { InstructionError?: [number, { Custom?: number }] }).InstructionError?.[1]?.Custom
+  const reason = explain(new Error(`${custom !== undefined ? `Error Number: ${custom}` : JSON.stringify(failure)} ${logs.join(' ')}`))
+  throw Object.assign(new Error(reason), { explorer, signature })
 }
 
 /** Opens a wallet's test-USDC account if it doesn't exist yet. Sunny's fee wallet pays the rent. */
