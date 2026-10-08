@@ -124,7 +124,7 @@ export function PocketSheet({ open, state, intent, feedAmount = 5, onClose, onCh
     setConfirm('')
     setShowPassword(false)
     setUnlocked(isUnlocked())
-    setRecord(undefined)
+    // The wallet already known (same person) stays on screen while it's checked again.
     if (inTelegram()) reload()
     else setRecord(null)
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -255,7 +255,12 @@ export function PocketSheet({ open, state, intent, feedAmount = 5, onClose, onCh
   // Sunny walks you through every step in its own words.
   const line = !inTelegram()
     ? 'My wallet lives inside Telegram, where you’re verified. Open me from @SunnySolBot to make yours.'
-    : loadError
+    : // Something to sign always leads, whatever else is still loading.
+      prepared
+      ? intent === 'feed'
+        ? 'Nom! Sign it and the coin is really mine. I read this on your phone, not on my server.'
+        : 'Have a look before you sign. I read this on your phone, not on my server.'
+      : loadError
       ? loadError
       : record === undefined
       ? 'Looking for your wallet…'
@@ -263,11 +268,7 @@ export function PocketSheet({ open, state, intent, feedAmount = 5, onClose, onCh
         ? `${intent === 'hello' ? `Hi${name ? ` ${name}` : ''}! I’m Sunny ☀️ ` : ''}Let’s make your wallet together. It’s born right here on your phone and locked with a password only you know.`
         : !unlocked
           ? `${name ? `Hi ${name}! ` : ''}${UNLOCK_FOR[intent ?? ''] ?? 'Welcome back! Tell me your password so I know it’s you.'}`
-          : prepared
-            ? intent === 'feed'
-              ? 'Nom! Sign it and the coin is really mine. I read this on your phone, not on my server.'
-              : 'Have a look before you sign. I read this on your phone, not on my server.'
-            : intent === 'feed' && s?.frozen
+          : intent === 'feed' && s?.frozen
               ? 'I’m frozen, so I can’t eat right now ❄ Warm me up first, then feed me.'
               : intent === 'feed' && s && s.ownerUsdc < feedAmount
                 ? 'Your wallet needs test USDC before you can feed me. Get some below, and that coin is mine 🪙'
