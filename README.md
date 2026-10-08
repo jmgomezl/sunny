@@ -24,6 +24,7 @@
   <b><a href="docs/media/sunny-tour.mp4">▶ Watch the 2-minute tour</a></b> ·
   <b><a href="https://t.me/SunnySolBot">Try it in Telegram</a></b> ·
   <b><a href="https://sunny.aivylabs.xyz/?demo">Web preview, no login</a></b> ·
+  <b><a href="https://sunny.aivylabs.xyz/stats/">Live numbers</a></b> ·
   <a href="docs/BUILD_LOG.md">Build log</a>
 </p>
 
@@ -143,6 +144,8 @@ Recorded from the real app, talking to real Solana devnet and mainnet. The full 
 ---
 
 ## Verify it yourself
+
+**[Live numbers](https://sunny.aivylabs.xyz/stats/)**: groups guarded, scams caught, payments refused, and the pocket program's own record read from Solana (test runs aren't counted).
 
 Everything on-chain is public on devnet. A few transactions from the recordings above:
 

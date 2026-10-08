@@ -29,7 +29,7 @@ web() {
   pnpm --dir "$ROOT/web" build
   # New hashed assets first, then the page that points at them, so an open page never breaks.
   rsync -az "$ROOT/web/dist/assets/" "$HOST:/var/www/sunny/assets/"
-  rsync -az --exclude assets --exclude index.html "$ROOT/web/dist/" "$HOST:/var/www/sunny/"
+  rsync -az --exclude /assets --exclude /index.html "$ROOT/web/dist/" "$HOST:/var/www/sunny/"
   rsync -az "$ROOT/web/dist/index.html" "$HOST:/var/www/sunny/index.html"
 }
 
