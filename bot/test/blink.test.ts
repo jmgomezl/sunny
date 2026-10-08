@@ -4,7 +4,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { Keypair, PublicKey, SystemProgram, TransactionInstruction, TransactionMessage, VersionedTransaction } from '@solana/web3.js'
-import { applyRule, finish, inspectInstructions } from '../src/blink.js'
+import { applyRule, finish, hasBlinkShapedLink, inspectInstructions } from '../src/blink.js'
 
 const wallet = Keypair.generate().publicKey
 const tokenAccount = Keypair.generate().publicKey
@@ -128,4 +128,16 @@ test('turns findings into a verdict and one plain sentence', () => {
 
   const listed = finish({ ...base, registry: 'malicious', outcome: 'simulated', sends: [], warnings: [] })
   assert.match(listed.summary, /Dialect’s registry lists this Blink as malicious/)
+})
+
+test('a Blink-shaped link always goes to the Blink reader; ordinary links and words don’t', () => {
+  for (const blink of [
+    'Is this safe to sign? https://claim.attacker.test/api/actions/approve',
+    'solana-action:https://jupiter.dial.to/swap',
+    'https://dial.to/?action=solana-action:https://example.com/api',
+    'is bonk.com/actions/claim legit?',
+  ])
+    assert.equal(hasBlinkShapedLink(blink), true, blink)
+  for (const other of ['check raydlum.io please', 'what is https://jup.ag/swap/SOL-USDC', 'take $5 from your pocket'])
+    assert.equal(hasBlinkShapedLink(other), false, other)
 })

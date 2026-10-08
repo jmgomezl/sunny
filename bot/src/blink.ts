@@ -158,6 +158,24 @@ export async function looksLikeBlink(input: string) {
   }
 }
 
+/**
+ * Does a chat message carry a link shaped like a Blink (an Action link, a dial.to link, or an
+ * Action-style API path)? No network: it decides whether the Blink reader must run first.
+ */
+export function hasBlinkShapedLink(message: string) {
+  for (const word of message.split(/\s+/)) {
+    if (/^solana-action:/i.test(word) || /(^|\/\/)(www\.)?dial\.to\//i.test(word)) return true
+    if (!/^(https?:\/\/)?[\w-]+(\.[\w-]+)+\//i.test(word)) continue
+    try {
+      const url = new URL(/^https?:\/\//i.test(word) ? word : `https://${word}`)
+      if (url.searchParams.has('action') || /\/(api\/)?(actions?|blinks?)(\/|$)/i.test(url.pathname)) return true
+    } catch {
+      // not a link
+    }
+  }
+  return false
+}
+
 /** Is this a Blink? Returns the Action API URL behind it, or null. */
 export async function resolveAction(input: string): Promise<string | null> {
   const text = input.trim()

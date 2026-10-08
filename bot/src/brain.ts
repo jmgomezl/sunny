@@ -29,7 +29,7 @@ import {
 import type { DeepReport } from './deepscan.js'
 import { DEEP_SCAN_PRICE, sunnyBuysDeepScan } from './x402.js'
 import { ago, latestNews } from './news.js'
-import { checkBlink, probeAccount, untrusted, type BlinkReport } from './blink.js'
+import { checkBlink, hasBlinkShapedLink, probeAccount, untrusted, type BlinkReport } from './blink.js'
 import { allow, HOUR } from './limits.js'
 
 // Sunny's brain runs through OpenRouter so the model can be swapped from .env.
@@ -61,6 +61,8 @@ const QUESTION = /^(what|how|why|which|who|is|are|should|does|que|como|por que|c
 const asksForAction = (text: string) => ACTION_REQUEST.test(fold(text)) && !QUESTION.test(fold(text))
 // Tools whose answers come from Jupiter's live market data (for the "📡 Live from Jupiter" note).
 const JUPITER_TOOLS = new Set(['lookup_token', 'market_overview', 'wallet_snapshot', 'create_price_alert', 'my_wallet'])
+// Tools that read what already happened on-chain, so a reply may describe past money moves.
+const HISTORY_TOOLS = new Set(['my_wallet', 'pocket_status', 'wallet_snapshot'])
 const COULDNT_ACT = {
   en: 'I couldn’t do that just now, sorry. Try asking me again in a moment? ☀️',
   es: 'No pude hacerlo justo ahora, perdón. ¿Me lo pides de nuevo en un momento? ☀️',
@@ -850,8 +852,12 @@ export async function reply(chatId: number, name: string, text: string, lang = '
   // "Take $500 from your pocket" (or yes to Sunny's own offer of an amount) always reaches the
   // program, so Solana says yes or no, never the model's own judgment.
   let forceDraw = (asksForDraw(text) && amountsIn(text).length > 0) || ctx.drawConsent !== null
+  // A Blink-shaped link always goes to the Blink reader first, so the verdict comes from the
+  // transaction it wants signed, not from the model's guess about the link.
+  let forceBlink = !forceDraw && hasBlinkShapedLink(text)
   let acted = false
   let jupiter = false
+  let readHistory = false
   let forced = false
   let prompted = false
   let raw = ''
@@ -869,9 +875,11 @@ export async function reply(chatId: number, name: string, text: string, lang = '
             tools: TOOLS,
             ...(forceDraw
               ? { tool_choice: { type: 'function' as const, function: { name: 'use_pocket_money' } } }
-              : forced && !acted
-                ? { tool_choice: 'required' as const }
-                : {}),
+              : forceBlink
+                ? { tool_choice: { type: 'function' as const, function: { name: 'check_blink' } } }
+                : forced && !acted
+                  ? { tool_choice: 'required' as const }
+                  : {}),
           }
         : {}),
     })
@@ -899,7 +907,9 @@ export async function reply(chatId: number, name: string, text: string, lang = '
     }
     acted = true
     forceDraw = false
+    forceBlink = false
     jupiter ||= calls.some((c) => JUPITER_TOOLS.has(c.function.name))
+    readHistory ||= calls.some((c) => HISTORY_TOOLS.has(c.function.name))
     messages.push({ role: 'assistant', content: msg.content ?? null, tool_calls: calls })
     for (const call of calls) {
       const result = await runTool(call.function.name, call.function.arguments, ctx)
@@ -913,8 +923,10 @@ export async function reply(chatId: number, name: string, text: string, lang = '
   // code's verdict says otherwise. Its own summary replaces it.
   const flagged = ctx.blinks.find((b) => b.verdict !== 'ok')
   if (flagged && claimsSafe(raw)) raw = flagged.summary
-  // And it can't claim money moved when nothing moved on Solana.
-  if (claimsMoneyMoved(raw) && !ctx.pocket.some((e) => e.ok) && !ctx.scans.length) {
+  // And it can't claim money moved when nothing moved on Solana. Describing history it just read
+  // ("I drew $5 this morning") is fine, but only when the person asked about history, not for money.
+  const reportingHistory = readHistory && !asksForPocketMoney(ctx.ask)
+  if (claimsMoneyMoved(raw) && !ctx.pocket.some((e) => e.ok) && !ctx.scans.length && !reportingHistory) {
     raw = language.startsWith('es')
       ? 'No moví nada de dinero: no pasó nada en Solana.'
       : 'I didn’t move any money: nothing went through on Solana.'
