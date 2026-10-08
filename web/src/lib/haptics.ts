@@ -40,7 +40,8 @@ export type Haptic = 'soft' | 'light' | 'medium' | 'success' | 'warning'
 
 /** Telegram's native haptics inside the Mini App; a tiny vibration elsewhere. */
 export function haptic(kind: Haptic) {
-  const tg = window.Telegram?.WebApp?.HapticFeedback
+  // Telegram's script loads everywhere, but its haptics only work (and only stay quiet) inside it.
+  const tg = window.Telegram?.WebApp?.initData ? window.Telegram.WebApp.HapticFeedback : undefined
   if (tg) {
     if (kind === 'success' || kind === 'warning') tg.notificationOccurred(kind)
     else tg.impactOccurred(kind)

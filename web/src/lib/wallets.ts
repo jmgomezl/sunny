@@ -65,6 +65,90 @@ export function onWalletsChanged(callback: () => void) {
 
 const connectOf = (w: Wallet) => (w.features as StandardConnectFeature)[StandardConnect]
 
+// Leaving the wallet app without answering never settles Mobile Wallet Adapter's request, and the
+// library can't start another one after that. So: give up a few seconds after Sunny is back on
+// screen, and start the next attempt from a fresh page.
+const CLOSED = 'Your wallet closed without answering. Tap again when you’re ready.'
+const STUCK_KEY = 'sunny.walletStuck'
+
+function walletCall<T>(run: () => Promise<T>): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    let left = false
+    let timer = 0
+    const away = () => {
+      left = true
+      clearTimeout(timer)
+    }
+    const back = () => {
+      if (!left || document.visibilityState !== 'visible') return
+      clearTimeout(timer)
+      timer = window.setTimeout(() => {
+        done()
+        try {
+          sessionStorage.setItem(STUCK_KEY, '1')
+        } catch {
+          // Without storage the next tap may hang again; a reload still fixes it.
+        }
+        reject(new Error(CLOSED))
+      }, 6000)
+    }
+    const onVisibility = () => (document.visibilityState === 'hidden' ? away() : back())
+    const done = () => {
+      clearTimeout(timer)
+      document.removeEventListener('visibilitychange', onVisibility)
+      window.removeEventListener('blur', away)
+      window.removeEventListener('focus', back)
+    }
+    document.addEventListener('visibilitychange', onVisibility)
+    window.addEventListener('blur', away)
+    window.addEventListener('focus', back)
+    run().then(
+      (v) => {
+        done()
+        resolve(v)
+      },
+      (err: unknown) => {
+        done()
+        reject(new Error(friendly(err)))
+      },
+    )
+  })
+}
+
+/** After a wallet left without answering, the next attempt reloads first (and reopens the sheet). */
+export function needsFreshStart() {
+  try {
+    return sessionStorage.getItem(STUCK_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+export function freshStart() {
+  try {
+    sessionStorage.removeItem(STUCK_KEY)
+    sessionStorage.setItem('sunny.reopenWallet', '1')
+  } catch {
+    // Fine: the page still reloads.
+  }
+  window.location.reload()
+}
+
+/** Wallet errors, in Sunny's words instead of the wallet library's. */
+function friendly(err: unknown): string {
+  const text = err instanceof Error ? err.message : String(err)
+  if (text === CLOSED) return CLOSED
+  if (/declin|reject|cancel|denied|authorization request failed|not signed|user/i.test(text)) {
+    return 'No problem, you said no. Tap again whenever you’re ready.'
+  }
+  if (/cluster|chain/i.test(text)) {
+    return 'Your wallet isn’t on devnet. Switch it to devnet (in Phantom: Settings → Developer Settings → Testnet mode), then try again.'
+  }
+  if (/auth_?token|not valid/i.test(text)) return 'Your wallet’s session ended. Tap again to reconnect.'
+  if (/payload|exceeds|implementation limit/i.test(text)) return 'Your wallet couldn’t read this request. Try again, or use another wallet.'
+  if (/changed the transaction|isn’t for your wallet|doesn’t look right|Switch your wallet/i.test(text)) return text
+  return 'Your wallet had a problem. Try again in a moment.'
+}
+
 /** After the wallet app hands back, wait until Sunny is on screen again before going online. */
 async function backInFront() {
   if (document.visibilityState !== 'visible') {
@@ -80,15 +164,18 @@ async function backInFront() {
 
 /** Connects, signs Sunny's one-time sign-in message, and keeps the session. */
 export async function signIn(wallet: Wallet) {
-  const { accounts } = await connectOf(wallet).connect()
+  if (needsFreshStart()) freshStart()
+  const { accounts } = await walletCall(() => connectOf(wallet).connect())
   const account = accounts[0]
-  if (!account) throw new Error('The wallet didn’t share an account. Try again?')
+  if (!account) throw new Error('Your wallet didn’t connect. Tap again to retry.')
   await backInFront()
   const { message } = await post<{ message: string }>('/api/auth', { op: 'challenge', address: account.address }, { retry: true })
-  const [signed] = await (wallet.features as SolanaSignMessageFeature)[SolanaSignMessage].signMessage({
-    account,
-    message: new TextEncoder().encode(message),
-  })
+  const [signed] = await walletCall(() =>
+    (wallet.features as SolanaSignMessageFeature)[SolanaSignMessage].signMessage({
+      account,
+      message: new TextEncoder().encode(message),
+    }),
+  )
   await backInFront()
   const { session, address } = await post<{ session: string; address: string }>('/api/auth', {
     op: 'verify',
@@ -122,7 +209,7 @@ async function accountFor(wallet: Wallet, address: string): Promise<WalletAccoun
           .catch(() => ({ accounts: [] }))
       ).accounts,
     )
-  if (!account) account = find((await connectOf(wallet).connect()).accounts)
+  if (!account) account = find((await walletCall(() => connectOf(wallet).connect())).accounts)
   if (!account) throw new Error(`Switch your wallet to ${short(address)}, the one you signed in with.`)
   return account
 }
@@ -148,6 +235,7 @@ const sameBytes = (a: Uint8Array, b: Uint8Array) => a.length === b.length && a.e
 export async function signPocketTransaction(messageBase64: string): Promise<string> {
   const s = walletSession()
   if (!s) throw new Error('Connect your wallet first.')
+  if (needsFreshStart()) freshStart()
   const wallet = availableWallets().find((w) => w.name === s.wallet)
   if (!wallet) throw new Error(`I can’t find ${s.wallet} in this browser. Open me where you connected it.`)
   const account = await accountFor(wallet, s.address)
@@ -161,11 +249,13 @@ export async function signPocketTransaction(messageBase64: string): Promise<stri
   unsigned[0] = needed
   unsigned.set(message, 1 + 64 * needed)
 
-  const [out] = await (wallet.features as SolanaSignTransactionFeature)[SolanaSignTransaction].signTransaction({
-    account,
-    transaction: unsigned,
-    chain: CHAIN,
-  })
+  const [out] = await walletCall(() =>
+    (wallet.features as SolanaSignTransactionFeature)[SolanaSignTransaction].signTransaction({
+      account,
+      transaction: unsigned,
+      chain: CHAIN,
+    }),
+  )
   await backInFront()
   const signed = out.signedTransaction
   const [count, at] = readLength(signed, 0)

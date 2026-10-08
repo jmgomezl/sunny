@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { closeOnBack } from '../lib/back'
 import { AnimatePresence, motion } from 'motion/react'
 import { SunMark } from './Icons'
 import { BlinkCardView, LinkCardView, TokenCardView, WalletCardView } from './Cards'
@@ -94,14 +95,11 @@ export function ScanSheet(props: ScanSheetProps) {
   // Telegram's back button and Escape close the sheet.
   useEffect(() => {
     if (!open) return
-    const back = window.Telegram?.WebApp?.BackButton
-    back?.show()
-    back?.onClick(onClose)
+    const offBack = closeOnBack(onClose)
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
     window.addEventListener('keydown', onKey)
     return () => {
-      back?.offClick(onClose)
-      back?.hide()
+      offBack()
       window.removeEventListener('keydown', onKey)
     }
   }, [open, onClose])
@@ -179,7 +177,7 @@ export function ScanSheet(props: ScanSheetProps) {
                 <input
                   ref={inputRef}
                   value={draft}
-                  onChange={(e) => setDraft(e.target.value.slice(0, 300))}
+                  onChange={(e) => setDraft(e.target.value.slice(0, 2000))}
                   placeholder={mode === 'link' ? 'Paste a wallet address' : 'Paste a wallet, token or link'}
                   aria-label="Address, token or link"
                   enterKeyHint="go"
@@ -281,7 +279,7 @@ export function ScanSheet(props: ScanSheetProps) {
                       )}
                       {deepScan === 'feed' && (
                         <button type="button" className="ghost-btn scan-deep" onClick={onFeed}>
-                          Deep scan · feed me $0.10 first 🪙
+                          Deep scan · $0.10 from my pocket (top me up first)
                         </button>
                       )}
                     </>

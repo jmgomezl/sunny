@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from 'motion/react'
 import { CoinIcon, EyeIcon, ShieldIcon, SnowIcon, SunMark } from './Icons'
 import { inTelegram, walletSession, type WalletSession } from '../lib/api'
 import { ConnectWallet } from './ConnectWallet'
+import { closeOnBack } from '../lib/back'
 import { type ShareSpec } from '../lib/share'
 import { ShareRow } from './Cards'
 import { Guardrails } from './Guardrails'
@@ -48,7 +49,15 @@ type PocketSheetProps = {
   onBackup?: () => void
 }
 
-type Prepared = { id: string; message: string; summary: string[]; event: PocketEventKind }
+type Prepared = {
+  id: string
+  message: string
+  summary: string[]
+  event: PocketEventKind
+  action: PocketAction
+  /** When the transaction was made: Solana only accepts it for about a minute. */
+  at: number
+}
 
 const usd = (n: number) => `$${n.toLocaleString('en-US', { maximumFractionDigits: 2 })}`
 
@@ -169,17 +178,21 @@ export function PocketSheet({
       .catch((err) => setLoadError(err instanceof Error ? err.message : String(err)))
   }
 
+  // A wallet session that expired mid-way: back to "Connect your wallet", not a stale address.
+  useEffect(() => {
+    const signedOut = () => setExternal(null)
+    window.addEventListener('sunny:signed-out', signedOut)
+    return () => window.removeEventListener('sunny:signed-out', signedOut)
+  }, [])
+
   useEffect(() => {
     if (!open) return
-    const back = window.Telegram?.WebApp?.BackButton
-    back?.show()
-    back?.onClick(onClose)
+    const offBack = closeOnBack(onClose)
     // Escape closes it too, like the other sheets.
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
     window.addEventListener('keydown', onKey)
     return () => {
-      back?.offClick(onClose)
-      back?.hide()
+      offBack()
       window.removeEventListener('keydown', onKey)
     }
   }, [open, onClose])
@@ -249,7 +262,7 @@ export function PocketSheet({
     void run('Preparing…', async () => {
       setDone(null)
       const p = await preparePocket(a, owner)
-      setPrepared({ ...p, event })
+      setPrepared({ ...p, event, action: a, at: Date.now() })
     })
   }
 
@@ -280,10 +293,27 @@ export function PocketSheet({
   const approve = () => {
     if (!prepared) return
     void run(external ? 'Check your wallet…' : 'Signing on this phone…', async () => {
-      const sent = await submitPocket(prepared, Boolean(external))
-      setDone({ text: prepared.summary.map(pastTense).join(' · '), explorer: sent.explorer, event: prepared.event })
-      setPrepared(null)
-      onChanged(sent.state, prepared.event, sent)
+      let p = prepared
+      // Read for a while? Get a fresh copy (Solana only accepts a transaction for about a
+      // minute), and sign it only if it says exactly what was just read.
+      if (Date.now() - p.at > 15_000 && owner) {
+        const fresh = { ...(await preparePocket(p.action, owner)), event: p.event, action: p.action, at: Date.now() }
+        if (fresh.summary.join('\n') !== p.summary.join('\n')) {
+          setPrepared(fresh)
+          throw new Error('Something changed since you read this. Have another look, then sign.')
+        }
+        p = fresh
+      }
+      try {
+        const sent = await submitPocket(p, Boolean(external))
+        setDone({ text: p.summary.map(pastTense).join(' · '), explorer: sent.explorer, event: p.event })
+        setPrepared(null)
+        onChanged(sent.state, p.event, sent)
+      } catch (err) {
+        // The next tap starts from a fresh transaction, never the one that just failed.
+        setPrepared({ ...p, at: 0 })
+        throw err
+      }
     })
   }
 
@@ -598,6 +628,8 @@ export function PocketSheet({
                       className="pocket-form"
                       onSubmit={(e) => {
                         e.preventDefault()
+                        // The program refuses this, so it never gets as far as a signature.
+                        if (Number(perTx) > Number(daily)) return setError('Per payment can’t be more than per day.')
                         prepare({ action: 'open', daily: Number(daily), perTx: Number(perTx) }, 'opened')
                       }}
                     >

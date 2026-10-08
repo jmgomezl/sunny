@@ -98,9 +98,12 @@ export function ShareRow({ spec }: { spec: ShareSpec }) {
   }
   return (
     <div className="share-row">
-      <button type="button" onClick={() => void story()} disabled={busy}>
-        {busy ? 'Making your card…' : canShareStory() ? '📸 Share to Story' : '📸 Share card'}
-      </button>
+      {/* The Android app's WebView has no share sheet or downloads, so it only sends a link. */}
+      {!navigator.userAgent.includes('Solana Mobile Web Shell') && (
+        <button type="button" onClick={() => void story()} disabled={busy}>
+          {busy ? 'Making your card…' : canShareStory() ? '📸 Share to Story' : '📸 Share card'}
+        </button>
+      )}
       <button type="button" onClick={() => sendToChat(spec)}>
         💬 Send to a friend
       </button>

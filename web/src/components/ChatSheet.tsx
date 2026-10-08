@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { closeOnBack } from '../lib/back'
 import { AnimatePresence, motion } from 'motion/react'
 import { SunMark } from './Icons'
 import {
@@ -67,15 +68,12 @@ export function ChatSheet({ open, messages, pending, suggestions, sameAsTelegram
   // Telegram's own back button closes the sheet; Escape does too on desktop.
   useEffect(() => {
     if (!open) return
-    const back = window.Telegram?.WebApp?.BackButton
-    back?.show()
-    back?.onClick(onClose)
+    const offBack = closeOnBack(onClose)
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
     window.addEventListener('keydown', onKey)
     const focus = window.setTimeout(() => inputRef.current?.focus(), 350)
     return () => {
-      back?.offClick(onClose)
-      back?.hide()
+      offBack()
       window.removeEventListener('keydown', onKey)
       clearTimeout(focus)
     }

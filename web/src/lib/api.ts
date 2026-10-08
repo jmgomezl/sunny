@@ -85,7 +85,10 @@ export async function post<T>(path: string, body: Record<string, unknown>, { ret
   }
   const data = (await res.json().catch(() => ({}))) as T & { error?: string }
   // An expired wallet sign-in: forget it, so the next step is connecting again.
-  if (res.status === 401 && walletSession()) saveWalletSession(null)
+  if (res.status === 401 && walletSession()) {
+    saveWalletSession(null)
+    window.dispatchEvent(new Event('sunny:signed-out'))
+  }
   if (!res.ok) throw new Error(data.error || FALLBACK_ERROR)
   return data
 }

@@ -710,6 +710,8 @@ export default function App() {
 
   // Sunny reacts to whatever you scanned or pasted.
   const onScanResult = (r: Inspection | null) => {
+    // The check shows up in "What Sunny did" right away.
+    if (r) void refreshHome()
     // The bubble and the status line tell the same story, for as long as the warning shows.
     const warn = (text: string, line: string) => {
       flagStatus({ tone: 'warn', text })
@@ -753,7 +755,7 @@ export default function App() {
 
   /** Checks for newly earned badges; a new one gets a little celebration. */
   const refreshBadges = async (op: 'sync' | 'backup' = 'sync') => {
-    if (!signedIn() || DEMO) return
+    if (!signedIn() || DEMO) return setBadges(null)
     try {
       const r = await syncBadges(op)
       setBadges(r.badges)
@@ -809,7 +811,12 @@ export default function App() {
     closeScan()
     setChatOpen(true)
     haptic('light')
-    if (topic === 'watch') {
+    if (topic === 'watch' && !inTelegram()) {
+      // Alerts arrive as Telegram messages: say so before anyone spends a question on it.
+      const ask = 'Price alerts arrive as Telegram messages, so they live in @SunnySolBot. Open me there (t.me/SunnySolBot) and say “watch BONK for a 10% drop”.'
+      setChat((prev) => (prev.at(-1)?.text === ask ? prev : [...prev, sunnySays(ask)]))
+      setSuggestions([])
+    } else if (topic === 'watch') {
       const ask = symbol
         ? `How should I watch ${symbol}? Pick one or tell me your own, and I’ll message you in Telegram when it happens.`
         : 'Which token should I keep an eye on? Tell me the move that matters, and I’ll message you in Telegram when it happens.'
@@ -949,6 +956,30 @@ export default function App() {
     faucet: { reaction: 'yum', line: 'Test USDC arrived in your wallet!', particles: ['coin', 5], haptic: 'success' },
     limits: { reaction: 'pat', line: 'New limits set on Solana.', haptic: 'success' },
   }
+
+  // A different person now (signed in, signed out, or a session that expired): their pocket,
+  // sky, badges and a fresh chat.
+  const resetPerson = () => {
+    setChat([])
+    void loadPocket()
+    void refreshHome()
+    void refreshBadges()
+  }
+  useEffect(() => {
+    window.addEventListener('sunny:signed-out', resetPerson)
+    return () => window.removeEventListener('sunny:signed-out', resetPerson)
+  })
+  // Back from a fresh start after a wallet left without answering: pick up where they were.
+  useEffect(() => {
+    try {
+      if (sessionStorage.getItem('sunny.reopenWallet')) {
+        sessionStorage.removeItem('sunny.reopenWallet')
+        setPocketSheet({ open: true })
+      }
+    } catch {
+      // Nothing to reopen.
+    }
+  }, [])
 
   const onPocketChanged = (state: PocketState | null, event: PocketEventKind) => {
     setPocket((prev) => ({ wallet: state?.owner ?? prev?.wallet ?? null, state: state ?? prev?.state ?? null }))
@@ -1282,13 +1313,7 @@ export default function App() {
           closePocket()
           window.setTimeout(() => askFromScan(TRY_IT), 300)
         }}
-        onSignedIn={() => {
-          // A different person now: their pocket, sky, badges and a fresh chat.
-          setChat([])
-          void loadPocket()
-          void refreshHome()
-          void refreshBadges()
-        }}
+        onSignedIn={() => resetPerson()}
       />
         </Suspense>
       )}
@@ -1454,7 +1479,12 @@ function CareCard({ wellbeing, bond, streak, pocket, onPocket, onRetry, guest = 
           value={live ? (live.left / live.daily) * 100 : pocket.kind === 'loading' || pocket.kind === 'error' ? null : 0}
           tone={frozen ? 'frozen' : 'energy'}
         />
-        <Meter label="Mood" hint={wellbeing === null ? 'No wallet yet' : 'How I feel'} value={wellbeing} tone="mood" />
+        <Meter
+          label="Mood"
+          hint={wellbeing === null ? (guest ? 'No wallet yet' : 'Watch a wallet') : 'How I feel'}
+          value={wellbeing}
+          tone="mood"
+        />
         <Meter
           label="Bond"
           hint={streak >= 2 ? `${streak}-day streak ☀️` : 'Play with me'}
@@ -1931,7 +1961,7 @@ function BadgesCard({ badges }: { badges: Badge[] }) {
           </li>
         ))}
       </ul>
-      <p className="source">Non-transferable tokens in your Sunny wallet · devnet</p>
+      <p className="source">Non-transferable tokens in your wallet · devnet</p>
     </section>
   )
 }
