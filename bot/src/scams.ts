@@ -66,6 +66,8 @@ const PLATFORMS: Record<string, string> = {
   'docs.google.com': 'Google Docs',
 }
 const SUPPORT_BAIT = /support|help|desk|admin|recover|airdrop|claim|verify|validat/i
+// Words scam domains glue onto a brand name: phantomwallet-login, solflare-support.
+const SCAM_WORDS = /wallet|support|help|official|login|connect|secure|verify|sync|restore|recover|airdrop|claim|bonus|reward/i
 const BAIT_WORDS = ['claim', 'airdrop', 'reward', 'bonus', 'free', 'giveaway', 'restore', 'validate', 'sync', 'rectify', 'unlock', 'eligib']
 const FREE_HOSTS = ['pages.dev', 'vercel.app', 'netlify.app', 'webflow.io', 'fleek.co', 'github.io', 'web.app', 'firebaseapp.com', 'glitch.me', 'replit.app', 'ipfs.io', 'gitbook.io']
 
@@ -133,7 +135,14 @@ export function checkLink(input: string): LinkCheck | { error: string } {
   const platform = parents.map((d) => PLATFORMS[d]).find(Boolean)
   if (platform) {
     // A page on Telegram, X or GitHub is only as trustworthy as whoever made it.
-    const path = decodeURIComponent(url.pathname).toLowerCase()
+    const path = (() => {
+      try {
+        return decodeURIComponent(url.pathname)
+      } catch {
+        // A broken %-escape: read the path as it is.
+        return url.pathname
+      }
+    })().toLowerCase()
     const brand = Object.keys(OFFICIAL).find((b) => b.length >= 4 && path.includes(b))
     if (brand && SUPPORT_BAIT.test(path)) {
       return {
@@ -167,12 +176,18 @@ export function checkLink(input: string): LinkCheck | { error: string } {
   for (const [brand, homes] of Object.entries(OFFICIAL)) {
     if (brand.length < 3) continue
     // "solana" shows up in plenty of honest names, so on its own it needs bait or free hosting.
-    const named = brand.length >= 4 && domain.includes(brand) && (brand !== 'solana' || bait.length > 0 || freeHost)
+    // A brand counts as a whole word of the address (phantom-wallet.com), or inside a longer word
+    // only with scam bait around it (phantomwallet-support.xyz); tenor.com isn't Tensor, and
+    // phantombuster.com isn't Phantom. "solana" is in plenty of honest names, so it always needs bait.
+    const labels = domain.split(/[.-]/)
+    const baity = bait.length > 0 || freeHost || SCAM_WORDS.test(domain)
+    const named = brand.length >= 4 && (brand === 'solana' ? domain.includes(brand) && baity : labels.includes(brand) || (domain.includes(brand) && baity))
     const lookalike = homes.some((h) => {
       const base = h.split('.')[0]
       const distance = editDistance(name, base)
-      // Long names: one letter off anywhere. Short ones (jup): only with the same ending (jupp.ag).
-      return (distance === 0 && domain !== h) || (distance === 1 && (base.length >= 5 || h.endsWith(`.${tld}`)))
+      // Same name once look-alike letters are undone (phantorn.app), or one letter off with the
+      // same ending (raydlum.io, jupp.ag) or with bait: meteor.com is just a different site.
+      return (distance === 0 && domain !== h) || (distance === 1 && (h.endsWith(`.${tld}`) || baity))
     })
     if (named || lookalike) {
       reasons.push(`Pretends to be ${brandName(brand)}, but the real site is ${homes[0]}`)
