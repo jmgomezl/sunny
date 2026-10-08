@@ -24,4 +24,13 @@ The signed APK is `app/build/outputs/apk/release/app-release.apk`. Bump `version
 
 In an Android 16 emulator with Solana Mobile's `fakewallet` (Mobile Wallet Adapter): connect,
 sign in, test USDC, open and fund the pocket and top it up (each signed by the wallet), then a $7
-draw refused on-chain by the pocket's per-payment limit.
+draw refused on-chain by the pocket's per-payment limit. Since 1.0.1: Back closes Sunny's sheets
+(the shell asks the page through `window.sunnyBack`), signing a minute after reading still works,
+leaving the wallet without answering recovers, declines read in plain words, no pull-to-refresh,
+Sunny's own offline screen, portrait only. Not yet tested on a real Seeker or with Seed Vault.
+
+## Changes to the generated template
+
+Kept on purpose if the project is regenerated: keyboard padding (`imePadding`, `adjustResize`),
+the Back bridge, pull-to-refresh off, error state cleared only when a new load starts, Sunny's
+colors instead of dynamic ones, `uiMode` in `configChanges`, and portrait orientation.

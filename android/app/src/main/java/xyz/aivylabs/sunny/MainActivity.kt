@@ -129,12 +129,22 @@ fun WebShellScreen() {
 
                 webViewClient =
                     object : WebShellViewClient(context, scopeHostProvider = { scopeHost }) {
+                        // A failed load stays failed until a new load starts: clearing it when the
+                        // error page "finishes" left people on Chrome's bare offline page.
+                        override fun onPageStarted(
+                            view: WebView,
+                            url: String?,
+                            favicon: android.graphics.Bitmap?,
+                        ) {
+                            super.onPageStarted(view, url, favicon)
+                            hasError = false
+                        }
+
                         override fun onPageFinished(
                             view: WebView,
                             url: String?,
                         ) {
                             super.onPageFinished(view, url)
-                            hasError = false
                             isRefreshing = false
                             probeViewportAndMaybePatch(view, BuildConfig.DEBUG)
                         }
@@ -185,8 +195,14 @@ fun WebShellScreen() {
         }
     }
 
-    BackHandler(enabled = webView.canGoBack()) {
-        webView.goBack()
+    // Back asks Sunny's page to close its top sheet first (window.sunnyBack), and only leaves the
+    // app from the home screen. canGoBack() isn't observable state, so it's checked on each press.
+    BackHandler(enabled = true) {
+        webView.evaluateJavascript("(window.sunnyBack && window.sunnyBack()) ? 'closed' : 'none'") { result ->
+            if (result?.contains("closed") != true) {
+                if (webView.canGoBack()) webView.goBack() else (context as? android.app.Activity)?.finish()
+            }
+        }
     }
 
     WebViewLayer(
@@ -234,7 +250,9 @@ private fun WebViewLayer(
                         ViewGroup.LayoutParams.MATCH_PARENT,
                         ViewGroup.LayoutParams.MATCH_PARENT,
                     )
-                view.isEnabled = !hasError
+                // No pull-to-refresh: it fired while scrolling inside Sunny's sheets and chat and
+                // reloaded everything. The page refreshes itself; the error screen has Retry.
+                view.isEnabled = false
                 view.isRefreshing = isRefreshing
             },
         )
@@ -259,12 +277,22 @@ private fun WebViewLayer(
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(
-                        text = "Unable to load page",
+                        text = "☀️",
+                        style = MaterialTheme.typography.displayMedium,
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        text = "Sunny can’t reach the sky",
                         style = MaterialTheme.typography.titleMedium,
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = "Check your connection, then try again.",
+                        style = MaterialTheme.typography.bodyMedium,
                     )
                     Spacer(modifier = Modifier.height(16.dp))
                     Button(onClick = onRetry) {
-                        Text("Retry")
+                        Text("Try again")
                     }
                 }
             }

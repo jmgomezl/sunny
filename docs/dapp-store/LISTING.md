@@ -10,7 +10,7 @@ Everything for the listing is in this folder. The app itself is `android/app/bui
 | Short description (30 max) | AI pet that guards your wallet |
 | Category | Security (or Finance) |
 | Package | `xyz.aivylabs.sunny` |
-| Version | 1.0.0 (versionCode 1) |
+| Version | 1.0.1 (versionCode 2) |
 | Website | https://sunny.aivylabs.xyz |
 | Privacy policy | https://sunny.aivylabs.xyz/privacy.html |
 | License / EULA | https://sunny.aivylabs.xyz/terms.html |
@@ -33,9 +33,9 @@ Scams start in chat, not in your wallet. Sunny is a little sun that catches them
 
 Your keys stay yours: Sunny never asks for your recovery phrase, and your Seeker's wallet signs everything. The pocket runs on Solana devnet with test USDC, so you can try it all for free. Also in Telegram as @SunnySolBot. Open source (MIT).
 
-### What's new (1.0.0)
+### What's new (1.0.1)
 
-First release: sign in with Seed Vault, wallet weather, Blink checks, and pocket money with on-chain guardrails (devnet).
+First release: sign in with the wallet on your phone, wallet weather, Blink checks, and pocket money with on-chain guardrails (devnet).
 
 ### Notes for the reviewer
 

@@ -12,15 +12,20 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.platform.LocalContext
 
 private val DarkColorScheme = darkColorScheme(
-    primary = Purple80,
+    primary = androidx.compose.ui.graphics.Color(0xFFFFC24D),
     secondary = PurpleGrey80,
-    tertiary = Pink80
+    tertiary = Pink80,
+    background = androidx.compose.ui.graphics.Color(0xFF141A33),
+    surface = androidx.compose.ui.graphics.Color(0xFF141A33),
 )
 
+// Sunny's sky behind the page while it loads, and Sunny's honey for the progress bar.
 private val LightColorScheme = lightColorScheme(
-    primary = Purple40,
+    primary = androidx.compose.ui.graphics.Color(0xFFF59A2C),
     secondary = PurpleGrey40,
-    tertiary = Pink40
+    tertiary = Pink40,
+    background = androidx.compose.ui.graphics.Color(0xFFBDE7FF),
+    surface = androidx.compose.ui.graphics.Color(0xFFFFFAF0),
 
     /* Other default colors to override
     background = Color(0xFFFFFBFE),
@@ -36,8 +41,8 @@ private val LightColorScheme = lightColorScheme(
 @Composable
 fun WebShellTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
-    // Dynamic color is available on Android 12+
-    dynamicColor: Boolean = true,
+    // Sunny's own colors, not the wallpaper's.
+    dynamicColor: Boolean = false,
     content: @Composable () -> Unit
 ) {
     val colorScheme = when {
