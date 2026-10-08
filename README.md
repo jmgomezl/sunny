@@ -4,7 +4,7 @@
 
 <h1 align="center">Sunny</h1>
 
-<p align="center"><b>An AI pet that guards your Solana wallet,<br/>and can only spend the pocket money a Solana program allows it.</b></p>
+<p align="center"><b>An AI pet that guards your Solana wallet,<br/>and spends only from a delegated allowance with on-chain guardrails.</b></p>
 
 <p align="center">
   <a href="https://t.me/SunnySolBot"><img alt="Live on Telegram" src="https://img.shields.io/badge/live-@SunnySolBot-29a9eb?logo=telegram&logoColor=white" /></a>
@@ -33,9 +33,13 @@ AI agents are getting wallets, and AI companions are getting cute (Meta's Muse, 
 
 | The problem | Sunny's answer | See it | Proof |
 |---|---|---|---|
-| An AI with a wallet can be tricked into emptying it. | **Pocket money held by a Solana program.** Sunny's key can only draw within your per-payment and daily limits, only into its own account, and nothing once you freeze it. The program is the judge, not the model. | [GIF](#solana-says-no) | [open + fund tx](https://solscan.io/tx/3dcahHAPBweY3LHP1rczy7G63UMQ5WTw1hxZ4i4jp1Bdrh51kVTfBzJkXkB3HyBSfZNZ1K91mw2SYGxhEBNMUAKS?cluster=devnet) · [$2 draw tx](https://solscan.io/tx/66o1vXgqhANnNPb5dkLAKNrjyxyQE4VjdB6Qbez1vfHR62SLijPYnrwJff34xguS1WAVtu1ZdCYEBB389vd5EYHA?cluster=devnet) |
+| An AI with a wallet can be tricked into emptying it. | **A delegated allowance with on-chain guardrails** (Sunny calls it its pocket money). You fund it; Sunny's key can spend it only within your per-payment and daily limits, only into its own account, and nothing once you freeze it. A Solana program checks every payment, not the model. | [GIF](#solana-says-no) | [open + fund tx](https://solscan.io/tx/3dcahHAPBweY3LHP1rczy7G63UMQ5WTw1hxZ4i4jp1Bdrh51kVTfBzJkXkB3HyBSfZNZ1K91mw2SYGxhEBNMUAKS?cluster=devnet) · [$2 draw tx](https://solscan.io/tx/66o1vXgqhANnNPb5dkLAKNrjyxyQE4VjdB6Qbez1vfHR62SLijPYnrwJff34xguS1WAVtu1ZdCYEBB389vd5EYHA?cluster=devnet) |
 | Drainers and phishing take real money every day. | **"Should I sign this?"** Paste a Blink: Sunny fetches the transaction it wants signed, reads every instruction and simulates it on mainnet against your real balances. Plus scam-link checks and a Telegram group guardian. | [GIF](#should-i-sign-this) | [demo drainer Blink](https://sunny.aivylabs.xyz/api/blinks/free-airdrop) |
 | Agents need to pay for tools without a card. | **x402 payments from the pocket.** A deep token scan costs $0.10, paid per request over x402 v2, so the program's limits apply to everything Sunny buys. | [GIF](#solana-says-no) | [x402 payment tx](https://solscan.io/tx/5Ge1mcrz7jhvfNW15ikR6hUkXMES7S7Ah5yA88bNq1B1j9Yq2hVFzjNKmLxaynMnkJnbkqcQwikvUgbhnt3J1Avw?cluster=devnet) · `curl` below |
+
+<p align="center">
+  <img src="docs/media/guardrails.svg" width="860" alt="Pocket money is a delegated allowance with on-chain guardrails: you fund it and set the rules, Sunny can spend within them, and a tricked AI asking for $500 is refused by the program" />
+</p>
 
 And it's a pet people want to open every day. Its energy *is* the pocket money you feed it, its sky is your wallet's weather, it sleeps with a lantern, and it wears sunglasses in dark mode.
 
@@ -116,17 +120,17 @@ Recorded from the real app, talking to real Solana devnet and mainnet. The full 
 <p align="center">
   <img src="docs/screenshots/feed-sign.jpg" width="190" alt="You're about to: open Sunny's pocket and put $5 into it" />
   <img src="docs/screenshots/pocket-opened.jpg" width="190" alt="Pocket opened, with a link to Solscan" />
-  <img src="docs/screenshots/solana-says-no.jpg" width="190" alt="Solana stopped a $7 draw: over the per-payment limit" />
-  <img src="docs/screenshots/approved.jpg" width="190" alt="Took $2 of pocket money, approved by your pocket rules" />
+  <img src="docs/screenshots/guardrails.jpg" width="190" alt="Sunny's guardrails: up to $5 a payment, up to $10 a day with what's left, only into Sunny's account, freeze anytime" />
+  <img src="docs/screenshots/guardrail-held.jpg" width="190" alt="Solana stopped a $7 draw: guardrail held, per-payment limit" />
 </p>
 <p align="center">
+  <img src="docs/screenshots/approved.jpg" width="190" alt="Took $2 of pocket money, approved by your pocket rules" />
   <img src="docs/screenshots/should-i-sign.jpg" width="190" alt="Should I sign this? Don't sign: you'd send 0.215 SOL" />
   <img src="docs/screenshots/wallet-report.jpg" width="190" alt="A watched wallet's report: high risk, 21 tokens, 3,000+ transactions" />
   <img src="docs/screenshots/storm.jpg" width="190" alt="Wallet weather: risk found, storm sky" />
-  <img src="docs/screenshots/scam-caught.jpg" width="190" alt="Known scam: raydlum.io" />
 </p>
 <p align="center">
-  <img src="docs/screenshots/golden-hour.jpg" width="190" alt="Golden hour: your wallet is up today" />
+  <img src="docs/screenshots/scam-caught.jpg" width="190" alt="Known scam: raydlum.io" />
   <img src="docs/screenshots/dark-mode.jpg" width="190" alt="Dark mode, Sunny in sunglasses" />
   <img src="docs/screenshots/bedtime.jpg" width="190" alt="Night: Sunny sleeps with a lantern" />
   <img src="docs/screenshots/morning.jpg" width="190" alt="While you slept: what Sunny watched overnight" />
@@ -193,7 +197,7 @@ curl -i "https://sunny.aivylabs.xyz/api/x402/deep-scan?mint=DezXAZ8z7PnrnRJjz3wX
 
 **Spends safely**
 - **Sunny wallet:** self-custodial, made inside Telegram and locked with your password.
-- **Pocket money:** the on-chain allowance; top up, change limits, freeze or take everything back at any time.
+- **Pocket money, a delegated allowance with on-chain guardrails:** up to $X a payment, up to $Y a day, only into Sunny's own account, nothing while frozen. Sunny's wallet sheet shows the guardrails live, and when Solana refuses a draw Sunny shows which guardrail held. Top up, change the limits, freeze or take everything back at any time.
 - **Watched wallets:** up to five of your other wallets, read-only.
 - **Pays for tools over x402**, from the pocket.
 
@@ -222,7 +226,7 @@ flowchart LR
 | [`deploy/`](deploy) | nginx site, deploy script and nightly backup (PM2 on a VPS) |
 | [`brand/`](brand) | Sunny's avatar and sticker art |
 
-### The pocket program
+### The pocket: a delegated allowance with on-chain guardrails
 
 Program `7RhPyrf1C4t3QDce8hW19i6FK5wevEEPgBMne8Pt4wvy` on devnet. Each owner has one pocket (PDA `["pocket", owner]`) and a token vault owned by it (`["vault", pocket]`).
 
@@ -325,6 +329,7 @@ The bot serves the Mini App's API on port 8820 and Vite proxies `/api` to it. Ou
 ## What's next
 
 - **More x402 tools** Sunny can buy from its pocket, and listing its deep scan in the x402 Bazaar for other agents.
+- **The same guardrails on the wallet you already have:** spending limits for Sunny on your Phantom or smart wallet (through Squads or Swig), on mainnet, instead of a separate Sunny wallet.
 - **One-tap revoke** for risky token approvals.
 - **Mainnet**, with an audited program and spending categories.
 
