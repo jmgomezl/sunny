@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { TokenAvatar } from './TokenAvatar'
+import { GuardrailHeld } from './Guardrails'
 import { SolanaMark, SunMark } from './Icons'
 import { canShareStory, sendToChat, shareStory, type ShareSpec } from '../lib/share'
 import type { AlertCard, DeepScan, LinkCheck, MyWallet, PocketEvent, TokenCard } from '../lib/chat'
@@ -517,6 +518,7 @@ export function PocketEventView({ event }: { event: PocketEvent }) {
             </>
           )}
         </small>
+        {!event.ok && <GuardrailHeld reason={event.message} />}
         {!event.ok && (
           <ShareRow
             spec={{

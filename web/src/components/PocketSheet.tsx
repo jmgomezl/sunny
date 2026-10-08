@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
-import { SnowIcon, SolanaMark, SunMark } from './Icons'
+import { SnowIcon, SunMark } from './Icons'
 import { inTelegram } from '../lib/api'
 import { BOT_LINK, type ShareSpec } from '../lib/share'
 import { ShareRow } from './Cards'
+import { Guardrails } from './Guardrails'
 import {
   createWallet,
   exportKey,
@@ -533,9 +534,20 @@ export function PocketSheet({ open, state, intent, feedAmount = 5, onClose, onCh
                     </div>
                   )}
 
-                  <a className="verify" href={PROGRAM_URL(s.cluster)} target="_blank" rel="noreferrer">
-                    <SolanaMark size={13} /> Rules enforced by program 7RhP…4wvy
-                  </a>
+                  {s.exists ? (
+                    <Guardrails
+                      perTx={s.perTxLimit}
+                      daily={s.dailyLimit}
+                      leftToday={s.leftToday}
+                      frozen={s.frozen}
+                      programUrl={PROGRAM_URL(s.cluster)}
+                    />
+                  ) : (
+                    !wantsFaucet &&
+                    !feedNeedsUsdc && (
+                      <Guardrails preview perTx={Number(perTx) || 0} daily={Number(daily) || 0} programUrl={PROGRAM_URL(s.cluster)} />
+                    )
+                  )}
                   <button
                     type="button"
                     className="ghost-btn pocket-backup"

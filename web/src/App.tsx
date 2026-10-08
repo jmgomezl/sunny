@@ -1450,7 +1450,7 @@ function CareCard({ wellbeing, bond, streak, pocket, onPocket, onRetry }: CarePr
       </div>
       {live && (
         <a className="verify care-verify" href={PROGRAM_URL(live.cluster)} target="_blank" rel="noreferrer">
-          <SolanaMark size={12} /> Limits enforced on Solana · {live.cluster}
+          <SolanaMark size={12} /> Guardrails enforced on Solana · {live.cluster}
           <ExternalIcon size={13} />
         </a>
       )}
