@@ -52,6 +52,7 @@ Everything runs on **devnet with test USDC**. It speaks English and Spanish.
 
 **Lives with you**
 - **Wallet weather:** Sunny's mood and sky come from real data. A clear sky means all is well, a golden hour means you're up today, and a storm warning means something risky turned up.
+- **Dark mode, through Sunny's sunglasses:** it follows Telegram's theme (or the toggle in the header). The sky dims like a tinted lens and Sunny wears big black shades, peeks over them now and then, and pushes them up onto its forehead when it giggles.
 - **Bedtime:** at night Sunny dozes under the stars holding a little lantern, still on watch. A warning wakes it with a yawn, then the alarm. The first visit of the morning opens with *While you slept*: how your wallets moved overnight, any security news, alerts that fired, and your streak.
 - **Care like a pet:** Energy (the pocket money left today), Mood (wallet health) and Bond (how much you play). It reacts to boops, pets, spins and too many taps.
 - **One conversation:** the Telegram chat and the Mini App chat share the same memory.

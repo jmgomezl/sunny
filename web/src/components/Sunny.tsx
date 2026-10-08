@@ -55,6 +55,8 @@ type SunnyProps = {
   wear?: Wear
   /** At night Sunny dozes holding a little lantern: still on watch. */
   lantern?: boolean
+  /** Dark mode: Sunny wears its sunglasses (and peeks over them now and then). */
+  cool?: boolean
   onGesture?: (gesture: Gesture) => void
 }
 
@@ -69,6 +71,7 @@ export function Sunny({
   wave = false,
   wear = {},
   lantern = false,
+  cool = false,
   onGesture,
 }: SunnyProps) {
   const uid = useId().replace(/[^a-zA-Z0-9]/g, '')
@@ -290,6 +293,7 @@ export function Sunny({
   else if (dozing) classes.push('sunny--dozing')
   if (frozen) classes.push('sunny--frozen')
   if (idleWave || wave) classes.push('sunny--wave')
+  if (cool) classes.push('sunny--cool')
 
   return (
     <motion.button
@@ -369,6 +373,16 @@ export function Sunny({
                       <stop offset="0" stopColor="#FFE07A" stopOpacity="0.95" />
                       <stop offset="1" stopColor="#FFB238" stopOpacity="0" />
                     </radialGradient>
+                    <linearGradient id={ref('lens')} x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0" stopColor="#3a2f55" />
+                      <stop offset="0.55" stopColor="#17111f" />
+                      <stop offset="1" stopColor="#0b0810" />
+                    </linearGradient>
+                    <linearGradient id={ref('lens-sky')} x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0" stopColor="#ff9fb8" stopOpacity="0" />
+                      <stop offset="0.6" stopColor="#ff9fb8" stopOpacity="0.32" />
+                      <stop offset="1" stopColor="#ffc46b" stopOpacity="0.5" />
+                    </linearGradient>
                     <linearGradient id={ref('drop')} x1="0" y1="0" x2="0" y2="1">
                       <stop offset="0" stopColor="#D8F1FF" />
                       <stop offset="1" stopColor="#7FC4F2" />
@@ -497,7 +511,7 @@ export function Sunny({
                       />
                     </g>
                   )}
-                  {wear.shades && (
+                  {wear.shades && !cool && (
                     <g className="sunny-wear sunny-wear--shades" transform="translate(0 -43) rotate(-6)">
                       <path
                         d="M -6 -1 Q 0 -4 6 -1"
@@ -550,6 +564,7 @@ export function Sunny({
                     >
                       {FACES[face](url)}
                     </motion.g>
+                    {cool && <Shades url={url} />}
                   </motion.g>
                 </svg>
               </div>
@@ -565,6 +580,27 @@ export function Sunny({
 }
 
 type LimbProps = { side: 'l' | 'r'; url: (name: string) => string }
+
+// One lens of Sunny's sunglasses, a soft rounded wayfarer shape over the left eye.
+const LENS = 'M -38 -15 Q -22 -18.5 -7 -15 Q -5.5 -4 -10 3.5 Q -15 8.5 -23 8.5 Q -32.5 8.5 -36 2 Q -39 -5 -38 -15 Z'
+
+/** Dark mode's big black sunglasses, with a sunset in the lenses and a glint. */
+function Shades({ url }: { url: (name: string) => string }) {
+  return (
+    <g className="sunny-cool">
+      <path d="M -38 -12 L -50 -17 M 38 -12 L 50 -17" stroke="#0e0a14" strokeWidth="2.6" strokeLinecap="round" />
+      {[1, -1].map((k) => (
+        <g key={k} transform={`scale(${k} 1)`}>
+          <path d={LENS} fill={url('lens')} stroke="#0e0a14" strokeWidth="2.4" strokeLinejoin="round" />
+          <path d={LENS} fill={url('lens-sky')} />
+          <path d="M -31 -11 L -24 -11 L -33 -1 L -36 -4 Z" fill="#fff" opacity="0.55" />
+          <path d="M -21 -11 L -18.5 -11 L -27 -1 L -29 -2 Z" fill="#fff" opacity="0.35" />
+        </g>
+      ))}
+      <path d="M -7.5 -12.5 Q 0 -16.5 7.5 -12.5" fill="none" stroke="#0e0a14" strokeWidth="3" strokeLinecap="round" />
+    </g>
+  )
+}
 
 /**
  * A little brass lantern hanging from the right mitten. The sleepy arm hangs at 18°, so the

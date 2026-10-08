@@ -25,6 +25,9 @@ type TelegramWebApp = {
   shareToStory?: (mediaUrl: string, params?: { text?: string }) => void
   openTelegramLink?: (url: string) => void
   isVersionAtLeast?: (version: string) => boolean
+  colorScheme?: 'light' | 'dark'
+  onEvent?: (event: 'themeChanged', handler: () => void) => void
+  offEvent?: (event: 'themeChanged', handler: () => void) => void
 }
 
 declare global {

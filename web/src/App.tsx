@@ -38,6 +38,7 @@ import {
   SolanaMark,
   SunMark,
   SwapIcon,
+  ShadesIcon,
 } from './components/Icons'
 import {
   ACTIVITY,
@@ -209,6 +210,29 @@ function greeting() {
 
 // The mood picker is a demo tool: shown with ?demo, and keys 1–5 switch moods for recordings.
 const DEMO = new URLSearchParams(window.location.search).has('demo')
+// Dark mode: the person's choice, else Telegram's (or the phone's) own setting.
+type Theme = 'light' | 'dark'
+const THEME_KEY = 'sunny.theme'
+const chosenTheme = (): Theme | null => {
+  try {
+    const v = localStorage.getItem(THEME_KEY)
+    return v === 'dark' || v === 'light' ? v : null
+  } catch {
+    return null
+  }
+}
+const deviceTheme = (): Theme =>
+  window.Telegram?.WebApp?.colorScheme === 'dark' || window.matchMedia?.('(prefers-color-scheme: dark)').matches
+    ? 'dark'
+    : 'light'
+
+/** A sky color as seen through sunglasses, for Telegram's header bar in dark mode. */
+const throughShades = (hex: string) => {
+  const n = parseInt(hex.slice(1), 16)
+  const c = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map((v) => Math.round(v * 0.6))
+  return `#${c.map((v) => v.toString(16).padStart(2, '0')).join('')}`
+}
+
 // ?morning shows the "While you slept" note right away, for recordings.
 const MORNING_DEMO = new URLSearchParams(window.location.search).has('morning')
 
@@ -267,6 +291,7 @@ export default function App() {
   // The last visit, read before this one overwrites it: the morning note compares against it.
   const [lastVisit] = useState<Visit | null>(readVisit)
   const [morning, setMorning] = useState(() => MORNING_DEMO || wantsMorning(lastVisit))
+  const [theme, setTheme] = useState<Theme>(() => chosenTheme() ?? deviceTheme())
   // A coin is being dragged over Sunny's mouth.
   const [nomming, setNomming] = useState(false)
   const [fedBefore, setFedBefore] = useState(() => {
@@ -394,14 +419,26 @@ export default function App() {
 
   useEffect(() => {
     document.documentElement.dataset.weather = weather
+    document.documentElement.dataset.theme = theme
     // Telegram's own header and page color follow the sky, so a storm or a night sky has no
     // bright blue band above it and no cream showing when you pull past the edge.
     const tg = window.Telegram?.WebApp
-    const page = weather === 'night' ? '#141a33' : '#fff8ec'
-    tg?.setHeaderColor?.(SKY_TOP[weather])
+    const dark = theme === 'dark' || weather === 'night'
+    const page = dark ? '#141a33' : '#fff8ec'
+    tg?.setHeaderColor?.(theme === 'dark' && weather !== 'night' ? throughShades(SKY_TOP[weather]) : SKY_TOP[weather])
     tg?.setBackgroundColor?.(page)
     if (tg?.isVersionAtLeast?.('7.10')) tg.setBottomBarColor?.(page)
-  }, [weather])
+  }, [weather, theme])
+
+  // Without a choice of their own, the theme follows Telegram's when it changes.
+  useEffect(() => {
+    const tg = window.Telegram?.WebApp
+    const follow = () => {
+      if (!chosenTheme()) setTheme(deviceTheme())
+    }
+    tg?.onEvent?.('themeChanged', follow)
+    return () => tg?.offEvent?.('themeChanged', follow)
+  }, [])
 
   useEffect(() => {
     if (!DEMO) return
@@ -464,6 +501,21 @@ export default function App() {
     if (mood !== 'sleepy' && !dozing) return alarm()
     play({ reaction: 'yawn', line: 'Mmh…? What’s that…', ms: 1000 })
     later(alarm, 1000)
+  }
+
+  const toggleTheme = () => {
+    const next: Theme = theme === 'dark' ? 'light' : 'dark'
+    setTheme(next)
+    try {
+      localStorage.setItem(THEME_KEY, next)
+    } catch {
+      // Private mode: the choice lasts until the app closes.
+    }
+    play(
+      next === 'dark'
+        ? { reaction: 'spin', line: pick(['Shades on 😎 Too bright out there anyway.', 'Deal with it 😎', 'Cool mode: on. Still watching, just stylishly.']), haptic: 'light', ms: 900 }
+        : { reaction: 'giggle', line: pick(['Shades off! Hello, sunshine ☀️', 'Ahh, I can see your face again ☀️']), haptic: 'light', ms: 900 },
+    )
   }
 
   const onGesture = (g: Gesture) => {
@@ -893,6 +945,16 @@ export default function App() {
             <SunMark />
             <span>Sunny</span>
           </div>
+          <div className="topbar-actions">
+          <button
+            type="button"
+            className="theme-toggle"
+            onClick={toggleTheme}
+            aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+            aria-pressed={theme === 'dark'}
+          >
+            {theme === 'dark' ? <SunMark size={20} /> : <ShadesIcon size={20} />}
+          </button>
           <button
             className="wallet-pill"
             type="button"
@@ -903,6 +965,7 @@ export default function App() {
             <SolanaMark size={15} />
             {pocket?.wallet ? short(pocket.wallet) : pocket && insideTelegram() ? 'Make wallet' : 'My wallet'}
           </button>
+          </div>
         </header>
 
         {DEMO && (
@@ -945,6 +1008,7 @@ export default function App() {
             frozen={frozen}
             dozing={dozing}
             lantern={(mood === 'sleepy' || dozing) && !frozen}
+            cool={theme === 'dark'}
             size={200}
             wear={{
               shades: earnedBadge('sunny-streak'),

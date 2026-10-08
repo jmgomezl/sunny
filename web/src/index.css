@@ -94,6 +94,19 @@
 }
 
 :root[data-weather='night'] {
+  --spark: #ffc670;
+  --cloud: rgba(150, 160, 220, 0.18);
+  --cloud-shine: rgba(255, 255, 255, 0.08);
+  --cloud-shade: rgba(0, 0, 0, 0.2);
+  --orbit: #ffd98a;
+  --orbit-a: #b98cff;
+  --orbit-b: #5cf2b5;
+}
+
+/* The dark theme: by night, or by choice in dark mode ("the world through Sunny's sunglasses").
+   It's the cards and the page; each mood keeps its own sky. */
+:root[data-weather='night'],
+:root[data-theme='dark'] {
   color-scheme: dark;
   --ink: #f7ead8;
   --ink-soft: #c6b6a6;
@@ -107,9 +120,6 @@
   --spark: #ffc670;
   --bubble: #232c55;
   --bubble-ink: #f7ead8;
-  --cloud: rgba(150, 160, 220, 0.18);
-  --cloud-shine: rgba(255, 255, 255, 0.08);
-  --cloud-shade: rgba(0, 0, 0, 0.2);
   --chip: rgba(255, 255, 255, 0.08);
   --chip-ink: #e6dccd;
   --chip-active: #2c3768;
@@ -118,11 +128,10 @@
   --espresso: #ffc24d;
   --espresso-2: #ffad33;
   --on-espresso: #2b1a10;
-  --orbit: #ffd98a;
-  --orbit-a: #b98cff;
-  --orbit-b: #5cf2b5;
   --ok: #7fd6a4;
   --ok-bg: rgba(127, 214, 164, 0.14);
+  --warn: #ff8f70;
+  --warn-bg: rgba(255, 122, 89, 0.18);
 }
 
 /* ───────────────────────── Base ───────────────────────── */
@@ -156,7 +165,8 @@ body::after {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.45 0 0 0 0 0.3 0 0 0 0 0.15 0 0 0 1 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
-:root[data-weather='night'] body::after {
+:root[data-weather='night'] body::after,
+:root[data-theme='dark'] body::after {
   mix-blend-mode: screen;
   opacity: 0.05;
 }
@@ -272,6 +282,15 @@ ul {
 :root[data-weather='night'] .sky-sunbeam,
 :root[data-weather='nap'] .sky-sunbeam {
   opacity: 0;
+}
+
+/* Dark mode by day: the sky as seen through Sunny's sunglasses, deeper and tinted. */
+.sky {
+  transition: filter 1.2s ease;
+}
+
+:root[data-theme='dark']:not([data-weather='night']) .sky {
+  filter: brightness(0.6) saturate(1.15) contrast(1.05) hue-rotate(-6deg);
 }
 
 /* At a daytime nap only a few early stars show, faintly. */
@@ -440,7 +459,8 @@ ul {
   transition: background-color 0.8s ease, color 0.8s ease;
 }
 
-:root[data-weather='night'] .wallet-pill {
+:root[data-weather='night'] .wallet-pill,
+:root[data-theme='dark'] .wallet-pill {
   border-color: rgba(255, 255, 255, 0.1);
 }
 
@@ -490,7 +510,8 @@ ul {
   box-shadow: 0 6px 16px -8px rgba(120, 70, 30, 0.45);
 }
 
-:root[data-weather='night'] .mood-chip {
+:root[data-weather='night'] .mood-chip,
+:root[data-theme='dark'] .mood-chip {
   border-color: rgba(255, 255, 255, 0.08);
 }
 
@@ -1873,6 +1894,61 @@ ul {
   transform: rotate(-38deg) translate(-3px, -5px);
 }
 
+/* Dark mode: Sunny's sunglasses. Now and then it lowers them to peek over the top, and it
+   pushes them up onto its forehead for the reactions that live in its eyes. */
+.sunny-cool {
+  transform-box: view-box;
+  transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+  animation: shades-peek 9s ease-in-out infinite 3s;
+}
+
+.sunny--r-love .sunny-cool,
+.sunny--r-giggle .sunny-cool,
+.sunny--r-dizzy .sunny-cool,
+.sunny--r-spin .sunny-cool,
+.sunny--r-boop .sunny-cool,
+.sunny--r-alarm .sunny-cool,
+.sunny--r-nom .sunny-cool {
+  animation: none;
+  transform: translateY(-27px) scale(0.9);
+}
+
+@keyframes shades-peek {
+  0%,
+  86%,
+  100% {
+    transform: translateY(0) rotate(0deg);
+  }
+  89%,
+  95% {
+    transform: translateY(9px) rotate(-4deg);
+  }
+}
+
+.theme-toggle {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  color: var(--chip-ink);
+  background: var(--chip);
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+:root[data-theme='dark'] .theme-toggle,
+:root[data-weather='night'] .theme-toggle {
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 /* Bedtime: the lantern sways from Sunny's hand and its light flickers softly. */
 .sunny-lantern {
   transform-box: fill-box;
@@ -2264,7 +2340,8 @@ ul {
   color: #d9466a;
 }
 
-:root[data-weather='night'] .bond-title {
+:root[data-weather='night'] .bond-title,
+:root[data-theme='dark'] .bond-title {
   color: #ff8fab;
 }
 
@@ -2463,7 +2540,8 @@ ul {
   box-shadow: 0 6px 14px -8px rgba(170, 96, 36, 0.55);
 }
 
-:root[data-weather='night'] .care-pocket-icon {
+:root[data-weather='night'] .care-pocket-icon,
+:root[data-theme='dark'] .care-pocket-icon {
   color: var(--honey);
 }
 

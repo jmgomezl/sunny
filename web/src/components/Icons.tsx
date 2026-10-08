@@ -135,3 +135,12 @@ export function SolanaMark({ size = 16 }: { size?: number }) {
     </svg>
   )
 }
+
+/** Sunglasses, for the dark-mode switch. */
+export const ShadesIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M2.5 9.5h19" />
+    <path d="M3.2 9.5c0 3.4 1.6 5.3 4.1 5.3 2.4 0 3.5-1.9 3.7-5.3M13 9.5c.2 3.4 1.3 5.3 3.7 5.3 2.5 0 4.1-1.9 4.1-5.3" fill="currentColor" />
+    <path d="M11 10.6c.6-.5 1.4-.5 2 0" />
+  </Icon>
+)

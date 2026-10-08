@@ -32,10 +32,10 @@ export const POSES: Record<string, Pose> = {
   gn: { mood: 'sleepy', dozing: true, lantern: true, caption: 'gn', emoji: '😴' },
 }
 
-type StageProps = { pose: string; caption?: string | null; wear?: string | null; bare?: boolean }
+type StageProps = { pose: string; caption?: string | null; wear?: string | null; bare?: boolean; cool?: boolean }
 
 /** `caption` overrides the pose's own words (badge art uses the badge's name). */
-export function StickerStage({ pose, caption, wear, bare }: StageProps) {
+export function StickerStage({ pose, caption, wear, bare, cool }: StageProps) {
   const p = POSES[pose] ?? POSES.gm
   const items = wear === 'all' ? ['shades', 'shield', 'key'] : (wear ?? '').split(',')
   return (
@@ -47,6 +47,7 @@ export function StickerStage({ pose, caption, wear, bare }: StageProps) {
         dozing={p.dozing}
         wave={p.wave}
         lantern={p.lantern}
+        cool={cool}
         wear={{ shades: items.includes('shades'), shield: items.includes('shield'), key: items.includes('key') }}
         size={bare ? 440 : 470}
       />
