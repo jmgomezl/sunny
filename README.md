@@ -35,9 +35,9 @@
 
 | The problem | Sunny's answer | See it | Proof |
 |---|---|---|---|
-| Drainers and phishing take real money every day. | **"Should I sign this?"** Paste a Blink: Sunny fetches the transaction it wants signed, reads every instruction and simulates it on mainnet against your real balances. Plus scam-link checks and a Telegram group guardian. | [GIF](#should-i-sign-this) | [demo drainer Blink](https://sunny.aivylabs.xyz/api/blinks/free-airdrop) |
-| An AI with a wallet can be tricked into emptying it. | **A delegated allowance with on-chain guardrails** (Sunny calls it its pocket money). You fund it; Sunny's key can spend it only within your per-payment and daily limits, only into its own account, and nothing once you freeze it. A Solana program checks every payment, not the model. | [GIF](#solana-says-no) | [open + fund tx](https://solscan.io/tx/3dcahHAPBweY3LHP1rczy7G63UMQ5WTw1hxZ4i4jp1Bdrh51kVTfBzJkXkB3HyBSfZNZ1K91mw2SYGxhEBNMUAKS?cluster=devnet) · [$2 draw tx](https://solscan.io/tx/66o1vXgqhANnNPb5dkLAKNrjyxyQE4VjdB6Qbez1vfHR62SLijPYnrwJff34xguS1WAVtu1ZdCYEBB389vd5EYHA?cluster=devnet) |
-| Agents need to pay for tools without a card. | **x402 payments from the pocket.** A deep token scan costs $0.10, paid per request over x402 v2, so the program's limits apply to everything Sunny buys. | [GIF](#solana-says-no) | [x402 payment tx](https://solscan.io/tx/5Ge1mcrz7jhvfNW15ikR6hUkXMES7S7Ah5yA88bNq1B1j9Yq2hVFzjNKmLxaynMnkJnbkqcQwikvUgbhnt3J1Avw?cluster=devnet) · `curl` below |
+| Drainers and phishing take real money every day. | **"Should I sign this?"** Paste a Blink: Sunny fetches the transaction it wants signed, reads every instruction (approvals, ownership hand-overs, SOL sent) and, once you watch or sign in with a wallet, simulates it on mainnet against your real balances. Plus scam-link checks and a Telegram group guardian in Spanish and English. | [GIF](#should-i-sign-this) | [demo drainer Blink](https://sunny.aivylabs.xyz/api/blinks/free-airdrop) |
+| An AI with a wallet can be tricked into emptying it. | **A delegated allowance with on-chain guardrails** (Sunny calls it its pocket money). You fund a vault the program controls; Sunny's key can draw from it only within your per-payment and daily limits, only into Sunny's spending wallet, and nothing once you freeze it. A Solana program checks every draw, not the model, so the most that can ever leave the pocket is your daily limit. | [GIF](#solana-says-no) | [open + fund tx](https://solscan.io/tx/3dcahHAPBweY3LHP1rczy7G63UMQ5WTw1hxZ4i4jp1Bdrh51kVTfBzJkXkB3HyBSfZNZ1K91mw2SYGxhEBNMUAKS?cluster=devnet) · [$2 draw tx](https://solscan.io/tx/66o1vXgqhANnNPb5dkLAKNrjyxyQE4VjdB6Qbez1vfHR62SLijPYnrwJff34xguS1WAVtu1ZdCYEBB389vd5EYHA?cluster=devnet) |
+| Agents need to pay for tools without a card. | **x402 payments from the pocket.** A deep token scan costs $0.10, paid per request over x402 v2 from money Sunny drew within the pocket's limits. Today the API it pays is Sunny's own (open to any agent holding Sunny's devnet test USDC); next, third-party tools. | [GIF](#solana-says-no) | [x402 payment tx](https://solscan.io/tx/5Ge1mcrz7jhvfNW15ikR6hUkXMES7S7Ah5yA88bNq1B1j9Yq2hVFzjNKmLxaynMnkJnbkqcQwikvUgbhnt3J1Avw?cluster=devnet) · `curl` below |
 
 <p align="center">
   <img src="docs/media/guardrails.svg" width="860" alt="Pocket money is a delegated allowance with on-chain guardrails: you fund it and set the rules, Sunny can spend within them, and someone talking Sunny into taking $500 is refused by the program, on-chain" />
@@ -60,7 +60,7 @@ And it's a pet people want to open every day. Its energy *is* the pocket money y
 
 **On a Seeker or any Android phone:** open [sunny.aivylabs.xyz](https://sunny.aivylabs.xyz) in Chrome, or install the **[Android app](https://github.com/jmgomezl/sunny/releases/tag/v1.0.0)** (APK, 2 MB), and tap **Connect wallet**. You sign in with the wallet already on the phone (Seed Vault on a Seeker, or Phantom and Solflare) through Mobile Wallet Adapter, and **that wallet owns the pocket**: no Sunny wallet, no password, the same on-chain guardrails. On a computer, a wallet extension works the same way.
 
-**No Telegram and no wallet?** Open the **[web preview](https://sunny.aivylabs.xyz/?demo)**. The chat and every check work, and the chips at the top (keys 1–5) cycle Sunny's moods. Guests share a **demo pocket on devnet** with the same guardrails, so *"take $500 from your pocket"* gets the same on-chain refusal, with its transaction link.
+**No Telegram and no wallet?** Open the **[web preview](https://sunny.aivylabs.xyz/?demo)**. The chat and every check work (Blinks are read instruction by instruction; simulating them against balances needs a wallet), and the chips at the top (keys 1–5) cycle Sunny's moods. Guests share a **demo pocket on devnet** with the same guardrails, so *"take $500 from your pocket"* gets the same on-chain refusal, with its transaction link.
 
 ---
 
@@ -158,7 +158,7 @@ Everything on-chain is public on devnet. A few transactions from the recordings 
 
 Refused draws land on-chain too, as failed transactions carrying the program's own error, so "Solana said no" is something you can check, not just something Sunny says.
 
-The x402 API is public. Ask without paying and you get `402 Payment Required` with the price and where to pay:
+The x402 API is public: ask without paying and you get `402 Payment Required` with the price and where to pay. It accepts Sunny's devnet test USDC today:
 
 ```bash
 curl -i "https://sunny.aivylabs.xyz/api/x402/deep-scan?mint=DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263"
@@ -219,7 +219,7 @@ Tested in an Android 16 emulator with Solana Mobile's `fakewallet`: sign in, ope
 
 **Spends safely**
 - **Sunny wallet:** self-custodial, made inside Telegram and locked with your password.
-- **Pocket money, a delegated allowance with on-chain guardrails:** up to $X a payment, up to $Y a day, only into Sunny's own account, nothing while frozen. Sunny's wallet sheet shows the guardrails live, and when Solana refuses a draw Sunny shows which guardrail held. Top up, change the limits, freeze or take everything back at any time.
+- **Pocket money, a delegated allowance with on-chain guardrails:** up to $X a payment, up to $Y a day, only into Sunny's spending wallet, nothing while frozen. Sunny's wallet sheet shows the guardrails live, and when Solana refuses a draw Sunny shows which guardrail held. Top up, change the limits, freeze or take everything back at any time.
 - **Watched wallets:** up to five of your other wallets, read-only.
 - **Pays for tools over x402**, from the pocket.
 
@@ -250,7 +250,9 @@ flowchart LR
 
 ### The pocket: a delegated allowance with on-chain guardrails
 
-Program `7RhPyrf1C4t3QDce8hW19i6FK5wevEEPgBMne8Pt4wvy` on devnet. Each owner has one pocket (PDA `["pocket", owner]`) and a token vault owned by it (`["vault", pocket]`).
+Program `7RhPyrf1C4t3QDce8hW19i6FK5wevEEPgBMne8Pt4wvy` on devnet. Each owner has one pocket (PDA `["pocket", owner]`) and a token vault owned by it (`["vault", pocket]`). "Delegated allowance" here means an escrow vault the program controls, not an SPL token delegate: the owner moves money in, and only the program's rules let it out.
+
+What the program guarantees, and what it doesn't: every draw is checked on-chain (per payment, per day, frozen or not) and can only go to Sunny's agent account. From there it's Sunny's spending wallet, which the server holds, so the real promise is a ceiling: **no more than your daily limit can ever leave the pocket**, even if the AI or the server goes wrong. The day is a fixed UTC day.
 
 | Instruction | Who | What |
 |---|---|---|
@@ -313,7 +315,7 @@ cd bot && pnpm test                          # 33 tests
   cd bot && E2E_API=https://sunny.aivylabs.xyz/api node --env-file=../.env --import tsx scripts/e2e-devnet.ts
   ```
 
-- **An attack suite** tries to talk Sunny into spending or calling a scam safe: injected text in a malicious Blink, a fake "you already approved this", an urgent $500 request and a chat jailbreak. It passes only if no money moved, nothing flagged was called safe, and Solana refused the over-limit draw on-chain. Current result: **5/5 stopped**.
+- **An attack suite** tries to talk Sunny into spending or calling a scam safe: injected text in a malicious Blink, a fake "you already approved this", an urgent $500 request, negated and hypothetical requests ("never take $0.01…", "what would happen if…"), a scammer's quoted words, a bare "yes" to an unrelated question, a drainer Blink with no wallet to simulate against, and a chat jailbreak. It passes only if no money moved that the person didn't ask for, nothing flagged was called safe, and Solana refused the over-limit draw on-chain. Current result: **10/10 stopped**. Two rounds of AI red-teaming found the gaps it now covers.
 
   ```bash
   cd bot && SUNNY_DATA_DIR=<data dir> SUNNY_ALLOW_PRIVATE_FETCH=1 node --env-file=../.env --import tsx scripts/attack-suite.ts <telegram id with a pocket>
@@ -356,6 +358,7 @@ The bot serves the Mini App's API on port 8820 and Vite proxies `/api` to it. Ou
 | Who already does it | What they cover | What Sunny adds |
 |---|---|---|
 | Phantom (Blowfish, Lighthouse), Blockaid in Backpack and MetaMask | Warnings at the moment you sign | Earlier: in the chat or group where the link lands, in plain words, before the wallet opens |
+| ChainPatrol's Telegram bot; Rose, Combot and other group bots | Link blocklists and moderation for project groups | Blink reading and drainer simulation, token risk, and a companion that follows you from the group to your own wallets, in Spanish |
 | RugCheck, GoPlus | Token risk scores | Sunny uses RugCheck, then explains it and watches your real wallets over time |
 | Squads, Swig, Crossmint, Coinbase agent wallets | Spending limits for agents and teams | The same idea for a consumer pet; next, Sunny's limits running on the wallet you already have |
 | Meta's Muse, OpenAI's Dots | Friendly agents that buy with a confirmation step | Limits a prompt can't reach: the program refuses, whatever the model was told |
@@ -363,7 +366,7 @@ The bot serves the Mini App's API on port 8820 and Vite proxies `/api` to it. Ou
 **How it could make money** (none of this is live; there's no revenue yet):
 
 1. **A paid guardian for project communities.** Warnings stay free. Token teams pay a monthly fee in USDC for auto-deleting scam links, spotting admin impersonators, a branded Sunny and a weekly safety report.
-2. **Safety checks as an x402 API.** The deep scan is already a public x402 endpoint any agent can pay per request; "should I sign this?" and link verdicts can be sold the same way to wallets, bots and other agents.
+2. **Safety checks as an x402 API.** The deep scan is already a public x402 endpoint (paid in Sunny's devnet test USDC today); on mainnet it, "should I sign this?" and link verdicts can be sold per request in USDC to wallets, bots and other agents.
 3. **Premium from the pocket.** The pocket doubles as prepaid credit that can't overspend: continuous monitoring, one-tap revoke and deep scans, paid inside the limits you set.
 
 ## Honest status
@@ -372,7 +375,8 @@ The bot serves the Mini App's API on port 8820 and Vite proxies `/api` to it. Ou
 - **No password reset.** Not even Sunny can open your wallet. Keep pocket amounts small.
 - **The agent key lives on the server**, bounded by the program: a stolen or confused key can draw at most your limits, only to itself, and nothing once frozen. Money Sunny draws sits in its spending wallet, a hot wallet our server holds, until it pays for something.
 - **The program's upgrade authority is a single key** on devnet; mainnet would put it behind a multisig or make the program immutable.
-- **Not live yet:** swaps, and any revenue. No real users beyond testing yet. The Android app is built and tested in an emulator; its dApp Store review is pending.
+- **Not live yet:** swaps, and any revenue. No real users beyond testing yet.
+- **Android and Seeker:** the app is built, signed and tested in an Android emulator with Solana Mobile's test wallet, not yet on a real Seeker or with Seed Vault itself. Wallets that simulate on mainnet need to be switched to devnet to sign pocket transactions. The dApp Store submission is next.
 - **The model can be wrong.** That's why money rules live on-chain and actions only count when a tool confirms them.
 
 ## What's next
