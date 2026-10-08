@@ -4310,3 +4310,8 @@ textarea:focus-visible {
   white-space: normal;
   text-align: left;
 }
+
+/* A sheet focused as a whole (so Tab starts inside it) shows no ring of its own. */
+[role='dialog']:focus {
+  outline: none;
+}

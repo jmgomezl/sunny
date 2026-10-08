@@ -428,9 +428,12 @@ export default function App() {
     if (sheetOpen) {
       opener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
       const t = window.setTimeout(() => {
+        // The sheet itself takes focus: screen readers announce it and Tab continues inside,
+        // without popping up a phone keyboard or ringing a button nobody pressed.
         const dialog = document.querySelector<HTMLElement>('[role="dialog"]')
         if (dialog && !dialog.contains(document.activeElement)) {
-          dialog.querySelector<HTMLElement>('input, textarea, .chat-close, button')?.focus({ preventScroll: true })
+          dialog.tabIndex = -1
+          dialog.focus({ preventScroll: true })
         }
       }, 380)
       return () => clearTimeout(t)
