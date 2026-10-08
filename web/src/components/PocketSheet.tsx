@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
 import { CoinIcon, EyeIcon, ShieldIcon, SnowIcon, SunMark } from './Icons'
-import { inTelegram } from '../lib/api'
-import { BOT_LINK, type ShareSpec } from '../lib/share'
+import { inTelegram, walletSession, type WalletSession } from '../lib/api'
+import { ConnectWallet } from './ConnectWallet'
+import { type ShareSpec } from '../lib/share'
 import { ShareRow } from './Cards'
 import { Guardrails } from './Guardrails'
 import {
@@ -38,6 +39,8 @@ type PocketSheetProps = {
   feedAmount?: number
   onClose: () => void
   onChanged: (state: PocketState | null, event: PocketEventKind, sent?: Sent) => void
+  /** Signed in (or out) with their own wallet, outside Telegram: everything reloads for them. */
+  onSignedIn?: () => void
   onBusy: (busy: boolean) => void
   /** Called when the key backup is shown, which earns the Key Keeper badge. */
   onBackup?: () => void
@@ -108,8 +111,20 @@ const UNLOCK_FOR: Record<string, string> = {
   feed: 'Tell me your password and that coin is mine! 🪙',
 }
 
-export function PocketSheet({ open, state, intent, feedAmount = 5, onClose, onChanged, onBusy, onBackup }: PocketSheetProps) {
+export function PocketSheet({
+  open,
+  state,
+  intent,
+  feedAmount = 5,
+  onClose,
+  onChanged,
+  onBusy,
+  onBackup,
+  onSignedIn,
+}: PocketSheetProps) {
   const [record, setRecord] = useState<VaultRecord | null | undefined>(undefined)
+  // Outside Telegram: the wallet you signed in with owns the pocket and signs for it.
+  const [external, setExternal] = useState<WalletSession | null>(walletSession())
   const [loadError, setLoadError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
   const [unlocked, setUnlocked] = useState(isUnlocked())
@@ -136,6 +151,7 @@ export function PocketSheet({ open, state, intent, feedAmount = 5, onClose, onCh
     setConfirm('')
     setShowPassword(false)
     setUnlocked(isUnlocked())
+    setExternal(walletSession())
     // The wallet already known (same person) stays on screen while it's checked again.
     if (inTelegram()) reload()
     else setRecord(null)
@@ -179,6 +195,25 @@ export function PocketSheet({ open, state, intent, feedAmount = 5, onClose, onCh
     }
   }
 
+  // Ready to act on the pocket: an unlocked Sunny wallet, or your own wallet signed in.
+  const owner = record?.address ?? external?.address ?? null
+  const ready = Boolean((record && unlocked) || external)
+
+  const signedIn = (address: string) => {
+    setExternal(walletSession())
+    setError(null)
+    setDone({ text: `Signed in with ${address.slice(0, 4)}…${address.slice(-4)}` })
+    onSignedIn?.()
+  }
+
+  const signOut = () =>
+    void import('../lib/wallets').then(async ({ signOut: out }) => {
+      await out()
+      setExternal(null)
+      setDone(null)
+      onSignedIn?.()
+    })
+
   const create = (e: FormEvent) => {
     e.preventDefault()
     if (password !== confirm) return setError('The passwords don’t match.')
@@ -207,10 +242,10 @@ export function PocketSheet({ open, state, intent, feedAmount = 5, onClose, onCh
   }
 
   const prepare = (a: PocketAction, event: PocketEventKind) => {
-    if (!record) return
+    if (!owner) return
     void run('Preparing…', async () => {
       setDone(null)
-      const p = await preparePocket(a, record.address)
+      const p = await preparePocket(a, owner)
       setPrepared({ ...p, event })
     })
   }
@@ -222,26 +257,27 @@ export function PocketSheet({ open, state, intent, feedAmount = 5, onClose, onCh
     if (open) fed.current = false
   }, [open])
   useEffect(() => {
-    if (!open || intent !== 'feed' || fed.current || !unlocked || !record || !state || prepared || busy) return
+    if (!open || intent !== 'feed' || fed.current || !ready || !state || prepared || busy) return
     if (state.frozen || state.ownerUsdc < feedAmount) return
     fed.current = true
     if (state.exists) prepare({ action: 'topup', amount: feedAmount }, 'topup')
-    else prepare({ action: 'open', daily: Number(daily) || 10, perTx: Number(perTx) || 5, amount: feedAmount }, 'opened')
+    else
+      prepare({ action: 'open', daily: Number(daily) || 10, perTx: Number(perTx) || 5, amount: feedAmount }, 'opened')
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, intent, unlocked, record, state?.exists, state?.ownerUsdc, state?.frozen, prepared, busy])
+  }, [open, intent, ready, state?.exists, state?.ownerUsdc, state?.frozen, prepared, busy])
 
   // Jump straight to what the home card asked for.
   useEffect(() => {
-    if (!open || !unlocked || !record || !state?.exists || !intent || prepared) return
+    if (!open || !ready || !state?.exists || !intent || prepared) return
     if (intent === 'freeze' && !state.frozen) prepare({ action: 'freeze' }, 'freeze')
     if (intent === 'unfreeze' && state.frozen) prepare({ action: 'unfreeze' }, 'unfreeze')
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, unlocked, record, state?.exists, intent])
+  }, [open, ready, state?.exists, intent])
 
   const approve = () => {
     if (!prepared) return
-    void run('Signing on this phone…', async () => {
-      const sent = await submitPocket(prepared)
+    void run(external ? 'Check your wallet…' : 'Signing on this phone…', async () => {
+      const sent = await submitPocket(prepared, Boolean(external))
       setDone({ text: prepared.summary.map(pastTense).join(' · '), explorer: sent.explorer, event: prepared.event })
       setPrepared(null)
       onChanged(sent.state, prepared.event, sent)
@@ -264,39 +300,49 @@ export function PocketSheet({ open, state, intent, feedAmount = 5, onClose, onCh
   // While a password form is showing, its errors and progress appear inside it, by the fields.
   const passwordForm = inTelegram() && (record === null || Boolean(record && !unlocked))
   const name = firstName()
+  // Once there's a wallet (a Sunny wallet or your own), the same next steps.
+  function walletLine(st: PocketState) {
+    return intent === 'feed' && st.frozen
+      ? 'I’m frozen, so I can’t eat right now ❄ Warm me up first, then feed me.'
+      : intent === 'feed' && st.ownerUsdc < feedAmount
+        ? 'Your wallet needs test USDC before you can feed me. Get some below, and that coin is mine ☀️'
+        : wantsFaucet
+          ? 'Your wallet is ready! We’re on devnet, so money here is just for practice. Want 20 test USDC to play with?'
+          : !st.exists
+            ? 'If you like, give me a small daily allowance. I can only spend inside these limits, and Solana checks every payment, not me.'
+            : st.frozen
+              ? 'Brrr, I’m frozen ❄ I can’t spend a cent until you warm me up.'
+              : st.vault <= 0
+                ? 'My pocket is empty. Top me up whenever you like; I can only ever spend inside the guardrails below.'
+                : `${usd(st.vault)} in my pocket, and I can spend up to ${usd(st.leftToday)} of it today. Top me up, freeze me, or take it all back whenever you like.`
+  }
+
   // Sunny walks you through every step in its own words.
-  const line = !inTelegram()
-    ? 'My wallet lives inside Telegram, where you’re verified. Open me from @SunnySolBot to make yours.'
-    : // Something to sign always leads, whatever else is still loading.
-      prepared
-      ? intent === 'feed'
-        ? 'Nom! Sign it and the coin is really mine. I read this on your phone, not on my server.'
-        : 'Have a look before you sign. I read this on your phone, not on my server.'
-      : loadError
-      ? loadError
-      : done?.event && DONE_LINE[done.event]
-      ? DONE_LINE[done.event]!
-      : record === undefined
-      ? 'Looking for your wallet…'
-      : record === null
-        ? `${intent === 'hello' ? `Hi${name ? ` ${name}` : ''}! I’m Sunny ☀️ ` : ''}Let’s make your Sunny wallet: born on your phone, locked with a password only you know.`
-        : !unlocked
-          ? `${name ? `Hi ${name}! ` : ''}${UNLOCK_FOR[intent ?? ''] ?? 'Welcome back! Tell me your password so I know it’s you.'}`
-          : intent === 'feed' && s?.frozen
-              ? 'I’m frozen, so I can’t eat right now ❄ Warm me up first, then feed me.'
-              : intent === 'feed' && s && s.ownerUsdc < feedAmount
-                ? 'Your wallet needs test USDC before you can feed me. Get some below, and that coin is mine 🪙'
-            : !s
-              ? 'Your wallet is ready! Let me check it on Solana…'
-              : wantsFaucet
-                ? 'Your wallet is ready! We’re on devnet, so money here is just for practice. Want 20 test USDC to play with?'
-                : !s.exists
-                  ? 'If you like, give me a small daily allowance. I can only spend inside these limits, and Solana checks every payment, not me.'
-                  : s.frozen
-                    ? 'Brrr, I’m frozen ❄ I can’t spend a cent until you warm me up.'
-                    : s.vault <= 0
-                      ? 'My pocket is empty. Top me up whenever you like; I can only ever spend inside the guardrails below.'
-                      : `${usd(s.vault)} in my pocket, and I can spend up to ${usd(s.leftToday)} of it today. Top me up, freeze me, or take it all back whenever you like.`
+  const line =
+    !inTelegram() && !external
+      ? `${intent === 'hello' ? 'Hi! I’m Sunny ☀️ ' : ''}Connect the wallet you already have (Seed Vault on a Seeker, Phantom, Solflare) and it can own my pocket. Solana keeps me inside its limits.`
+      : // Something to sign always leads, whatever else is still loading.
+        prepared
+        ? intent === 'feed'
+          ? `Nom! Sign it and the coin is really mine. I read this on your phone, not on my server.`
+          : 'Have a look before you sign. I read this on your phone, not on my server.'
+        : loadError
+          ? loadError
+          : done?.event && DONE_LINE[done.event]
+            ? DONE_LINE[done.event]!
+            : external
+              ? !s
+                ? 'You’re in! Let me check your wallet on Solana…'
+                : walletLine(s)
+              : record === undefined
+                ? 'Looking for your wallet…'
+                : record === null
+                  ? `${intent === 'hello' ? `Hi${name ? ` ${name}` : ''}! I’m Sunny ☀️ ` : ''}Let’s make your Sunny wallet: born on your phone, locked with a password only you know.`
+                  : !unlocked
+                    ? `${name ? `Hi ${name}! ` : ''}${UNLOCK_FOR[intent ?? ''] ?? 'Welcome back! Tell me your password so I know it’s you.'}`
+                    : !s
+                      ? 'Your wallet is ready! Let me check it on Solana…'
+                      : walletLine(s)
 
   return (
     <AnimatePresence>
@@ -324,9 +370,11 @@ export function PocketSheet({ open, state, intent, feedAmount = 5, onClose, onCh
               <div className="chat-title">
                 <SunMark size={22} />
                 <div>
-                  <strong>Sunny wallet</strong>
+                  <strong>{external || (!inTelegram() && !record) ? 'Your wallet' : 'Sunny wallet'}</strong>
                   <small>
-                    {record ? `Your wallet ${record.address.slice(0, 4)}…${record.address.slice(-4)} · ` : ''}
+                    {owner
+                      ? `${external ? 'Signed in with' : 'Your wallet'} ${owner.slice(0, 4)}…${owner.slice(-4)} · `
+                      : ''}
                     Solana {s?.cluster ?? 'devnet'}
                   </small>
                 </div>
@@ -374,11 +422,29 @@ export function PocketSheet({ open, state, intent, feedAmount = 5, onClose, onCh
                 </button>
               )}
 
-              {/* Outside Telegram (the web preview), the way in is one tap away. */}
-              {!inTelegram() && (
-                <a className="btn btn--primary pocket-open-tg" href={BOT_LINK} target="_blank" rel="noreferrer">
-                  Open Sunny in Telegram
-                </a>
+              {/* Outside Telegram (a Seeker, Android, a computer): sign in with the wallet you have. */}
+              {!inTelegram() && !external && (
+                <>
+                  {intent === 'hello' && (
+                    <ul className="hello-rows">
+                      <li>
+                        <ShieldIcon size={16} /> I check tokens, links and Blinks before you sign
+                      </li>
+                      <li>
+                        <EyeIcon size={16} /> I watch any wallet you give me, read-only
+                      </li>
+                      <li>
+                        <CoinIcon size={16} /> I can spend a little pocket money, only inside limits Solana enforces
+                      </li>
+                    </ul>
+                  )}
+                  <ConnectWallet onSignedIn={signedIn} onError={setError} />
+                  {intent === 'hello' && (
+                    <button type="button" className="ghost-btn pocket-later" onClick={onClose}>
+                      Maybe later
+                    </button>
+                  )}
+                </>
               )}
 
               {/* First hello: what Sunny does, before it asks for anything. */}
@@ -494,7 +560,7 @@ export function PocketSheet({ open, state, intent, feedAmount = 5, onClose, onCh
               )}
 
               {/* 4. Pocket controls. */}
-              {record && unlocked && !prepared && s && (
+              {ready && !prepared && s && (
                 <>
                   <div className="pocket-balances">
                     <div>
@@ -593,23 +659,35 @@ export function PocketSheet({ open, state, intent, feedAmount = 5, onClose, onCh
                   ) : (
                     !wantsFaucet &&
                     !feedNeedsUsdc && (
-                      <Guardrails preview perTx={Number(perTx) || 0} daily={Number(daily) || 0} programUrl={PROGRAM_URL(s.cluster)} />
+                      <Guardrails
+                        preview
+                        perTx={Number(perTx) || 0}
+                        daily={Number(daily) || 0}
+                        programUrl={PROGRAM_URL(s.cluster)}
+                      />
                     )
                   )}
-                  <button
-                    type="button"
-                    className="ghost-btn pocket-backup"
-                    onClick={() => {
-                      if (!backup) onBackup?.()
-                      setBackup((b) => (b ? null : exportKey()))
-                    }}
-                  >
-                    {backup ? 'Hide backup key' : 'Back up my key'}
-                  </button>
+                  {external && (
+                    <button type="button" className="ghost-btn pocket-backup" onClick={signOut}>
+                      Sign out of {external.wallet.replace(/^Mobile Wallet Adapter$/, 'this wallet')}
+                    </button>
+                  )}
+                  {record && (
+                    <button
+                      type="button"
+                      className="ghost-btn pocket-backup"
+                      onClick={() => {
+                        if (!backup) onBackup?.()
+                        setBackup((b) => (b ? null : exportKey()))
+                      }}
+                    >
+                      {backup ? 'Hide backup key' : 'Back up my key'}
+                    </button>
+                  )}
                   {backup && (
                     <p className="pocket-secret">
-                      <b>Never share this, and check nobody can see your screen.</b> Anyone with it controls your
-                      Sunny wallet. You can import it into Phantom.
+                      <b>Never share this, and check nobody can see your screen.</b> Anyone with it controls your Sunny
+                      wallet. You can import it into Phantom.
                       <code>{backup}</code>
                       <button
                         type="button"

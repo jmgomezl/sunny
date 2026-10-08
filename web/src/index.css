@@ -4597,3 +4597,24 @@ textarea:focus-visible {
   font-weight: 600;
   color: var(--ink-soft);
 }
+
+/* Outside Telegram: sign in with the wallet you already have (Seed Vault on a Seeker). */
+.connect-wallet {
+  display: grid;
+  gap: 10px;
+}
+
+.connect-option {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.connect-option img {
+  border-radius: 6px;
+}
+
+.connect-note {
+  margin: 0;
+}

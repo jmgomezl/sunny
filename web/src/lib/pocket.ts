@@ -30,7 +30,8 @@ export type PocketAction =
 
 export type Sent = { signature: string; explorer: string; state: PocketState }
 
-export const fetchPocket = () => post<{ wallet: string | null; state: PocketState | null }>('/api/pocket', { op: 'state' })
+export const fetchPocket = () =>
+  post<{ wallet: string | null; own?: boolean; state: PocketState | null }>('/api/pocket', { op: 'state' })
 
 /** Step 1: the server prepares the transaction; this device decodes it into plain words. */
 export async function preparePocket(a: PocketAction, owner: string) {
@@ -41,10 +42,15 @@ export async function preparePocket(a: PocketAction, owner: string) {
   return { ...prepared, summary: describeTransaction(prepared.message, owner) }
 }
 
-/** Step 2: sign on this device (never on the server) and send it. */
-export async function submitPocket(prepared: { id: string; message: string }) {
-  const { signMessage } = await vault()
-  return post<Sent>('/api/pocket', { op: 'submit', id: prepared.id, signature: signMessage(prepared.message) })
+/**
+ * Step 2: sign on this device (never on the server) and send it. With a Sunny wallet the key
+ * signs here; signed in with your own wallet, that wallet app signs (Seed Vault on a Seeker).
+ */
+export async function submitPocket(prepared: { id: string; message: string }, external = false) {
+  const signature = external
+    ? await (await import('./wallets')).signPocketTransaction(prepared.message)
+    : (await vault()).signMessage(prepared.message)
+  return post<Sent>('/api/pocket', { op: 'submit', id: prepared.id, signature })
 }
 
 export const pocketFaucet = () => post<Sent & { amount: number }>('/api/pocket', { op: 'faucet' })

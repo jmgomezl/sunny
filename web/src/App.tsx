@@ -11,7 +11,7 @@ import { TokenAvatar } from './components/TokenAvatar'
 import { MorningCard, markMorningSeen, readVisit, saveVisit, wantsMorning, type Visit } from './components/MorningCard'
 import { fetchPocket, PROGRAM_URL, type PocketState } from './lib/pocket'
 import { syncBadges, type Badge } from './lib/badges'
-import { inTelegram as insideTelegram } from './lib/api'
+import { inTelegram as insideTelegram, signedIn } from './lib/api'
 import { askSunny, inTelegram } from './lib/chat'
 import {
   fetchHome,
@@ -384,10 +384,12 @@ export default function App() {
   }, [])
 
   const loadPocket = useCallback(async () => {
-    const p = insideTelegram() ? await fetchPocket().catch((err) => console.warn('[sunny] pocket failed', err)) : null
+    // Telegram users and wallets that signed in have a pocket; guests don't.
+    const known = signedIn()
+    const p = known ? await fetchPocket().catch((err) => console.warn('[sunny] pocket failed', err)) : null
     const next = p ?? { wallet: null, state: null }
-    if (p || !insideTelegram()) setPocket(next)
-    setPocketFailed(insideTelegram() && !p)
+    if (p || !known) setPocket(next)
+    setPocketFailed(known && !p)
     return p ?? null
   }, [])
 
@@ -399,8 +401,9 @@ export default function App() {
   useEffect(() => {
     let t = 0
     void loadPocket().then((p) => {
-      // First visit: once Sunny has said hi, it offers to make your wallet together.
-      if (p && !p.wallet && !DEMO && !helloSnoozed()) {
+      // First visit: once Sunny has said hi, it offers to make your wallet together (or, outside
+      // Telegram, to connect the one you have).
+      if (((p && !p.wallet) || !signedIn()) && !DEMO && !helloSnoozed()) {
         t = window.setTimeout(() => setPocketSheet((s) => (s.open ? s : { open: true, intent: 'hello' })), 3500)
       }
     })
@@ -742,7 +745,7 @@ export default function App() {
 
   /** Checks for newly earned badges; a new one gets a little celebration. */
   const refreshBadges = async (op: 'sync' | 'backup' = 'sync') => {
-    if (!insideTelegram() || DEMO) return
+    if (!signedIn() || DEMO) return
     try {
       const r = await syncBadges(op)
       setBadges(r.badges)
@@ -752,7 +755,7 @@ export default function App() {
           () =>
             play({
               reaction: 'love',
-              line: `New badge: ${fresh.map((b) => `${b.emoji} ${b.name}`).join(', ')}! It’s in your Sunny wallet, on Solana.`,
+              line: `New badge: ${fresh.map((b) => `${b.emoji} ${b.name}`).join(', ')}! It’s in your wallet, on Solana.`,
               particles: ['sparkle', 8],
               haptic: 'success',
               ms: 2000,
@@ -941,7 +944,7 @@ export default function App() {
   const canFeed = demo
     ? !frozen
     : Boolean(
-        insideTelegram() && pocket?.wallet && ps && !ps.frozen && (!ps.exists || ps.vault + COIN_USD <= ps.dailyLimit * 3),
+        signedIn() && pocket?.wallet && ps && !ps.frozen && (!ps.exists || ps.vault + COIN_USD <= ps.dailyLimit * 3),
       )
 
   const skyDown = !demo && !home && homeFailed
@@ -1082,10 +1085,16 @@ export default function App() {
             type="button"
             data-linked={pocket?.wallet ? 'true' : undefined}
             onClick={openWallet}
-            aria-label={pocket?.wallet ? `Your Sunny wallet ${pocket.wallet}` : 'Make your Sunny wallet'}
+            aria-label={
+              pocket?.wallet
+                ? `Your wallet ${pocket.wallet}`
+                : insideTelegram()
+                  ? 'Make your Sunny wallet'
+                  : 'Connect your wallet'
+            }
           >
             <SolanaMark size={15} />
-            {pocket?.wallet ? short(pocket.wallet) : 'Sunny wallet'}
+            {pocket?.wallet ? short(pocket.wallet) : insideTelegram() ? 'Sunny wallet' : 'Connect wallet'}
           </button>
           </div>
         </header>
@@ -1246,6 +1255,13 @@ export default function App() {
         onChanged={onPocketChanged}
         onBusy={(busy) => (busy ? play({ reaction: 'scan', ms: 20_000 }) : setReaction((r) => (r === 'scan' ? null : r)))}
         onBackup={() => void refreshBadges('backup')}
+        onSignedIn={() => {
+          // A different person now: their pocket, sky, badges and a fresh chat.
+          setChat([])
+          void loadPocket()
+          void refreshHome()
+          void refreshBadges()
+        }}
       />
         </Suspense>
       )}
@@ -1263,7 +1279,7 @@ export default function App() {
         onAsk={askFromScan}
         onWatch={(symbol) => openChat('watch', symbol)}
         deepScan={
-          !insideTelegram() || !pocket?.wallet
+          !signedIn() || !pocket?.wallet
             ? 'none'
             : ps?.exists && !ps.frozen && ps.vault >= 0.1 && ps.leftToday >= 0.1
               ? 'ready'
@@ -1442,8 +1458,10 @@ function CareCard({ wellbeing, bond, streak, pocket, onPocket, onRetry }: CarePr
               </>
             ) : pocket.kind === 'no-wallet' ? (
               <>
-                <strong>Make your Sunny wallet</strong>
-                <small>Born on your phone, locked by your password</small>
+                <strong>{insideTelegram() ? 'Make your Sunny wallet' : 'Connect your wallet'}</strong>
+                <small>
+                  {insideTelegram() ? 'Born on your phone, locked by your password' : 'Seed Vault, Phantom or Solflare'}
+                </small>
               </>
             ) : pocket.kind === 'error' ? (
               <>

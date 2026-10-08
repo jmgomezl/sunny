@@ -11,6 +11,7 @@ import {
   TokenCardView,
   WalletCardView,
 } from './Cards'
+import { walletSession } from '../lib/api'
 import type { AlertCard, DeepScan, LinkCheck, MyWallet, PocketEvent, TokenCard } from '../lib/chat'
 import type { BlinkReport, WalletReport } from '../lib/home'
 
@@ -119,7 +120,7 @@ export function ChatSheet({ open, messages, pending, suggestions, sameAsTelegram
                 <SunMark size={22} />
                 <div>
                   <strong>Sunny</strong>
-                  <small>{sameAsTelegram ? 'I remember our Telegram chat' : 'Web preview'}</small>
+                  <small>{sameAsTelegram ? 'I remember our Telegram chat' : walletSession() ? 'Signed in with your wallet' : 'Web preview'}</small>
                 </div>
               </div>
               <button type="button" className="chat-close" onClick={onClose} aria-label="Close chat">
