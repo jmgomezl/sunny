@@ -183,7 +183,7 @@ const clientIp = (req: IncomingMessage) => String(req.headers['x-real-ip'] ?? re
 async function startWatching(userId: number, input: string) {
   const address = input.trim()
   if (!isAddress(address)) throw new ApiError(400, 'That doesn’t look like a Solana wallet address.')
-  if (ownerOf(userId) === address) throw new ApiError(400, 'That’s your pocket’s wallet, I already look after it ☀️')
+  if (vaultOf(userId)?.address === address) throw new ApiError(400, 'That’s your Sunny wallet, I already look after it ☀️')
   if ((await accountKind(address).catch(() => 'wallet')) === 'mint') {
     throw new ApiError(400, 'That’s a token’s address, not a wallet. Paste it in Scan & check to see how safe the token is.')
   }
@@ -354,6 +354,9 @@ async function authRoute(req: IncomingMessage, res: ServerResponse) {
     const id = walletUserId(address)
     linkWallet(id, address)
     touch(id, 'friend', 'en')
+    // The wallet you signed in with is your real wallet on mainnet too: Sunny watches it
+    // (read-only), so the weather and "Should I sign this?" use your actual balances.
+    if (!watchedOf(id).includes(address)) watchWallet(id, address)
     return send(res, 200, { session: sessionFor(address), address })
   }
   throw new ApiError(400, 'Unknown sign-in request.')

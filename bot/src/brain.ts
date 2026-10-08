@@ -649,7 +649,7 @@ async function runTool(name: string, rawArgs: string, ctx: Ctx): Promise<unknown
       case 'watch_wallet': {
         const address = String(args.address ?? '').trim()
         if (!isAddress(address)) return { error: 'That doesn’t look like a Solana wallet address.' }
-        if (ownerOf(ctx.userId) === address) return { error: 'That’s the wallet that owns their pocket; it’s already theirs.' }
+        if (!usesOwnWallet(ctx.userId) && ownerOf(ctx.userId) === address) return { error: 'That’s their Sunny wallet; it’s already theirs.' }
         if ((await accountKind(address).catch(() => 'wallet')) === 'mint') {
           return { error: 'That address is a token (a mint), not a wallet. Offer to check the token with lookup_token instead.' }
         }

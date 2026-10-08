@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.Button
@@ -193,7 +194,10 @@ fun WebShellScreen() {
             Modifier
                 .fillMaxSize()
                 .background(MaterialTheme.colorScheme.background)
-                .windowInsetsPadding(WindowInsets.systemBars),
+                .windowInsetsPadding(WindowInsets.systemBars)
+                // Edge to edge, the keyboard draws over the page unless the WebView makes room
+                // for it: without this, Sunny's chat and scan inputs sit behind the keyboard.
+                .imePadding(),
         swipeRefreshLayout = swipeRefreshLayout,
         isRefreshing = isRefreshing,
         isLoading = isLoading,
