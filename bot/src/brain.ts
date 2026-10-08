@@ -341,7 +341,7 @@ export type Reply = {
   wallets: WalletReport[]
   scans: DeepScanCard[]
   blinks: BlinkReport[]
-  /** The watched wallets changed, so the Mini App should reload its home. */
+  /** The watched wallets or price alerts changed, so the Mini App should reload its home. */
   watchChanged: boolean
   live: boolean
 }
@@ -401,6 +401,8 @@ async function createPriceAlert(args: Record<string, unknown>, ctx: Ctx) {
   })
   if ('error' in created) return created
   ctx.alerts.push(toAlertCard(created))
+  // The home screen's alert bells change too.
+  ctx.watchChanged = true
   logActivity(
     ctx.userId,
     'alert',
@@ -458,9 +460,17 @@ async function deepScan(query: string, ctx: Ctx) {
   } catch (err) {
     const why = err instanceof Error ? err.message : 'The payment failed'
     ctx.pocket.push({ amount: DEEP_SCAN_PRICE, reason, ok: false, message: why })
-    logActivity(ctx.userId, 'scam', `Stopped a $${DEEP_SCAN_PRICE.toFixed(2)} deep scan`, why)
-    return { not_paid: true, reason: why }
+    logActivity(ctx.userId, 'check', `Solana stopped a $${DEEP_SCAN_PRICE.toFixed(2)} deep scan`, why)
+    return { not_paid: true, reason: why, pocket_now: await pocketFacts(wallet) }
   }
+}
+
+/** What's in the pocket right now, in plain numbers for the model. */
+async function pocketFacts(wallet: string) {
+  const ps = await pocketState(wallet).catch(() => null)
+  if (!ps) return null
+  if (!ps.exists) return { pocket_open: false }
+  return { in_pocket_usd: ps.vault, left_today_usd: ps.leftToday, per_payment_limit_usd: ps.perTxLimit, frozen: ps.frozen }
 }
 
 /** The user's own wallets: their Sunny wallet (devnet) and the ones they asked Sunny to watch. */
@@ -607,8 +617,9 @@ async function runTool(name: string, rawArgs: string, ctx: Ctx): Promise<unknown
         } catch (err) {
           const why = err instanceof Error ? err.message : 'The transaction failed'
           ctx.pocket.push({ amount, reason, ok: false, message: why })
-          logActivity(ctx.userId, 'scam', `Stopped a $${amount} draw`, why)
-          return { refused_by_solana: true, rule: why }
+          logActivity(ctx.userId, 'check', `Solana stopped a $${amount} draw`, why)
+          // The real numbers, so the explanation never guesses ("you spent it all today").
+          return { refused_by_solana: true, rule: why, pocket_now: await pocketFacts(wallet) }
         }
       }
       case 'list_price_alerts': {
@@ -630,6 +641,7 @@ async function runTool(name: string, rawArgs: string, ctx: Ctx): Promise<unknown
         if (!gone.length) {
           return { error: 'No alert matched, nothing was cancelled.', active: activeFor(ctx.userId).map((a) => `${a.symbol} (${a.direction})`) }
         }
+        ctx.watchChanged = true
         return { cancelled: gone.map((a) => `${a.symbol} (${a.direction})`) }
       }
       default:

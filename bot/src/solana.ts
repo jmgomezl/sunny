@@ -366,8 +366,11 @@ function describe(tx: ParsedTransactionWithMeta | undefined) {
       if (known.name === 'set_frozen' && data[8] === 0) return { name: known.name, label: 'Pocket unfrozen' }
       return known
     }
-    if ('parsed' in ix && ix.program === 'spl-token' && /^mintTo/.test(ix.parsed?.type)) {
-      return { name: 'mint', label: 'Received test USDC' }
+    if ('parsed' in ix && String(ix.program).startsWith('spl-token') && /^mintTo/.test(ix.parsed?.type)) {
+      // Only the faucet mints test USDC; anything else minted to a Sunny wallet is a badge.
+      return ix.parsed?.info?.mint === usdcMint().toBase58()
+        ? { name: 'mint', label: 'Received test USDC' }
+        : { name: 'badge', label: 'Earned a good-habit badge' }
     }
   }
   return { name: 'other', label: 'Other transaction' }
