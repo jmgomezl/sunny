@@ -4552,3 +4552,48 @@ textarea:focus-visible {
   text-decoration-color: color-mix(in oklab, var(--sol-purple) 60%, transparent);
   text-underline-offset: 2px;
 }
+
+.pocket-demo {
+  display: block;
+  margin-bottom: 2px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--sol-purple);
+}
+
+/* Scams start in group chats: one tap brings Sunny in as the group's guardian. */
+.group-invite {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  margin-top: 4px;
+  padding: 14px 16px;
+  border-radius: 22px;
+  text-align: left;
+  color: var(--ink);
+  background: var(--card);
+  border: 1px solid var(--card-edge);
+  box-shadow: var(--shadow);
+}
+
+.group-invite > svg {
+  flex: none;
+  color: var(--honey-deep);
+}
+
+.group-invite strong {
+  display: block;
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.group-invite small {
+  display: block;
+  margin-top: 2px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink-soft);
+}

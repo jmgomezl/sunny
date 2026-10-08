@@ -252,12 +252,15 @@ const throughShades = (hex: string) => {
 const MORNING_DEMO = new URLSearchParams(window.location.search).has('morning')
 
 const STICKERS = 'https://t.me/addstickers/sunny_by_SunnySolBot'
-/** Opens Sunny's sticker pack in Telegram (or in a new tab outside it). */
-function openStickers() {
+// Telegram's "add to group" link: Sunny joins as a quiet guardian that flags scam links.
+const ADD_TO_GROUP = 'https://t.me/SunnySolBot?startgroup=guard'
+/** Opens a t.me link inside Telegram (or in a new tab outside it). */
+function openTelegram(url: string) {
   const tg = window.Telegram?.WebApp
-  if (tg?.initData && tg.openTelegramLink) tg.openTelegramLink(STICKERS)
-  else window.open(STICKERS, '_blank', 'noopener')
+  if (tg?.initData && tg.openTelegramLink) tg.openTelegramLink(url)
+  else window.open(url, '_blank', 'noopener')
 }
+const openStickers = () => openTelegram(STICKERS)
 // Matches the server's limit on watched wallets.
 const MAX_WATCHED = 5
 
@@ -1201,6 +1204,13 @@ export default function App() {
         />
         {!demo && home && home.news.length > 0 && <NewsCard items={home.news} />}
         <ActivityCard items={demo ? ACTIVITY.map(demoActivity) : (home?.activity ?? [])} />
+        <button type="button" className="group-invite" onClick={() => openTelegram(ADD_TO_GROUP)}>
+          <ShieldIcon size={18} />
+          <span>
+            <strong>Add me to your group</strong>
+            <small>I stay quiet and flag scam links before anyone taps them</small>
+          </span>
+        </button>
         <div className="footer-links">
           <div className="built-on">
             <SolanaMark size={14} /> Built on Solana
