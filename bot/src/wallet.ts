@@ -226,6 +226,15 @@ export async function walletReport(address: string): Promise<WalletReport> {
   const flags = holdingFlags(p)
   const ageDays = activity?.firstSeen ? (Date.now() - Date.parse(activity.firstSeen)) / 86_400_000 : null
   if (ageDays !== null && ageDays < 7) flags.push({ level: 'medium', text: `Brand-new wallet: first transaction ${Math.floor(ageDays)} days ago` })
+  // Never used and empty: often a look-alike address planted in your history (address poisoning).
+  const unused: Flag | null =
+    activity && activity.transactions === 0 && p.total === 0
+      ? {
+          level: 'medium',
+          text: 'Never used: no transactions and nothing in it. Before sending money here, check every character against the address you meant; scammers plant look-alikes',
+        }
+      : null
+  if (unused) flags.unshift(unused)
 
   return {
     address,
@@ -238,7 +247,7 @@ export async function walletReport(address: string): Promise<WalletReport> {
     approvals: p.approvals?.count ?? null,
     // The level comes from what the wallet holds, exactly like the home weather; the wallet's
     // age is shown as a note but doesn't change it.
-    risk: riskOf(holdingFlags(p)),
+    risk: riskOf(unused ? [unused, ...holdingFlags(p)] : holdingFlags(p)),
     flags,
   }
 }
