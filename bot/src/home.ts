@@ -47,7 +47,8 @@ export type Home = {
   spark: number[]
   sparkLabel: string
   forecast: string
-  risk: 'Low' | 'Medium' | 'High'
+  /** null when no watched wallet could be read: unknown, never a reassuring Low. */
+  risk: 'Low' | 'Medium' | 'High' | null
   mood: Mood
   status: Status
   line: string
@@ -140,12 +141,13 @@ export async function buildHome(userId: number, wallets: string[]): Promise<Home
     return {
       ...base,
       wallets: wallets.map((address) => ({ address, value: null, change24h: null, risk: 'low', approvals: 0 })),
-      value: p || null,
+      // An unreadable wallet has no value or risk: nothing reassuring is made up.
+      value: unreadable ? null : p || null,
       change24h: sol?.stats24h?.priceChange ?? null,
-      spark: interpolate(anchors),
+      spark: unreadable ? [] : interpolate(anchors),
       sparkLabel: 'SOL price',
-      forecast: 'Solana today',
-      risk: 'Low',
+      forecast: unreadable ? '' : 'Solana today',
+      risk: unreadable ? null : 'Low',
       mood: 'happy',
       status: unreadable
         ? { tone: 'warn', text: 'I can’t read that wallet' }
@@ -204,7 +206,8 @@ export async function buildHome(userId: number, wallets: string[]): Promise<Home
   ]
 
   // Same rule as the wallet card: risky tokens count from $1 up (dust is often spam).
-  const risky = held.find((h) => h.risk === 'high' && h.value >= 1)
+  // Same rule as the wallet card, wallet by wallet: risky tokens count from $1 up (dust is often spam).
+  const risky = read.flatMap((w) => w.holdings).find((h) => h.risk === 'high' && h.value >= 1)
   const approvals = p.approvals
   // The weather is the worst of the wallets, each judged exactly like its wallet card.
   const risks = read.map(walletRisk)

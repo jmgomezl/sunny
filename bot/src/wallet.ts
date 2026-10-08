@@ -236,7 +236,9 @@ export async function walletReport(address: string): Promise<WalletReport> {
     top: p.holdings.slice(0, 5).map(({ symbol, icon, value, risk, mint }) => ({ symbol, icon, value, risk, mint })),
     activity,
     approvals: p.approvals?.count ?? null,
-    risk: riskOf(flags),
+    // The level comes from what the wallet holds, exactly like the home weather; the wallet's
+    // age is shown as a note but doesn't change it.
+    risk: riskOf(holdingFlags(p)),
     flags,
   }
 }

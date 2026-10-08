@@ -161,7 +161,13 @@ export async function looksLikeBlink(input: string) {
 /** Is this a Blink? Returns the Action API URL behind it, or null. */
 export async function resolveAction(input: string): Promise<string | null> {
   const text = input.trim()
-  if (/^solana(-action)?:https?:/i.test(text)) return decodeURIComponent(text.replace(/^solana(-action)?:/i, ''))
+  if (/^solana(-action)?:https?(:|%3A)/i.test(text)) {
+    try {
+      return decodeURIComponent(text.replace(/^solana(-action)?:/i, ''))
+    } catch {
+      return null
+    }
+  }
   let url: URL
   try {
     url = new URL(/^https?:\/\//i.test(text) ? text : `https://${text}`)

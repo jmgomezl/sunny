@@ -45,10 +45,11 @@ const MAX_TOOL_ROUNDS = 4
 // Requests that must go through a tool (alerts and watched wallets), in English or Spanish,
 // matched without accents so "cancélala" and "avísame" count. Questions about these things
 // ("what is a price alert?") are just questions.
-const fold = (text: string) => text.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase().trim()
+const fold = (text: string) =>
+  text.normalize('NFD').replace(/\p{M}/gu, '').replace(/[¿¡]/g, '').toLowerCase().trim()
 const ACTION_REQUEST =
   /\b(cancel\w*|delete|remove|unwatch|stop watching|watch\b(?!\s+out|-only)|keep an eye|alert me|set an? alert|borr\w*|elimin\w*|quita\w*|deja de vigilar\w*|vigila\w*|avisame|alerta\w*)/
-const QUESTION = /^(what|how|why|which|who|que|como|por que|cual|quien)\b/
+const QUESTION = /^(what|how|why|which|who|is|are|should|does|que|como|por que|cual|quien|deberia)\b/
 const asksForAction = (text: string) => ACTION_REQUEST.test(fold(text)) && !QUESTION.test(fold(text))
 // Tools whose answers come from Jupiter's live market data (for the "📡 Live from Jupiter" note).
 const JUPITER_TOOLS = new Set(['lookup_token', 'market_overview', 'wallet_snapshot', 'create_price_alert', 'my_wallet'])

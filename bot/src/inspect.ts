@@ -52,7 +52,7 @@ export async function inspect(input: string, watched: string | null = null): Pro
 
   // Blinks, and Solana Pay transaction requests (solana:https://…), which work the same way:
   // the site builds a transaction for your wallet to sign.
-  if (/^solana(-action)?:https?:/i.test(text) || ((/^https?:\/\//i.test(text) || /\./.test(text)) && (await looksLikeBlink(text)))) {
+  if (/^solana(-action)?:https?(:|%3A)/i.test(text) || ((/^https?:\/\//i.test(text) || /\./.test(text)) && (await looksLikeBlink(text)))) {
     const report = await checkBlink(text, watched, probeAccount()).catch(() => null)
     if (report) return { kind: 'blink', report }
   }
