@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sunny privacy policy</title>
+<link rel="icon" href="/favicon.svg">
+<style>
+  :root { --ink: #3a2414; --soft: #6b4a2e; --paper: #fffaf0; --honey: #f59a2c; }
+  body { margin: 0; background: var(--paper); color: var(--ink); font: 16px/1.6 system-ui, -apple-system, 'Segoe UI', sans-serif; }
+  main { max-width: 720px; margin: 0 auto; padding: 32px 20px 64px; }
+  h1 { font-family: Georgia, serif; font-size: 32px; line-height: 1.15; margin: 8px 0 4px; }
+  h2 { font-size: 19px; margin: 28px 0 6px; }
+  p, li { color: var(--soft); }
+  a { color: var(--ink); text-decoration-color: var(--honey); }
+  .meta { font-size: 14px; }
+  @media (prefers-color-scheme: dark) { :root { --ink: #fff3e0; --soft: #e2cdb4; --paper: #1d1410; } }
+</style>
+</head>
+<body><main>
+<a href="/">☀️ Sunny</a>
+<h1>Privacy policy</h1>
+<p class="meta">Last updated October 8, 2026</p>
+<p>Sunny is an AI pet that helps you stay safe on Solana. It runs in Telegram (@SunnySolBot), on the web at sunny.aivylabs.xyz, and as an Android app. This page says what Sunny keeps, why, and who else sees it. Sunny is open source, so you can check all of it in <a href="https://github.com/jmgomezl/sunny">the code</a>.</p>
+
+<h2>What Sunny keeps</h2>
+<ul>
+  <li><b>Who you are:</b> your Telegram user id, first name and language, or, if you sign in with a wallet, that wallet's public address. Web visitors who don't sign in get a random id kept in their browser.</li>
+  <li><b>Wallets you ask Sunny to watch:</b> their public addresses (up to five). Watching is read-only.</li>
+  <li><b>Your Sunny wallet backup</b> (Telegram only): encrypted on your phone with your password before it's stored. Sunny's server can't open it.</li>
+  <li><b>Recent activity:</b> your last 20 checks and pocket events, your streak and the badges you earned, so the app can show them.</li>
+  <li><b>Price alerts and group settings</b> you create.</li>
+  <li><b>Share cards</b> you choose to share: kept for 7 days so the link works, then deleted.</li>
+  <li><b>Chat:</b> your last few messages are kept in memory to keep the conversation going. They aren't written to disk and are gone when the server restarts.</li>
+</ul>
+<p>Sunny never asks for, receives or stores your recovery phrase or private key. If you paste one in chat, Sunny refuses it before it reaches the AI and deletes the message from Telegram.</p>
+
+<h2>Who else sees what</h2>
+<ul>
+  <li><b>The AI model:</b> chat messages are sent to an AI model through <a href="https://openrouter.ai/privacy">OpenRouter</a> to write Sunny's replies.</li>
+  <li><b>Data providers:</b> token and wallet lookups go to Jupiter, RugCheck and Solana RPC nodes; links are checked against public phishing lists. They see the address or link being checked, not who asked.</li>
+  <li><b>The blockchain:</b> pocket transactions, badges and test-USDC transfers are public on Solana devnet, like every Solana transaction.</li>
+  <li><b>Telegram</b> carries your messages to Sunny under Telegram's own policy.</li>
+  <li><b>Fonts</b> load from Google Fonts, which sees your IP address like any website you visit.</li>
+</ul>
+<p>Sunny doesn't sell your data, show ads, or use trackers or analytics cookies.</p>
+
+<h2>Your choices</h2>
+<ul>
+  <li>Stop watching a wallet or cancel an alert any time, in the app or by asking Sunny.</li>
+  <li>Sign out of your wallet in the wallet sheet. Freeze or withdraw your pocket any time with your own signature.</li>
+  <li>To have your data deleted, open an issue on <a href="https://github.com/jmgomezl/sunny/issues">GitHub</a> or message @SunnySolBot, and it will be removed.</li>
+</ul>
+
+<h2>Money and test networks</h2>
+<p>Sunny's pocket runs on Solana devnet with test USDC, which has no real value. Sunny gives security information, not financial advice, and can be wrong: always check before you sign anything.</p>
+
+<h2>Contact</h2>
+<p>Questions: <a href="https://github.com/jmgomezl/sunny/issues">github.com/jmgomezl/sunny/issues</a> or @SunnySolBot on Telegram.</p>
+</main></body>
+</html>
