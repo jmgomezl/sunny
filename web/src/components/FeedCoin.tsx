@@ -21,10 +21,8 @@ type Props = {
  * wide as the coin comes close (so its face shows before the coin covers it); a drop counts
  * once the coin is over its body.
  */
-function distanceToSunny(x: number, y: number) {
-  const el = document.querySelector('.sunny-slot .sunny')
-  if (!el) return Infinity
-  const r = el.getBoundingClientRect()
+function distanceToSunny(x: number, y: number, r: DOMRect | null) {
+  if (!r) return Infinity
   // The body is the round top part of the button (the shadow sits below it).
   return Math.hypot(x - (r.left + r.width / 2), y - (r.top + r.width / 2)) / r.width
 }
@@ -34,6 +32,8 @@ const EATS = 0.5
 export function FeedCoin({ amount, hungry, hint, onNear, onFeed }: Props) {
   const near = useRef(false)
   const onTarget = useRef(false)
+  // Sunny's box, measured once when a drag starts (not on every drag event).
+  const target = useRef<DOMRect | null>(null)
   const dragged = useRef(false)
   const [eaten, setEaten] = useState(false)
   const [dragging, setDragging] = useState(false)
@@ -70,11 +70,12 @@ export function FeedCoin({ amount, hungry, hint, onNear, onFeed }: Props) {
           dragged.current = false
         }}
         onDragStart={() => {
+          target.current = document.querySelector('.sunny-slot .sunny')?.getBoundingClientRect() ?? null
           dragged.current = true
           setDragging(true)
         }}
         onDrag={(_, info) => {
-          const d = distanceToSunny(info.point.x - window.scrollX, info.point.y - window.scrollY)
+          const d = distanceToSunny(info.point.x - window.scrollX, info.point.y - window.scrollY, target.current)
           onTarget.current = d < EATS
           setNear(d < OPENS_WIDE)
         }}

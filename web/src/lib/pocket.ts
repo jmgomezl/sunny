@@ -1,5 +1,6 @@
 import { post } from './api'
-import { describeTransaction, signMessage } from './vault'
+// The wallet's crypto (Argon2, ed25519, XChaCha) loads only when a pocket action needs it.
+const vault = () => import('./vault')
 
 /** Sunny's pocket on Solana, read from the chain by the server. */
 export type PocketState = {
@@ -33,12 +34,16 @@ export const fetchPocket = () => post<{ wallet: string | null; state: PocketStat
 
 /** Step 1: the server prepares the transaction; this device decodes it into plain words. */
 export async function preparePocket(a: PocketAction, owner: string) {
-  const prepared = await post<{ id: string; message: string }>('/api/pocket', { op: 'prepare', ...a })
+  const [prepared, { describeTransaction }] = await Promise.all([
+    post<{ id: string; message: string }>('/api/pocket', { op: 'prepare', ...a }),
+    vault(),
+  ])
   return { ...prepared, summary: describeTransaction(prepared.message, owner) }
 }
 
 /** Step 2: sign on this device (never on the server) and send it. */
-export function submitPocket(prepared: { id: string; message: string }) {
+export async function submitPocket(prepared: { id: string; message: string }) {
+  const { signMessage } = await vault()
   return post<Sent>('/api/pocket', { op: 'submit', id: prepared.id, signature: signMessage(prepared.message) })
 }
 

@@ -51,14 +51,27 @@ export function Sky({ weather }: { weather: Weather }) {
 
   // Parallax: far layers (stars, sunbeam) barely move, near clouds move more, so the sky has depth.
   useEffect(() => {
-    const onMove = (e: PointerEvent) => {
+    // Once per frame, not per pointer event.
+    let frame = 0
+    let x = 0
+    let y = 0
+    const apply = () => {
+      frame = 0
       const el = ref.current
       if (!el) return
-      el.style.setProperty('--px', ((e.clientX / window.innerWidth) * 2 - 1).toFixed(3))
-      el.style.setProperty('--py', ((e.clientY / window.innerHeight) * 2 - 1).toFixed(3))
+      el.style.setProperty('--px', ((x / window.innerWidth) * 2 - 1).toFixed(3))
+      el.style.setProperty('--py', ((y / window.innerHeight) * 2 - 1).toFixed(3))
+    }
+    const onMove = (e: PointerEvent) => {
+      x = e.clientX
+      y = e.clientY
+      if (!frame) frame = requestAnimationFrame(apply)
     }
     window.addEventListener('pointermove', onMove)
-    return () => window.removeEventListener('pointermove', onMove)
+    return () => {
+      window.removeEventListener('pointermove', onMove)
+      cancelAnimationFrame(frame)
+    }
   }, [])
 
   return (
