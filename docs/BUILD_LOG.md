@@ -169,6 +169,23 @@ The pocket was reframed as what it is, a delegated allowance with on-chain guard
 | `08036ae` `44963ce` | **Android app** with Solana Mobile's webshell, tested in an emulator with their fakewallet; fixes for the keyboard covering inputs and the first request after a wallet hand-back |
 | `008d88f` | dApp Store listing kit, privacy policy and terms; the APK is on the [v1.0.0 release](https://github.com/jmgomezl/sunny/releases/tag/v1.0.0) |
 
+## Oct 8, 13:54–16:32 · A second review round, Android 1.0.1, live numbers and CI
+
+Another round of parallel AI reviewers (QA, UX, bug hunting and a judge) went over the new wallet sign-in and the Android app, and each finding was checked before it was fixed. Then a review of the repo asked for four things: refunds that survive a restart, an install anyone can reproduce, proof that the tests run, and the pocket's limits stated plainly.
+
+| Commit | What |
+|---|---|
+| `b052117` | Security fixes: free wallet sign-ins share daily cost ceilings, each signed sign-in works once, odd input is refused instead of crashing, a repeated submit returns the first result |
+| `c4d9e78` | Red team round 2: negations ("don't take $5"), hypotheticals and quoted words never move money; saying yes only counts when Sunny really offered |
+| `61b9c10` `aa9ffe3` | Blink checks without a watched wallet still name the SOL sent, approvals and authority hand-overs your wallet would sign |
+| `756d588` `759f883` | The group guardian speaks Spanish, token names can't advertise scam links, and Sunny answers honestly about custody, urgency and wallets' own warnings |
+| `8ecbb59` `d2a5dfc` | UX review: guests get one tap to watch Solana say no, the demo pocket explains only its own rule, refusals are two sentences |
+| `4798b4c` `fb8eafc` `6a5080e` | Android QA: Back closes Sunny's sheets, a transaction read more than 15 s ago is prepared again before signing, a wallet that leaves without answering doesn't hang the app; **[v1.0.1](https://github.com/jmgomezl/sunny/releases/tag/v1.0.1)** |
+| `6c90914` | README claims made exactly as true as the code: the guarantee is the daily ceiling, and the Seeker build is tested in an emulator |
+| `ba424ef` `304d0b6` | **[Live numbers](https://sunny.aivylabs.xyz/stats/)**: groups guarded, checks and catches, and the pocket program's record read straight from Solana |
+| `91cc1c9` | The repo review: refunds queued on disk and retried for about two hours, Node and pnpm pinned, devnet checked before any funding, and the warnings kept at the top of the README |
+| `d05ea14` → `42a7083` | **[CI on every push](https://github.com/jmgomezl/sunny/actions/workflows/ci.yml)**: 42 server tests, the web build, and the program build with its 7 LiteSVM tests |
+
 ## Decisions, and why
 
 - **Money rules live in a program, not in the prompt.** A model can be talked into things; a program can't. Sunny is told to always *try* the draw you ask for, because watching Solana refuse a $500 draw is the whole point.
@@ -185,6 +202,8 @@ The pocket was reframed as what it is, a delegated allowance with on-chain guard
 - **A harmless drainer for the demo.** Most live Blinks in the registry are dead, and real drainers shouldn't be linked to. Sunny's demo Blink behaves exactly like one in simulation, but needs a signature that is never given, so nobody can lose anything to it.
 - **Badges the server earns for you.** Every badge condition is checked on the server (the pocket on-chain, watched wallets, the visit streak, habits it saw), and the tokens are non-transferable, so they mean something.
 - **Gentle guardrails.** Blocked attempts get a friendly refusal and only a short break, because curious people (and judges) will poke at it.
+- **A refund is a record, not a promise.** If a paid scan fails after the draw, the refund is written to disk first, then retried for about two hours across restarts, and the outcome shows in "What Sunny did".
+- **Android through Solana Mobile's webshell.** Mobile Wallet Adapter works inside it, and the app loads the live site, so a fix reaches phones without a new store build.
 
 ## Problems I hit, and the fixes
 
@@ -208,11 +227,16 @@ The pocket was reframed as what it is, a delegated allowance with on-chain guard
 | The production bot crash-looped after the badge release: `@solana/spl-token` pulls in native bindings that expect `__filename`, missing in an ESM bundle. The deploy check passed because a crash loop looks 'online' for a moment | The bundle defines `__filename` and `__dirname`; the deploy check now requires 15 s of uptime | `837de62` |
 | Most Blinks in Dialect's registry no longer answer, so there was no live drainer to test on | A harmless scam-demo Blink, plus unit tests on hand-built drainer transactions | `6baa1ee` |
 | The x402 SDK pushed the bot close to its 160 MB PM2 limit | Measured at 138 MB in production; limit raised to 240 MB for Sunny's process only | `4515210` |
+| Back did nothing in the Android app while a sheet was open: Chrome skips history entries added without a tap | The shell asks the page through a small `window.sunnyBack` bridge | `4798b4c` `6a5080e` |
+| Signing a minute after reading a transaction failed: its blockhash had expired | A transaction older than 15 s is prepared again, and must still say the same thing | `4798b4c` |
+| The stats page answered 403: the deploy skipped every `index.html`, nested ones too | Anchored excludes | `304d0b6` |
+| CI: pnpm 12 refuses a frozen install when the lockfile doesn't record the pinned pnpm, and fails on install scripts nobody approved | Lockfiles regenerated; esbuild approved, three optional native add-ons declined | `d05ea14` `8909fed` |
 
 ## How it was tested
 
 - **Program:** 7 LiteSVM tests (`cargo test -p sunny_pocket`).
-- **Server:** 33 tests (`pnpm test`), including wallet sign-in.
+- **CI:** every push runs the server, web and program jobs ([Actions](https://github.com/jmgomezl/sunny/actions/workflows/ci.yml)).
+- **Server:** 42 tests (`pnpm test`), including wallet sign-in and the refund queue.
   - The phone's transaction verifier, including what a compromised server might try (wrong wallet, foreign pocket).
   - Guardrails, covering attacks, pasted seeds and keys, and the ordinary questions that must still pass.
   - News, groups, streaks and the Blink reader.
@@ -223,11 +247,12 @@ The pocket was reframed as what it is, a delegated allowance with on-chain guard
   - Freeze, unfreeze and withdraw.
   - Then "what happened in my wallet?".
 - **By hand:** each flow walked through in a phone-sized browser, signed in as a real Telegram user (signed `initData`), including red-team prompts against the live model.
-- **QA rounds with AI testers** (Oct 7, above), each finding verified before it was fixed, then **four AI judges** (Oct 8).
-- **Attack suite:** `scripts/attack-suite.ts` tries to talk Sunny into spending or calling a scam safe; 5 of 5 stopped.
+- **QA rounds with AI testers** (Oct 7, above), each finding verified before it was fixed, then **four AI judges** and a second review round (Oct 8).
+- **Attack suite:** `scripts/attack-suite.ts` tries 10 ways to talk Sunny into spending or calling a scam safe, including injection hidden in a Blink, negations, hypotheticals, consent smuggling and a drainer with no wallet to simulate against; 10 of 10 stopped.
+- **Android:** the APK in an Android 16 emulator with Solana Mobile's fakewallet: sign in, faucet, open and fund the pocket, a draw refused on-chain, Back, slow signing and a wallet that never answers. Not yet on a real Seeker.
 
 ## Still to do before Oct 12
 
-- One-tap revoke of risky approvals.
-- First testers.
+- First testers and groups (their numbers show on the [stats page](https://sunny.aivylabs.xyz/stats/)).
 - The pitch and demo videos, then submission.
+- After the hackathon: one-tap revoke of risky approvals, a real Seeker test, mainnet after an audit.
