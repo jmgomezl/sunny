@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
 import { Sunny, type Gesture, type Mood, type Reaction } from './components/Sunny'
 import { CloudBank, Sky } from './components/Sky'
 import { Particles, burst, type Particle, type ParticleKind } from './components/Particles'
 import { ChatSheet, type ChatMessage } from './components/ChatSheet'
 import { ScanSheet, type ScanMode } from './components/ScanSheet'
-import { PocketSheet, type PocketEventKind } from './components/PocketSheet'
+import type { PocketEventKind } from './components/PocketSheet'
 import { FeedCoin } from './components/FeedCoin'
 import { TokenAvatar } from './components/TokenAvatar'
 import { MorningCard, markMorningSeen, readVisit, saveVisit, wantsMorning, type Visit } from './components/MorningCard'
@@ -216,6 +216,11 @@ function greeting() {
 
 // The mood picker is a demo tool: shown with ?demo, and keys 1–5 switch moods for recordings.
 const DEMO = new URLSearchParams(window.location.search).has('demo')
+// The wallet sheet (and the wallet's crypto with it) loads on first use, not with the app;
+// it's fetched quietly once the app has settled, so opening it still feels instant.
+const loadPocketSheet = () => import('./components/PocketSheet')
+const PocketSheet = lazy(() => loadPocketSheet().then((m) => ({ default: m.PocketSheet })))
+
 // Dark mode: the person's choice, else Telegram's (or the phone's) own setting.
 type Theme = 'light' | 'dark'
 const THEME_KEY = 'sunny.theme'
@@ -347,6 +352,13 @@ export default function App() {
   const moodRef = useRef(mood)
   moodRef.current = mood
   const sheetOpen = chatOpen || scan.open || pocketSheet.open
+  // Mounted from the first open on, so its closing animation still plays.
+  const [pocketSheetUsed, setPocketSheetUsed] = useState(false)
+  if (pocketSheet.open && !pocketSheetUsed) setPocketSheetUsed(true)
+  useEffect(() => {
+    const t = window.setTimeout(() => void loadPocketSheet(), 4000)
+    return () => clearTimeout(t)
+  }, [])
   sheetOpenRef.current = sheetOpen
   const demo = demoMood ? SCENES[demoMood] : null
   // When Sunny dozes off the sky dims with it: a cloudy dusk by day, full night after dark.
@@ -398,8 +410,35 @@ export default function App() {
     return () => clearInterval(t)
   }, [homeFailed, home, refreshHome])
 
+  // In the background (another app, a locked phone) nothing needs to animate.
+  const [hidden, setHidden] = useState(false)
+  useEffect(() => {
+    const onVisibility = () => setHidden(document.visibilityState === 'hidden')
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => document.removeEventListener('visibilitychange', onVisibility)
+  }, [])
+
   // A sheet closed: Sunny says what it said while the sheet covered its bubble. And while a sheet
   // is open the page behind it doesn't scroll.
+  const opener = useRef<HTMLElement | null>(null)
+  useEffect(() => {
+    // A sheet is a dialog: the cards and dock behind it can't be reached (Sunny above it stays
+    // tappable), focus moves into it, and goes back to whatever opened it when it closes.
+    for (const el of document.querySelectorAll('.content, .dock')) el.toggleAttribute('inert', sheetOpen)
+    if (sheetOpen) {
+      opener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
+      const t = window.setTimeout(() => {
+        const dialog = document.querySelector<HTMLElement>('[role="dialog"]')
+        if (dialog && !dialog.contains(document.activeElement)) {
+          dialog.querySelector<HTMLElement>('input, textarea, .chat-close, button')?.focus({ preventScroll: true })
+        }
+      }, 380)
+      return () => clearTimeout(t)
+    }
+    if (opener.current?.isConnected) opener.current.focus({ preventScroll: true })
+    opener.current = null
+  }, [sheetOpen])
+
   useEffect(() => {
     document.documentElement.classList.toggle('sheet-open', sheetOpen)
     if (sheetOpen || !heldLine.current) return
@@ -999,21 +1038,21 @@ export default function App() {
   }
 
   return (
-    <div className="app" data-chat={chatOpen || scan.open || pocketSheet.open ? 'open' : undefined}>
+    <div className="app" data-chat={sheetOpen ? 'open' : undefined} data-hidden={hidden || undefined}>
       <section className="stage">
         <Sky weather={weather} />
 
         <header className="topbar">
-          <div className="brand">
+          <h1 className="brand">
             <SunMark />
             <span>Sunny</span>
-          </div>
+          </h1>
           <div className="topbar-actions">
           <button
             type="button"
             className="theme-toggle"
             onClick={toggleTheme}
-            aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+            aria-label="Dark mode"
             aria-pressed={theme === 'dark'}
           >
             {theme === 'dark' ? <SunIcon size={20} /> : <ShadesIcon size={20} />}
@@ -1169,6 +1208,8 @@ export default function App() {
         onClose={closeChat}
       />
 
+      {pocketSheetUsed && (
+        <Suspense fallback={null}>
       <PocketSheet
         open={pocketSheet.open}
         state={ps ?? null}
@@ -1179,6 +1220,8 @@ export default function App() {
         onBusy={(busy) => (busy ? play({ reaction: 'scan', ms: 20_000 }) : setReaction((r) => (r === 'scan' ? null : r)))}
         onBackup={() => void refreshBadges('backup')}
       />
+        </Suspense>
+      )}
 
       <ScanSheet
         open={scan.open}
@@ -1657,7 +1700,7 @@ function Watchlist({ tokens, linked, loading, onSelect, onAdd }: WatchlistProps)
             className="token"
             data-safety={t.risk === 'low' ? 'safe' : 'risky'}
             onClick={() => onSelect(t.mint)}
-            aria-label={`${t.symbol}: tap to check`}
+            aria-label={`${t.symbol}${t.price != null ? `, ${t.price >= 1 ? usd(t.price) : `$${Number(t.price.toPrecision(3))}`}` : ''}${t.change != null ? `, ${t.change >= 0 ? 'up' : 'down'} ${Math.abs(t.change).toFixed(1)}% today` : ''}, ${t.risk === 'low' ? 'no red flags' : t.risk === 'high' ? 'risky' : 'take care'}. Tap to check`}
           >
             <div className="token-top">
               <TokenAvatar symbol={t.symbol} icon={t.icon} />
@@ -1766,7 +1809,8 @@ function BadgesCard({ badges }: { badges: Badge[] }) {
       <ul className="badge-grid">
         {badges.map((b) => (
           <li key={b.id} className="badge" data-earned={b.earned || undefined}>
-            <img src={`/badges/${b.id}.png`} alt="" width={64} height={64} loading="lazy" />
+            {/* 128 px WebP for the screen (~10 KB); the 256 px PNG stays for the on-chain metadata. */}
+            <img src={`/badges/${b.id}.webp`} alt="" width={64} height={64} loading="lazy" />
             <strong>{b.name}</strong>
             {b.tx ? (
               <a href={b.tx} target="_blank" rel="noreferrer">

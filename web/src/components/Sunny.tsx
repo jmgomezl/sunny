@@ -119,11 +119,19 @@ export function Sunny({
   const unrotate = useTransform(pressAngle, (a) => -a)
   const jelly = useMotionTemplate`rotate(${pressAngle}deg) scale(${squashAlong}, ${bulgeAcross}) rotate(${unrotate}deg)`
 
-  // Eyes follow the pointer anywhere on the page.
+  // Eyes follow the pointer anywhere on the page, measured once per frame (not per event).
   useEffect(() => {
+    let frame = 0
+    let latest: globalThis.PointerEvent | null = null
     const onMove = (e: globalThis.PointerEvent) => {
+      latest = e
+      if (!frame) frame = requestAnimationFrame(follow)
+    }
+    const follow = () => {
+      frame = 0
+      const e = latest
       const svg = svgRef.current
-      if (!svg) return
+      if (!svg || !e) return
       const r = svg.getBoundingClientRect()
       const dx = (e.clientX - (r.left + r.width / 2)) / r.width
       const dy = (e.clientY - (r.top + r.height / 2)) / r.height
@@ -138,7 +146,10 @@ export function Sunny({
       }, 2600)
     }
     window.addEventListener('pointermove', onMove)
-    return () => window.removeEventListener('pointermove', onMove)
+    return () => {
+      window.removeEventListener('pointermove', onMove)
+      cancelAnimationFrame(frame)
+    }
   }, [gx, gy])
 
   // Idle life: glance around now and then, and sometimes wave.
@@ -306,6 +317,11 @@ export function Sunny({
       onPointerCancel={endPress}
       onLostPointerCapture={() => squashTarget.set(0)}
       onContextMenu={(e) => e.preventDefault()}
+      onKeyDown={(e) => {
+        if (e.key !== 'Enter' && e.key !== ' ') return
+        e.preventDefault()
+        onGesture?.('boop')
+      }}
       aria-label={`Sunny is feeling ${mood}. Tap to say hi, hold to pet.`}
     >
       <div className="sunny-bob">

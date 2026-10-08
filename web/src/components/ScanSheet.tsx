@@ -221,11 +221,17 @@ export function ScanSheet(props: ScanSheetProps) {
                 </div>
               )}
 
-              {error && <p className="scan-error">{error}</p>}
+              {error && (
+                <p className="scan-error" role="alert">
+                  {error}
+                </p>
+              )}
 
               {result && (
                 <motion.div
                   className="scan-result"
+                  // Results are read out when they arrive, safe ones included.
+                  role="status"
                   initial={{ opacity: 0, y: 12 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ type: 'spring', stiffness: 420, damping: 32 }}

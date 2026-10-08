@@ -30,12 +30,12 @@
   --sol-gradient: linear-gradient(90deg, #9945ff, #43b4ca 55%, #14f195);
   --orbit-a: var(--sol-purple);
   --orbit-b: var(--sol-green);
-  --ok: #2f8f5b;
+  --ok: #1f6e43;
   --ok-bg: rgba(47, 143, 91, 0.12);
   --warn: #c4472a;
   --warn-bg: rgba(255, 122, 89, 0.16);
 
-  --up: #c8640a;
+  --up: #a85208;
   --down: #4f74a8;
   --spark: #f08a24;
 
@@ -110,7 +110,7 @@
   color-scheme: dark;
   --ink: #f7ead8;
   --ink-soft: #c6b6a6;
-  --ink-faint: #8f8aa6;
+  --ink-faint: #b0abc8;
   --paper: #141a33;
   --card: #1c2445;
   --card-edge: #2b3563;
@@ -429,6 +429,7 @@ ul {
 }
 
 .brand {
+  margin: 0;
   display: flex;
   align-items: center;
   gap: 7px;
@@ -2337,7 +2338,7 @@ ul {
 .bond-title {
   font-size: 12.5px;
   font-weight: 750;
-  color: #d9466a;
+  color: #c13358;
 }
 
 :root[data-weather='night'] .bond-title,
@@ -4271,4 +4272,41 @@ button.token:active {
 html.sheet-open,
 html.sheet-open body {
   overflow: hidden;
+}
+
+/* Sky effects that aren't showing don't animate: 94 hidden stars, raindrops and glints were
+   keeping a phone's CPU busy for nothing. The sky also rests while a sheet covers it. */
+.sky-stars:not([data-active='true']) span,
+.sky-rain:not([data-active='true']) span,
+.sky-glints:not([data-active='true']) svg,
+.app[data-chat='open'] .sky *,
+.app[data-hidden] .sky * {
+  animation-play-state: paused;
+}
+
+/* Text fields get the same clear focus ring as buttons. */
+input:focus-visible,
+textarea:focus-visible {
+  outline: 2.5px solid var(--ink);
+  outline-offset: 2px;
+}
+
+/* Bigger tap targets for the sheets' close buttons, chips and pills. */
+.chat-close {
+  min-width: 44px;
+  min-height: 44px;
+}
+
+.chat-suggest button,
+.wallet-pill,
+.guardian--tap,
+.sticker-link {
+  min-height: 44px;
+}
+
+/* Larger text settings: the status pill wraps instead of running off screen. */
+.guardian {
+  max-width: calc(100vw - 32px);
+  white-space: normal;
+  text-align: left;
 }

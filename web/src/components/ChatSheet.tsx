@@ -177,7 +177,7 @@ export function ChatSheet({ open, messages, pending, suggestions, sameAsTelegram
                 </motion.div>
               ))}
               {pending && (
-                <div className="chat-msg chat-msg--sunny" aria-label="Sunny is typing">
+                <div className="chat-msg chat-msg--sunny" role="status" aria-label="Sunny is typing">
                   <span className="chat-avatar" aria-hidden="true">
                     <SunMark size={18} />
                   </span>
