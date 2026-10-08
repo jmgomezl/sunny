@@ -36,6 +36,7 @@ export function FeedCoin({ amount, hungry, hint, onNear, onFeed }: Props) {
   const onTarget = useRef(false)
   const dragged = useRef(false)
   const [eaten, setEaten] = useState(false)
+  const [dragging, setDragging] = useState(false)
 
   const setNear = (next: boolean) => {
     if (next === near.current) return
@@ -63,8 +64,14 @@ export function FeedCoin({ amount, hungry, hint, onNear, onFeed }: Props) {
         whileDrag={{ scale: 1.18, rotate: -8 }}
         animate={eaten ? { scale: 0, opacity: 0 } : { scale: 1, opacity: 1 }}
         transition={{ duration: eaten ? 0.16 : 0.35 }}
+        // Every new touch starts fresh: phones send no click after a drag, so a flag left over
+        // from a missed drag would swallow the next tap.
+        onPointerDown={() => {
+          dragged.current = false
+        }}
         onDragStart={() => {
           dragged.current = true
+          setDragging(true)
         }}
         onDrag={(_, info) => {
           const d = distanceToSunny(info.point.x - window.scrollX, info.point.y - window.scrollY)
@@ -72,6 +79,7 @@ export function FeedCoin({ amount, hungry, hint, onNear, onFeed }: Props) {
           setNear(d < OPENS_WIDE)
         }}
         onDragEnd={() => {
+          setDragging(false)
           const fed = onTarget.current
           onTarget.current = false
           setNear(false)
@@ -88,7 +96,7 @@ export function FeedCoin({ amount, hungry, hint, onNear, onFeed }: Props) {
       >
         <span className="feed-coin-face">${amount}</span>
       </motion.button>
-      {hint && !eaten && <span className="feed-coin-hint">Feed me</span>}
+      {hint && !eaten && !dragging && <span className="feed-coin-hint">Feed me</span>}
     </div>
   )
 }
