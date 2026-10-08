@@ -52,3 +52,14 @@ test('wallet users get their own id range, apart from guests and Telegram users'
   assert.ok(!isWalletUser(guest))
   assert.ok(!isWalletUser(123456789))
 })
+
+test('a signed sign-in works once, and odd input is refused instead of crashing', () => {
+  const message = challenge(address, DOMAIN)
+  const signature = sign(message)
+  assert.equal(verifySignIn(message, signature, DOMAIN), address)
+  assert.equal(verifySignIn(message, signature, DOMAIN), null)
+  // Same string length as a real seal, but multi-byte: must be a clean "no", not a throw.
+  const seal = sessionFor(address).split('.')[2]
+  assert.equal(walletOfSession(`${address}.${Date.now() + 1e9}.${'é'.repeat(seal.length)}`), null)
+  assert.equal(verifySignIn(message.replace('Sunny', 'Sünny'), signature, DOMAIN), null)
+})

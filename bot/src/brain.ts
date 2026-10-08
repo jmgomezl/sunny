@@ -475,10 +475,11 @@ async function pocketOwner(ctx: Ctx): Promise<{ wallet: string; demo: boolean } 
   const own = ownerOf(ctx.userId)
   if (own) return { wallet: own, demo: false }
   if (ctx.userId >= 0 || isWalletUser(ctx.userId) || !hasChain()) return null
-  // All guests share it, so it gets its own hourly cap on top of each guest's.
-  if (!allow('demo-pocket', 120, HOUR)) return null
   return { wallet: await ensureDemoPocket(), demo: true }
 }
+
+/** All guests share the demo pocket, so its payments get their own hourly cap. */
+const demoBudget = (owner: { demo: boolean }) => !owner.demo || allow('demo-pocket', 120, HOUR)
 
 const DEMO_NOTE = `Web preview: this was Sunny's shared demo pocket on devnet (test money, not the user's own), with the same on-chain guardrails: $${DEMO_LIMITS.perTx} a payment, $${DEMO_LIMITS.daily} a day. Call it "the demo pocket", not "your pocket".`
 
@@ -489,6 +490,7 @@ async function deepScan(query: string, ctx: Ctx) {
   if (!hasChain()) return { error: 'Pocket money is offline right now.' }
   const payer = await pocketOwner(ctx)
   if (!payer) return { error: 'Deep scans are paid from pocket money: they need a Sunny wallet and a pocket first, made in your sky.' }
+  if (!demoBudget(payer)) return { error: 'The demo pocket has been busy this hour; try again later.' }
   const wallet = payer.wallet
   const found = await lookupToken(query)
   if (!found.found) return { error: `I couldn’t find a token called ${query}.` }
@@ -707,6 +709,7 @@ async function runTool(name: string, rawArgs: string, ctx: Ctx): Promise<unknown
         if (!allow(`draw:${ctx.userId}`, 15, HOUR)) return { error: 'That’s a lot of pocket requests this hour; try again later.' }
         const owner = await pocketOwner(ctx)
         if (!owner) return { error: 'No Sunny wallet yet; they can create one in your sky.' }
+        if (!demoBudget(owner)) return { error: 'The demo pocket has been busy this hour; try again later.' }
         const { wallet } = owner
         const demo = owner.demo ? { demo_pocket: DEMO_NOTE } : {}
         try {

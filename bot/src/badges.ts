@@ -135,13 +135,13 @@ export type BadgeStatus = {
  * Mints any badge someone has earned but doesn't hold yet (it needs their Sunny wallet), and
  * returns every badge's status. `newly` lists the ones minted just now, for a celebration.
  */
-export async function syncBadges(userId: number) {
+export async function syncBadges(userId: number, mayMint: () => boolean = () => true) {
   const owner = ownerOf(userId)
   const has = await earned(userId, owner)
   const mints = badgeMints()
   const newly: BadgeId[] = []
   for (const id of has) {
-    if (badgesOf(userId)[id] || !owner || !mints[id] || !hasChain()) continue
+    if (badgesOf(userId)[id] || !owner || !mints[id] || !hasChain() || !mayMint()) continue
     try {
       recordBadge(userId, id, await mintBadge(id, owner))
       newly.push(id)

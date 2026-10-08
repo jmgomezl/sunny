@@ -147,6 +147,16 @@ export async function deepScanRoute(req: IncomingMessage, res: ServerResponse) {
   reply(res, 200, report, { 'PAYMENT-RESPONSE': encodePaymentResponseHeader(settled) })
 }
 
+/** Tries a refund again, a few times, half a minute apart. */
+function retryRefund(ownerAddress: string, attempt = 1) {
+  if (attempt > 4) return console.warn('[sunny] refund gave up for', ownerAddress)
+  setTimeout(() => {
+    refundToPocket(ownerAddress, DEEP_SCAN_PRICE)
+      .then((r) => console.log('[sunny] refund landed', r.explorer))
+      .catch(() => retryRefund(ownerAddress, attempt + 1))
+  }, 30_000 * attempt).unref()
+}
+
 export type PaidScan = { report: DeepReport; price: number; drawTx: string; paymentTx: string }
 
 /**
@@ -164,11 +174,13 @@ export async function sunnyBuysDeepScan(ownerAddress: string, mint: string): Pro
   // The money left the pocket, so if the scan doesn't come back it goes straight back in.
   const refund = async (why: string): Promise<never> => {
     const back = await refundToPocket(ownerAddress, DEEP_SCAN_PRICE).catch(() => null)
+    // If Solana didn't take the refund just now, it keeps trying in the background.
+    if (!back) retryRefund(ownerAddress)
     throw Object.assign(
       new Error(
         back
           ? `The scan service failed (${why}), so I put the $${DEEP_SCAN_PRICE.toFixed(2)} back in your pocket.`
-          : `The scan service failed (${why}). The $${DEEP_SCAN_PRICE.toFixed(2)} is safe in my wallet; I’ll put it back.`,
+          : `The scan service failed (${why}). The $${DEEP_SCAN_PRICE.toFixed(2)} is safe in my wallet, and I’m putting it back in your pocket.`,
       ),
       { refunded: back?.explorer ?? null, drawTx: drawn.explorer },
     )

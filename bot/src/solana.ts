@@ -146,6 +146,9 @@ export type OwnerAction =
   | { action: 'unfreeze' }
 
 const pending = new Map<string, { tx: Transaction; owner: string; expires: number }>()
+// What happened to each submitted request, so a repeat of the same request (a retry after a
+// dropped connection) gets the same answer instead of "expired" and a second signature.
+const finished = new Map<string, { owner: string; result: { signature: string; explorer: string }; expires: number }>()
 
 const toBase = (usd: number) => BigInt(Math.round(usd * USD))
 
@@ -225,6 +228,9 @@ export async function prepareOwnerTx(ownerAddress: string, a: OwnerAction) {
 
 /** Adds the owner's signature (checked here) and Sunny's fee signature, then sends. */
 export async function submitOwnerTx(id: string, ownerAddress: string, signatureBase64: string) {
+  for (const [k, v] of finished) if (v.expires < Date.now()) finished.delete(k)
+  const before = finished.get(id)
+  if (before && before.owner === ownerAddress) return before.result
   const p = pending.get(id)
   if (!p || p.owner !== ownerAddress || p.expires < Date.now()) throw new Error('That request expired. Try again.')
   pending.delete(id)
@@ -233,7 +239,9 @@ export async function submitOwnerTx(id: string, ownerAddress: string, signatureB
   if (!ed25519.verify(sig, message, new PublicKey(ownerAddress).toBytes())) throw new Error('Signature doesn’t match your wallet.')
   p.tx.addSignature(new PublicKey(ownerAddress), sig)
   p.tx.partialSign(feePayer())
-  return send(p.tx)
+  const result = await send(p.tx)
+  finished.set(id, { owner: ownerAddress, result, expires: Date.now() + 5 * 60_000 })
+  return result
 }
 
 // ── Sunny's side: drawing pocket money, and the test-USDC faucet ────────────
@@ -396,7 +404,9 @@ export function demoOwner(): Keypair {
   return Keypair.fromSeed(seed)
 }
 
-export const DEMO_LIMITS = { daily: 10, perTx: 5 }
+// $5 a payment, so "$500" is still refused on-chain; a high daily limit, so one guest can't
+// use up the day for every other judge.
+export const DEMO_LIMITS = { daily: 1000, perTx: 5 }
 let demoReady: Promise<string> | null = null
 
 /** Opens the demo pocket the first time, and tops it up with test USDC when it runs low. */
@@ -406,7 +416,18 @@ export function ensureDemoPocket(): Promise<string> {
     const owner = demoOwner()
     const address = owner.publicKey.toBase58()
     const st = await pocketState(address)
-    if (st.exists && st.vault >= DEMO_LIMITS.daily) return address
+    const lowFunds = !st.exists || st.vault < 10
+    const oldLimits = st.exists && (st.dailyLimit !== DEMO_LIMITS.daily || st.perTxLimit !== DEMO_LIMITS.perTx)
+    if (!lowFunds && !oldLimits) return address
+    if (!lowFunds) {
+      const fix = new Transaction({ feePayer: feePayer().publicKey }).add(
+        ...ownerInstructions(owner.publicKey, { action: 'limits', ...DEMO_LIMITS }),
+      )
+      fix.recentBlockhash = (await connection.getLatestBlockhash()).blockhash
+      fix.sign(feePayer(), owner)
+      await send(fix)
+      return address
+    }
     const amount = 20
     const tx = new Transaction({ feePayer: feePayer().publicKey }).add(
       createAtaIdempotent(owner.publicKey, feePayer().publicKey),
@@ -424,6 +445,7 @@ export function ensureDemoPocket(): Promise<string> {
         owner.publicKey,
         st.exists ? { action: 'topup', amount } : { action: 'open', ...DEMO_LIMITS, amount },
       ),
+      ...(oldLimits ? ownerInstructions(owner.publicKey, { action: 'limits', ...DEMO_LIMITS }) : []),
     )
     tx.recentBlockhash = (await connection.getLatestBlockhash()).blockhash
     tx.sign(feePayer(), owner)

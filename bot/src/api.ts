@@ -30,6 +30,11 @@ const USER_PER_HOUR = 40
 const GUEST_PER_HOUR = 12
 const IP_PER_HOUR = 30
 const GUESTS_PER_DAY = 400
+// Signed-in wallets cost nothing to create, so what Sunny pays for (the model, rent and fees on
+// devnet) has a shared daily ceiling for them, on top of the per-person limits.
+const WALLET_CHATS_PER_DAY = 600
+const WALLET_SIGNINS_PER_DAY = 400
+const WALLET_PAID_ACTIONS_PER_DAY = 150
 
 type Person = { id: number; name: string; lang: string; guest: boolean; wallet?: string }
 
@@ -109,6 +114,10 @@ function identify(body: Record<string, unknown>, botToken: string, ip: string, r
     const key = route === 'chat' ? `u:${id}` : `${route}:u:${id}`
     if (!allow(key, limit.user, HOUR) || !allow(`${route}:ip:${ip}`, limit.ip * 2, HOUR)) {
       throw new ApiError(429, 'I need a little rest to save my energy ☀️ Let’s pick this up in a bit.')
+    }
+    // Wallet identities are free to make, so the paid model gets a shared daily ceiling too.
+    if (route === 'chat' && !allow('wallet-chats', WALLET_CHATS_PER_DAY, DAY)) {
+      throw new ApiError(429, 'I’ve had a busy day ☀️ Try me again tomorrow, or open me in Telegram.')
     }
     linkWallet(id, address)
     touch(id, 'friend', 'en')
@@ -303,6 +312,10 @@ async function pocketRoute(req: IncomingMessage, res: ServerResponse, botToken: 
           ? { action, amount: num(body.amount, 10_000) }
           : { action }
     ) as OwnerAction
+    // Opening a pocket costs Sunny's fee wallet rent: capped for free-to-make wallet sign-ins.
+    if (a.action === 'open' && person.wallet && !allow('fee:open:wallets', WALLET_PAID_ACTIONS_PER_DAY, DAY)) {
+      throw new ApiError(429, 'I’ve opened lots of pockets today ☀️ Try again tomorrow.')
+    }
     return send(res, 200, await prepareOwnerTx(wallet, a))
   }
 
@@ -318,6 +331,9 @@ async function pocketRoute(req: IncomingMessage, res: ServerResponse, botToken: 
 
   if (body.op === 'faucet') {
     if (!allow(`faucet:${person.id}`, 1, FAUCET_EVERY_MS)) throw new ApiError(429, 'You got test USDC recently. Try again in a few hours.')
+    if (person.wallet && !allow('fee:faucet:wallets', WALLET_PAID_ACTIONS_PER_DAY, DAY)) {
+      throw new ApiError(429, 'The test-USDC tap is resting for today ☀️ Try again tomorrow.')
+    }
     const sent = await faucet(wallet, FAUCET_USD)
     logActivity(person.id, 'wallet', `Got ${FAUCET_USD} test USDC`, 'Devnet faucet')
     return send(res, 200, { ...sent, amount: FAUCET_USD, state: await pocketState(wallet) })
@@ -349,6 +365,9 @@ async function authRoute(req: IncomingMessage, res: ServerResponse) {
     if (typeof body.message !== 'string' || typeof body.signature !== 'string' || body.message.length > 600) {
       throw new ApiError(400, 'Missing signature.')
     }
+    if (!allow('wallet-signins', WALLET_SIGNINS_PER_DAY, DAY)) {
+      throw new ApiError(429, 'Lots of new friends today ☀️ Try again tomorrow, or open me in Telegram.')
+    }
     const address = verifySignIn(body.message, body.signature, domain)
     if (!address) throw new ApiError(401, 'That signature didn’t check out. Try connecting again.')
     const id = walletUserId(address)
@@ -368,7 +387,8 @@ async function badgesRoute(req: IncomingMessage, res: ServerResponse, botToken: 
   const person = identify(body, botToken, clientIp(req), 'badges')
   // Backing up a key needs a key: no Sunny wallet, no Key Keeper badge.
   if (body.op === 'backup' && !person.guest && vaultOf(person.id)) noteHabit(person.id, 'keyBackup')
-  send(res, 200, await syncBadges(person.id))
+  // Each badge mint costs the fee wallet rent; wallet sign-ins share a daily ceiling.
+  send(res, 200, await syncBadges(person.id, person.wallet ? () => allow('fee:badges:wallets', WALLET_PAID_ACTIONS_PER_DAY * 2, DAY) : undefined))
 }
 
 /** POST /api/share { image: base64 JPEG }: stores a share card and returns its public link. */
@@ -376,7 +396,7 @@ async function shareRoute(req: IncomingMessage, res: ServerResponse, botToken: s
   // Base64 adds a third, plus room for initData.
   const body = await readJson(req, Math.ceil(MAX_SHARE_BYTES * 1.4) + 8 * 1024)
   const person = identify(body, botToken, clientIp(req), 'share')
-  if (person.guest) throw new ApiError(401, 'Sharing works inside Telegram.')
+  if (person.guest || person.wallet) throw new ApiError(401, 'Sharing works inside Telegram.')
   const id = typeof body.image === 'string' ? saveShare(Buffer.from(body.image, 'base64')) : null
   if (!id) throw new ApiError(400, 'That doesn’t look like a share card.')
   send(res, 200, { url: `${PUBLIC_URL}/api/share/${id}.jpg` })
