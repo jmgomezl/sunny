@@ -68,8 +68,10 @@ bot.command('start', async (ctx) => {
     `warn you about scams, and explain the market in plain words.\n\n` +
     `Open my sky to make your Sunny wallet: it takes a password and a few seconds. ` +
     `Then you can give me pocket money, and Solana makes sure I never spend more than you allow.\n\n` +
+    `Run a Telegram group? Add me and I’ll quietly warn everyone about scam links (in Spanish or English).\n\n` +
     `Ask me anything, or open my sky below.`
-  const keyboard = openSky()
+  // Scams start in group chats: the second way in is bringing Sunny to yours.
+  const keyboard = openSky().row().url('🛡 Add me to your group', `https://t.me/${ctx.me.username}?startgroup=guard`)
   if (avatarFileId || existsSync(AVATAR)) {
     const msg = await ctx.replyWithPhoto(avatarFileId ?? new InputFile(AVATAR), { caption, reply_markup: keyboard })
     avatarFileId ??= msg.photo.at(-1)?.file_id

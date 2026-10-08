@@ -59,3 +59,19 @@ test('answers /check for links without the AI', async () => {
   await handleGroup(groupMessage('/check', replies))
   assert.match(replies[1], /Send \/check with a token/)
 })
+
+test('a Spanish-speaking group hears Sunny in Spanish', async () => {
+  const replies: string[] = []
+  const spanish = (text: string) => {
+    const m = groupMessage(text, replies) as unknown as { chat: { id: number } }
+    m.chat.id = -1002
+    return m as never
+  }
+  await handleGroup(spanish('Hola a todos, ¿alguien sabe si este airdrop es real? raydlum.io/reclamar'))
+  assert.equal(replies.length, 1)
+  assert.match(replies[0], /raydlum\.io parece sospechoso/)
+  assert.match(replies[0], /cuidando este grupo/)
+  // The group stays in Spanish, even for a bare /check.
+  await handleGroup(spanish('/check'))
+  assert.match(replies[1], /Envía \/check/)
+})
