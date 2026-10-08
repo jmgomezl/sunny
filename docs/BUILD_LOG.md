@@ -160,6 +160,15 @@ The pocket was reframed as what it is, a delegated allowance with on-chain guard
 | `7815458` | UI fixes from a final visual pass: an honest daily meter, the guardrails shown at the moment they're signed, a clearer first visit ("Sunny wallet" vs "watch any wallet"), refusals that look like refusals |
 | `fb7b291` `a650ad1` | Web-preview guests share a demo pocket, so judges without Telegram see Solana refuse a $500 draw too; one tap adds Sunny to a group |
 
+## Oct 8 afternoon · Sunny on Seeker
+
+| Commit | What |
+|---|---|
+| `a181282` `32840da` | **Sign in with your own wallet outside Telegram** (Seed Vault through Mobile Wallet Adapter, or a desktop extension): a Sign In With Solana message, then that wallet owns the pocket and signs its transactions |
+| `5f4bcc7` `44963ce` | Installable web app; the signed-in wallet is watched on mainnet, so the weather and Blink checks use its real balances |
+| `08036ae` `44963ce` | **Android app** with Solana Mobile's webshell, tested in an emulator with their fakewallet; fixes for the keyboard covering inputs and the first request after a wallet hand-back |
+| `008d88f` | dApp Store listing kit, privacy policy and terms; the APK is on the [v1.0.0 release](https://github.com/jmgomezl/sunny/releases/tag/v1.0.0) |
+
 ## Decisions, and why
 
 - **Money rules live in a program, not in the prompt.** A model can be talked into things; a program can't. Sunny is told to always *try* the draw you ask for, because watching Solana refuse a $500 draw is the whole point.
@@ -203,7 +212,7 @@ The pocket was reframed as what it is, a delegated allowance with on-chain guard
 ## How it was tested
 
 - **Program:** 7 LiteSVM tests (`cargo test -p sunny_pocket`).
-- **Server:** 29 tests (`pnpm test`).
+- **Server:** 33 tests (`pnpm test`), including wallet sign-in.
   - The phone's transaction verifier, including what a compromised server might try (wrong wallet, foreign pocket).
   - Guardrails, covering attacks, pasted seeds and keys, and the ordinary questions that must still pass.
   - News, groups, streaks and the Blink reader.

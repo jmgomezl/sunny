@@ -10,7 +10,7 @@
   <a href="https://t.me/SunnySolBot"><img alt="Live on Telegram" src="https://img.shields.io/badge/live-@SunnySolBot-29a9eb?logo=telegram&logoColor=white" /></a>
   <a href="https://solscan.io/account/7RhPyrf1C4t3QDce8hW19i6FK5wevEEPgBMne8Pt4wvy?cluster=devnet"><img alt="Solana program on devnet" src="https://img.shields.io/badge/Solana-program%20on%20devnet-9945ff?logo=solana&logoColor=white" /></a>
   <img alt="x402 payments" src="https://img.shields.io/badge/x402-v2%20payments-14f195" />
-  <img alt="Tests" src="https://img.shields.io/badge/tests-36%20passing-2f8f5b" />
+  <img alt="Tests" src="https://img.shields.io/badge/tests-40%20passing-2f8f5b" />
   <a href="docs/BUILD_LOG.md"><img alt="Build log" src="https://img.shields.io/badge/built%20in-the%20hackathon%20window-ffb43c" /></a>
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-2f6fb0" /></a>
   <a href="https://github.com/jmgomezl/sunny/releases/tag/v1.0.0"><img alt="Android app" src="https://img.shields.io/badge/Android%20%2F%20Seeker-APK-3ddc84?logo=android&logoColor=white" /></a>
@@ -302,7 +302,7 @@ Jupiter (holdings, prices, tokens), RugCheck, alternative.me's Fear & Greed; Met
 
 ```bash
 cd onchain && cargo test -p sunny_pocket     # 7 LiteSVM tests
-cd bot && pnpm test                          # 29 tests
+cd bot && pnpm test                          # 33 tests
 ```
 
 - **Program:** draws within limits only, the allowance refills the next day, freezing stops Sunny, only Sunny can draw and only to itself, the owner stays in control, bad limits are rejected, the owner needs no SOL.
