@@ -72,6 +72,12 @@ test('flags a second signer, and leaves a plain transfer alone', () => {
   assert.equal(sweep.warnings.length, 1)
   assert.match(sweep.warnings[0].text, /sends 0\.25 SOL from your wallet to/)
   assert.equal(sweep.warnings[0].level, 'caution')
+  // And it survives into the final report (a merge step once dropped codes it didn't list).
+  const report = finish({
+    host: 'x.example', title: 't', description: '', buttons: [], tried: 't', registry: 'unknown', phishing: 'unknown',
+    outcome: 'not_simulated', sends: [], receives: [], programs: [], warnings: sweep.warnings,
+  } as never)
+  assert.ok(report.warnings.some((w) => w.code === 'sol'))
 })
 
 test('flags approvals and hand-overs your wallet signs, even with no balances to look at', () => {

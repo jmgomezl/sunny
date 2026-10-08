@@ -234,7 +234,7 @@ type ActionMeta = {
 /** What a finding is, so repeats merge into one line and the worst comes first. */
 type Code = 'sol' | 'drain' | 'wallet' | 'owner' | 'approve' | 'many' | 'signer' | 'close'
 export type Warning = { level: 'danger' | 'caution'; code: Code; text: string }
-const ORDER: Code[] = ['drain', 'wallet', 'owner', 'approve', 'many', 'signer', 'close']
+const ORDER: Code[] = ['drain', 'wallet', 'owner', 'approve', 'many', 'signer', 'sol', 'close']
 const accounts = (n: number) => (n === 1 ? 'one of your token accounts' : `${n} of your token accounts`)
 
 const u64 = (data: Uint8Array, at: number) => {
