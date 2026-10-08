@@ -144,3 +144,19 @@ export const ShadesIcon = (p: IconProps) => (
     <path d="M11 10.6c.6-.5 1.4-.5 2 0" />
   </Icon>
 )
+
+/** A bell, for price alerts. */
+export const BellIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M6 16.5V11a6 6 0 1 1 12 0v5.5l1.5 1.5h-15z" />
+    <path d="M10 20.5a2.2 2.2 0 0 0 4 0" />
+  </Icon>
+)
+
+/** An outlined sun, for switching dark mode off. */
+export const SunIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <circle cx="12" cy="12" r="4.2" />
+    <path d="M12 2.8v2.4M12 18.8v2.4M2.8 12h2.4M18.8 12h2.4M5.5 5.5l1.7 1.7M16.8 16.8l1.7 1.7M5.5 18.5l1.7-1.7M16.8 7.2l1.7-1.7" />
+  </Icon>
+)

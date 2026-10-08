@@ -7,6 +7,7 @@ import { ChatSheet, type ChatMessage } from './components/ChatSheet'
 import { ScanSheet, type ScanMode } from './components/ScanSheet'
 import { PocketSheet, type PocketEventKind } from './components/PocketSheet'
 import { FeedCoin } from './components/FeedCoin'
+import { TokenAvatar } from './components/TokenAvatar'
 import { MorningCard, markMorningSeen, readVisit, saveVisit, wantsMorning, type Visit } from './components/MorningCard'
 import { fetchPocket, PROGRAM_URL, type PocketState } from './lib/pocket'
 import { syncBadges, type Badge } from './lib/badges'
@@ -39,6 +40,8 @@ import {
   SunMark,
   SwapIcon,
   ShadesIcon,
+  BellIcon,
+  SunIcon,
 } from './components/Icons'
 import {
   ACTIVITY,
@@ -162,7 +165,10 @@ const isNight = () => {
   return h >= 23 || h < 6
 }
 
-const short = (a: string) => `${a.slice(0, 4)}…${a.slice(-4)}`
+// Word joiners keep "9AhK…sbkw" on one line.
+const short = (a: string) => `${a.slice(0, 4)}\u2060…\u2060${a.slice(-4)}`
+/** $7, $0.10: cents only when there are some. */
+const money = (n: number) => (Number.isInteger(n) ? `$${n}` : `$${n.toFixed(2)}`)
 
 /** 11:42 pm yesterday, for the ?morning recording when there's no real last visit. */
 const lastNight = () => {
@@ -221,15 +227,18 @@ const chosenTheme = (): Theme | null => {
     return null
   }
 }
-const deviceTheme = (): Theme =>
-  window.Telegram?.WebApp?.colorScheme === 'dark' || window.matchMedia?.('(prefers-color-scheme: dark)').matches
-    ? 'dark'
-    : 'light'
+const deviceTheme = (): Theme => {
+  const tg = window.Telegram?.WebApp
+  if (tg?.initData && tg.colorScheme) return tg.colorScheme
+  return window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+}
 
-/** A sky color as seen through sunglasses, for Telegram's header bar in dark mode. */
+/** A sky color as seen through sunglasses, for Telegram's header bar in dark mode: mixed toward
+ *  the night navy, so warm skies don't turn brown. */
 const throughShades = (hex: string) => {
   const n = parseInt(hex.slice(1), 16)
-  const c = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map((v) => Math.round(v * 0.6))
+  const navy = [20, 26, 51]
+  const c = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map((v, i) => Math.round(v * 0.55 + navy[i] * 0.45))
   return `#${c.map((v) => v.toString(16).padStart(2, '0')).join('')}`
 }
 
@@ -284,6 +293,14 @@ export default function App() {
   })
   const [toppedUp, setToppedUp] = useState(false)
   const [statusOverride, setStatusOverride] = useState<Status | null>(null)
+  // The status line's own timer: play() clears every later() timer, and a cleared reset left a
+  // warning on screen for good.
+  const statusTimer = useRef<number | undefined>(undefined)
+  const flagStatus = useCallback((next: Status | null, ms = 8000) => {
+    window.clearTimeout(statusTimer.current)
+    setStatusOverride(next)
+    if (next && ms) statusTimer.current = window.setTimeout(() => setStatusOverride(null), ms)
+  }, [])
   const [bond, setBond] = useState(loadBond)
   const [badges, setBadges] = useState<Badge[] | null>(null)
   const earnedBadge = (id: string) => Boolean(badges?.find((b) => b.id === id)?.earned)
@@ -309,6 +326,8 @@ export default function App() {
   const [chatPending, setChatPending] = useState(false)
   const [suggestions, setSuggestions] = useState<string[]>([])
   const timers = useRef<number[]>([])
+  const sheetOpenRef = useRef(false)
+  const heldLine = useRef<string | null>(null)
   const lastTouch = useRef(0)
   const ps = pocket?.state
   // Sunny gets hungry when its pocket can't cover a single payment, but not the moment a new,
@@ -323,7 +342,12 @@ export default function App() {
           ? 'sleepy'
           : home.mood
     : 'happy'
-  const mood: Mood = demoMood ?? liveMood
+  // While a warning shows, Sunny stays alarmed (it doesn't drift back to sleep mid-warning).
+  const mood: Mood = demoMood ?? (statusOverride?.tone === 'warn' ? 'worried' : liveMood)
+  const moodRef = useRef(mood)
+  moodRef.current = mood
+  const sheetOpen = chatOpen || scan.open || pocketSheet.open
+  sheetOpenRef.current = sheetOpen
   const demo = demoMood ? SCENES[demoMood] : null
   // When Sunny dozes off the sky dims with it: a cloudy dusk by day, full night after dark.
   // A storm stays a storm: a warning is never hidden by a nap.
@@ -370,9 +394,41 @@ export default function App() {
   // While the sky can't be read, try again every few seconds instead of every 90.
   useEffect(() => {
     if (!homeFailed || home) return
-    const t = window.setTimeout(() => void refreshHome(), 8000)
-    return () => clearTimeout(t)
+    const t = window.setInterval(() => void refreshHome(), 8000)
+    return () => clearInterval(t)
   }, [homeFailed, home, refreshHome])
+
+  // A sheet closed: Sunny says what it said while the sheet covered its bubble. And while a sheet
+  // is open the page behind it doesn't scroll.
+  useEffect(() => {
+    document.documentElement.classList.toggle('sheet-open', sheetOpen)
+    if (sheetOpen || !heldLine.current) return
+    const line = heldLine.current
+    heldLine.current = null
+    const t = window.setTimeout(() => {
+      setSaid(line)
+      window.setTimeout(() => setSaid((now) => (now === line ? null : now)), 4500)
+    }, 350)
+    return () => clearTimeout(t)
+  }, [sheetOpen])
+
+  // A pocket that couldn't be read is tried again on its own.
+  useEffect(() => {
+    if (!pocketFailed) return
+    const t = window.setInterval(() => void loadPocket(), 10_000)
+    return () => clearInterval(t)
+  }, [pocketFailed, loadPocket])
+
+  // Back online: whatever failed while offline (the pocket, the badges) loads again too.
+  const wasFailed = useRef(false)
+  useEffect(() => {
+    if (wasFailed.current && !homeFailed) {
+      void loadPocket()
+      void refreshBadges()
+    }
+    wasFailed.current = homeFailed
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [homeFailed])
 
   // Load the real home screen now and keep it fresh while the app is open.
   useEffect(() => {
@@ -408,7 +464,8 @@ export default function App() {
     window.addEventListener('pointerdown', touch)
     window.addEventListener('keydown', touch)
     const check = window.setInterval(() => {
-      if (performance.now() - lastTouch.current > DOZE_AFTER_MS) setDozing(true)
+      // A guardian doesn't nap in a storm.
+      if (performance.now() - lastTouch.current > DOZE_AFTER_MS && moodRef.current !== 'worried') setDozing(true)
     }, 3000)
     return () => {
       window.removeEventListener('pointerdown', touch)
@@ -425,9 +482,15 @@ export default function App() {
     const tg = window.Telegram?.WebApp
     const dark = theme === 'dark' || weather === 'night'
     const page = dark ? '#141a33' : '#fff8ec'
-    tg?.setHeaderColor?.(theme === 'dark' && weather !== 'night' ? throughShades(SKY_TOP[weather]) : SKY_TOP[weather])
-    tg?.setBackgroundColor?.(page)
-    if (tg?.isVersionAtLeast?.('7.10')) tg.setBottomBarColor?.(page)
+    if (tg?.isVersionAtLeast?.('6.9')) {
+      try {
+        tg.setHeaderColor?.(theme === 'dark' && weather !== 'night' ? throughShades(SKY_TOP[weather]) : SKY_TOP[weather])
+        tg.setBackgroundColor?.(page)
+        if (tg.isVersionAtLeast('7.10')) tg.setBottomBarColor?.(page)
+      } catch {
+        // An older client without these colors: the app looks the same, only the bar differs.
+      }
+    }
   }, [weather, theme])
 
   // Without a choice of their own, the theme follows Telegram's when it changes.
@@ -467,6 +530,8 @@ export default function App() {
   }
 
   const play = useCallback((p: Play) => {
+    // A sheet hides the bubble: keep the line for when it closes ("Pocket open!", a new badge).
+    if (p.line && sheetOpenRef.current) heldLine.current = p.line
     // Anything Sunny reacts to counts as being together, so it won't doze off mid-chat.
     lastTouch.current = performance.now()
     setDozing(false)
@@ -493,11 +558,8 @@ export default function App() {
   }, [])
 
   // Bedtime: a warning that finds Sunny asleep wakes it with a yawn first, then the alarm.
-  const wakeToAlarm = (line: string, then?: () => void) => {
-    const alarm = () => {
-      play({ reaction: 'alarm', line, lineMs: 8000, haptic: 'warning', ms: 1800, bond: 1 })
-      then?.()
-    }
+  const wakeToAlarm = (line: string) => {
+    const alarm = () => play({ reaction: 'alarm', line, lineMs: 8000, haptic: 'warning', ms: 1800, bond: 1 })
     if (mood !== 'sleepy' && !dozing) return alarm()
     play({ reaction: 'yawn', line: 'Mmh…? What’s that…', ms: 1000 })
     later(alarm, 1000)
@@ -584,8 +646,8 @@ export default function App() {
   const onScanResult = (r: Inspection | null) => {
     // The bubble and the status line tell the same story, for as long as the warning shows.
     const warn = (text: string, line: string) => {
-      setStatusOverride({ tone: 'warn', text })
-      wakeToAlarm(line, () => later(() => setStatusOverride(null), 8000))
+      flagStatus({ tone: 'warn', text })
+      wakeToAlarm(line)
     }
     // Nothing found isn't a little win: no sparkles.
     if (!r || r.kind === 'unknown' || (r.kind === 'token' && !r.found)) return play({ reaction: 'blush', ms: 900 })
@@ -650,10 +712,10 @@ export default function App() {
 
   const watchWallet = async (address: string) => {
     closeScan()
-    setStatusOverride({ tone: 'info', text: 'Getting to know this wallet…' })
+    flagStatus({ tone: 'info', text: 'Getting to know this wallet…' }, 0)
     play({ reaction: 'scan', ms: 15_000 })
     const ok = await changeWatch({ watch: address })
-    setStatusOverride(null)
+    flagStatus(null)
     if (!ok) return
     void refreshBadges()
     play({
@@ -669,6 +731,7 @@ export default function App() {
   const unwatch = async (address: string) => {
     closeScan()
     if (await changeWatch({ unwatch: address })) {
+      flagStatus(null)
       play({ reaction: 'pat', line: `Okay, I stopped watching ${short(address)}.`, haptic: 'light', ms: 1000 })
     }
   }
@@ -681,20 +744,17 @@ export default function App() {
     setChatOpen(true)
     haptic('light')
     if (topic === 'watch') {
-      setChat((prev) => [
-        ...prev,
-        sunnySays(
-          symbol
-            ? `How should I watch ${symbol}? Pick one or tell me your own, and I’ll message you in Telegram when it happens.`
-            : 'Which token should I keep an eye on? Tell me the move that matters, and I’ll message you in Telegram when it happens.',
-        ),
-      ])
+      const ask = symbol
+        ? `How should I watch ${symbol}? Pick one or tell me your own, and I’ll message you in Telegram when it happens.`
+        : 'Which token should I keep an eye on? Tell me the move that matters, and I’ll message you in Telegram when it happens.'
+      // Opening it again doesn't stack the same question.
+      setChat((prev) => (prev.at(-1)?.text === ask ? prev : [...prev, sunnySays(ask)]))
       setSuggestions(symbol ? [`Watch ${symbol} for a 10% drop`, `Watch ${symbol} for a 20% rise`] : WATCH_SUGGESTIONS)
     } else if (chat.length === 0) {
       setChat([
         sunnySays(
           inTelegram()
-            ? 'Hi! Ask me anything. This is the same chat as Telegram, so we can pick up right where we left off ☀️'
+            ? 'Hi! Ask me anything ☀️ I remember our recent chats, here and in Telegram.'
             : 'Hi! Ask me anything about Solana, your wallet or staying safe ☀️',
         ),
       ])
@@ -737,29 +797,25 @@ export default function App() {
       if (stopped) {
         // The rules working is good news: Solana said no, exactly as designed.
         play({ reaction: 'shiver', haptic: 'warning', ms: 1400, bond: 1 })
-        setStatusOverride({ tone: 'ok', text: `Solana stopped a $${stopped.amount} draw` })
-        later(() => setStatusOverride(null), 8000)
+        flagStatus({ tone: 'ok', text: `Solana stopped a ${money(stopped.amount)} draw` })
       } else if (draws.length) {
         play({ reaction: 'yum', particles: ['coin', 4], haptic: 'success', ms: 1300, bond: 1 })
       } else if (scam) {
         play({ reaction: 'alarm', haptic: 'warning', ms: 1800, bond: 1 })
-        setStatusOverride({
+        flagStatus({
           tone: 'warn',
           text: `${scam.verdict === 'known_scam' ? 'Scam site' : 'Suspicious link'} · ${scam.domain}`,
         })
-        later(() => setStatusOverride(null), 8000)
       } else if (alerts.length) {
         void refreshHome()
         play({ reaction: 'giggle', particles: ['sparkle', 6], haptic: 'success', ms: 1100, bond: 2 })
-        setStatusOverride({ tone: 'ok', text: `Watching ${alerts[0].symbol} · alert set` })
-        later(() => setStatusOverride(null), 8000)
+        flagStatus({ tone: 'ok', text: `Watching ${alerts[0].symbol} · alert set` })
       } else if (risky) {
         play({ reaction: 'alarm', haptic: 'warning', ms: 1600, bond: 1 })
-        setStatusOverride({
+        flagStatus({
           tone: 'warn',
           text: `${risky.risk === 'high' ? 'High' : 'Medium'} risk · $${risky.symbol}`,
         })
-        later(() => setStatusOverride(null), 8000)
       } else {
         play({ reaction: 'giggle', particles: ['sparkle', 3], haptic: 'light', ms: 900, bond: 1 })
       }
@@ -856,7 +912,9 @@ export default function App() {
     (frozen
       ? { tone: 'info', text: 'Pocket frozen · Sunny can’t spend' }
       : (demo?.status ??
-        home?.status ??
+        (home?.status && pocket?.wallet && home.wallets.length === 0 && home.status.tone === 'info'
+          ? { ...home.status, text: 'Watch your other wallets too' }
+          : home?.status) ??
         (skyDown ? { tone: 'warn', text: 'Can’t reach the sky · Tap to retry' } : { tone: 'info', text: 'Checking the sky…' })))
   // Pocket money goes on-chain next; until then the card shows a preview allowance.
   const pocketLeft = toppedUp ? POCKET_LIMIT : (demo?.pocketLeft ?? 7.2)
@@ -876,7 +934,12 @@ export default function App() {
               setPocketSheet({ open: true, intent: 'unfreeze' })
             }
           : status.tone === 'warn' && home
-            ? () => askFromScan('Why is my wallet weather stormy, and what should I do?')
+            ? () =>
+                askFromScan(
+                  /\$(\S+)/.exec(status.text)
+                    ? `Why is $${/\$(\S+)/.exec(status.text)![1]} flagged in the wallet you watch for me, and what should I do?`
+                    : 'Why is my wallet weather stormy, and what should I do?',
+                )
             : home
               ? () => document.querySelector('.forecast')?.scrollIntoView({ behavior: 'smooth', block: 'center' })
               : undefined
@@ -953,7 +1016,7 @@ export default function App() {
             aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
             aria-pressed={theme === 'dark'}
           >
-            {theme === 'dark' ? <SunMark size={20} /> : <ShadesIcon size={20} />}
+            {theme === 'dark' ? <SunIcon size={20} /> : <ShadesIcon size={20} />}
           </button>
           <button
             className="wallet-pill"
@@ -1007,7 +1070,7 @@ export default function App() {
             reaction={reaction ?? (nomming ? 'nom' : chatPending ? 'scan' : null)}
             frozen={frozen}
             dozing={dozing}
-            lantern={(mood === 'sleepy' || dozing) && !frozen}
+            lantern={(mood === 'sleepy' || dozing) && !frozen && !reaction && !nomming}
             cool={theme === 'dark'}
             size={200}
             wear={{
@@ -1018,7 +1081,7 @@ export default function App() {
             onGesture={onGesture}
           />
           <Particles items={particles} onDone={(id) => setParticles((prev) => prev.filter((p) => p.id !== id))} />
-          {canFeed && (
+          {canFeed && !dozing && mood !== 'sleepy' && (
             <FeedCoin
               amount={COIN_USD}
               hungry={mood === 'hungry'}
@@ -1113,7 +1176,7 @@ export default function App() {
         feedAmount={COIN_USD}
         onClose={closePocket}
         onChanged={onPocketChanged}
-        onBusy={(busy) => busy && play({ reaction: 'scan', ms: 20_000 })}
+        onBusy={(busy) => (busy ? play({ reaction: 'scan', ms: 20_000 }) : setReaction((r) => (r === 'scan' ? null : r)))}
         onBackup={() => void refreshBadges('backup')}
       />
 
@@ -1129,6 +1192,17 @@ export default function App() {
         onUnwatch={(a) => void unwatch(a)}
         onAsk={askFromScan}
         onWatch={(symbol) => openChat('watch', symbol)}
+        deepScan={
+          !insideTelegram() || !pocket?.wallet
+            ? 'none'
+            : ps?.exists && !ps.frozen && ps.vault >= 0.1 && ps.leftToday >= 0.1
+              ? 'ready'
+              : 'feed'
+        }
+        onFeed={() => {
+          closeScan()
+          window.setTimeout(() => setPocketSheet({ open: true, intent: ps?.frozen ? 'unfreeze' : 'feed' }), 250)
+        }}
       />
 
       <nav className="dock" aria-label="Quick actions">
@@ -1141,8 +1215,8 @@ export default function App() {
           <span>Ask Sunny</span>
         </button>
         <button type="button" className="dock-btn" onClick={() => openChat('watch')}>
-          <EyeIcon />
-          <span>Watch</span>
+          <BellIcon />
+          <span>Alerts</span>
         </button>
       </nav>
     </div>
@@ -1157,9 +1231,11 @@ function GuardianStatus({ status, onTap, watchPrompt }: GuardianProps) {
     ? EyeIcon
     : status.tone === 'warn'
       ? AlertIcon
-      : status.tone === 'info'
-        ? MoonIcon
-        : CheckIcon
+      : status.text.startsWith('Pocket frozen')
+        ? SnowIcon
+        : status.tone === 'info'
+          ? MoonIcon
+          : CheckIcon
   const content = (
     <>
       <span className="guardian-icon">
@@ -1276,7 +1352,7 @@ function CareCard({ wellbeing, bond, streak, pocket, onPocket, onRetry }: CarePr
                 <>
                   <strong>{usd(live.left)} left in my pocket</strong>
                   <small>
-                    Max {whole(live.perTx)} each · refills in {refillIn()}
+                    Max {whole(live.perTx)} each · limit resets in {refillIn()}
                   </small>
                 </>
               )
@@ -1536,8 +1612,6 @@ function Sparkline({ points }: { points: number[] }) {
   )
 }
 
-const HUES = [268, 150, 30, 20, 110, 200, 330, 45]
-const hueOf = (symbol: string) => HUES[[...symbol].reduce((a, c) => a + c.charCodeAt(0), 0) % HUES.length]
 
 function demoToken(t: Token): WatchToken {
   return {
@@ -1558,27 +1632,6 @@ type WatchlistProps = {
   loading: boolean
   onSelect: (mint: string) => void
   onAdd: () => void
-}
-
-/** A token's picture, or its first letter in a warm color while it loads or if it can't. */
-function TokenAvatar({ symbol, icon }: { symbol: string; icon?: string }) {
-  const [state, setState] = useState<'loading' | 'ok' | 'failed'>(icon ? 'loading' : 'failed')
-  return (
-    <span className="token-avatar" style={{ ['--h' as string]: hueOf(symbol) }}>
-      {state !== 'ok' && (symbol.replace(/^\$/, '')[0] ?? '?')}
-      {icon && state !== 'failed' && (
-        <img
-          src={icon}
-          alt=""
-          loading="lazy"
-          referrerPolicy="no-referrer"
-          data-loaded={state === 'ok' || undefined}
-          onLoad={() => setState('ok')}
-          onError={() => setState('failed')}
-        />
-      )}
-    </span>
-  )
 }
 
 const RISK_RANK = { high: 0, medium: 1, low: 2 } as const

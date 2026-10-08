@@ -9,8 +9,15 @@ import { StickerStage } from './components/StickerStage.tsx'
 const telegram = window.Telegram?.WebApp
 telegram?.ready()
 telegram?.expand()
-telegram?.setHeaderColor?.('#86cdfb')
-telegram?.setBackgroundColor?.('#fff8ec')
+// Hex colors need Telegram 6.9+; on older clients the call throws, so it's skipped there.
+if (telegram?.isVersionAtLeast?.('6.9')) {
+  try {
+    telegram.setHeaderColor?.('#86cdfb')
+    telegram.setBackgroundColor?.('#fff8ec')
+  } catch {
+    // The app looks the same; only Telegram's own bar keeps its color.
+  }
+}
 
 // ?sticker=<pose> renders a single sticker for the pack (see StickerStage).
 const params = new URLSearchParams(window.location.search)
