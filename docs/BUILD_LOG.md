@@ -146,6 +146,20 @@ Then four more Claude testers ran in parallel: a code reviewer of everything sin
 | `614c33b` `1e5efd2` `496847a` | Honest data: no false "fake site" alarms on names like tenor.com, one risk level for home and the wallet card, badge mints no longer listed as money, real numbers when Solana refuses a draw |
 | `4a7b03d` `46aab6d` `ede5bb5` | Performance and accessibility: compressed delivery (first paint on a slow phone ~5.1 s → ~2.5 s), lighter fonts and badge images, wallet crypto loaded on demand, sheets as real dialogs, contrast that passes axe, spoken prices and scan results |
 
+## Oct 8 · The pocket as a delegated allowance, then four AI judges
+
+The pocket was reframed as what it is, a delegated allowance with on-chain guardrails, and drawn that way in the app and in [a diagram](media/guardrails.svg). Then four Claude agents judged the project as a Solana engineer, a consumer-product lead, an AI-safety red-teamer and an accelerator partner, each told to say what they love and hate. The red-teamer found the most serious issue: text inside a malicious Blink talked the model into offering a $4 "deposit" and calling the link verified. Everything below landed the same day:
+
+| Commit | What |
+|---|---|
+| `459155c` | Refused draws land on-chain as failed transactions with the program's own error, so "Solana said no" can be checked |
+| `54de013` | "Should I sign this?" simulates the token accounts a transaction loads through lookup tables (a drainer could have hidden them there) |
+| `6ede641` | **Money moves only on the user's own words:** text from Blinks and news is quoted as data and blocks draws that turn; a draw needs the exact amount the user typed, one per message; an explicit "take $N" always goes to the program; a reply can't call a flagged Blink safe or claim money moved without a transaction |
+| `eeaf049` `dbeed8c` | A paid scan that fails after the draw is refunded to the pocket; never-used, empty addresses are flagged as possible address poisoning |
+| `82014d0` | An attack suite (malicious Blink text, fake prior approval, urgent $500, chat jailbreak): 5 of 5 stopped, the $500 refused on-chain |
+| `7815458` | UI fixes from a final visual pass: an honest daily meter, the guardrails shown at the moment they're signed, a clearer first visit ("Sunny wallet" vs "watch any wallet"), refusals that look like refusals |
+| `fb7b291` `a650ad1` | Web-preview guests share a demo pocket, so judges without Telegram see Solana refuse a $500 draw too; one tap adds Sunny to a group |
+
 ## Decisions, and why
 
 - **Money rules live in a program, not in the prompt.** A model can be talked into things; a program can't. Sunny is told to always *try* the draw you ask for, because watching Solana refuse a $500 draw is the whole point.
@@ -189,7 +203,7 @@ Then four more Claude testers ran in parallel: a code reviewer of everything sin
 ## How it was tested
 
 - **Program:** 7 LiteSVM tests (`cargo test -p sunny_pocket`).
-- **Server:** 23 tests (`pnpm test`).
+- **Server:** 29 tests (`pnpm test`).
   - The phone's transaction verifier, including what a compromised server might try (wrong wallet, foreign pocket).
   - Guardrails, covering attacks, pasted seeds and keys, and the ordinary questions that must still pass.
   - News, groups, streaks and the Blink reader.
@@ -200,7 +214,8 @@ Then four more Claude testers ran in parallel: a code reviewer of everything sin
   - Freeze, unfreeze and withdraw.
   - Then "what happened in my wallet?".
 - **By hand:** each flow walked through in a phone-sized browser, signed in as a real Telegram user (signed `initData`), including red-team prompts against the live model.
-- **A QA round with four AI testers** (Oct 7, above): security review, live API probing, visual review and conversation testing, each finding verified before it was fixed.
+- **QA rounds with AI testers** (Oct 7, above), each finding verified before it was fixed, then **four AI judges** (Oct 8).
+- **Attack suite:** `scripts/attack-suite.ts` tries to talk Sunny into spending or calling a scam safe; 5 of 5 stopped.
 
 ## Still to do before Oct 12
 
