@@ -46,8 +46,19 @@ console.log('fee wallet:', feePayer.publicKey.toBase58())
 if (!process.argv.includes('--fund')) process.exit(0)
 
 const connection = new Connection(process.env.SOLANA_RPC_URL || 'https://api.devnet.solana.com', 'confirmed')
+// Funding spends from your local Solana CLI wallet, so it only ever runs against devnet: the
+// network is checked by its genesis hash, not by the URL's name.
+const DEVNET_GENESIS = 'EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG'
+const genesis = await connection.getGenesisHash()
+if (genesis !== DEVNET_GENESIS) {
+  console.error(`Refusing to fund: SOLANA_RPC_URL points at a network that isn't devnet (genesis ${genesis}).`)
+  process.exit(1)
+}
 const deployer = Keypair.fromSecretKey(
   Uint8Array.from(JSON.parse(readFileSync(join(homedir(), '.config/solana/id.json'), 'utf8'))),
+)
+console.log(
+  `network: devnet (genesis ${genesis.slice(0, 8)}…) · paying from ${deployer.publicKey.toBase58()} · ${(await connection.getBalance(deployer.publicKey)) / LAMPORTS_PER_SOL} SOL`,
 )
 
 const feeBalance = await connection.getBalance(feePayer.publicKey)

@@ -1,0 +1,82 @@
+# Every push runs what the README claims: the server's tests, the Mini App's build, and the
+# pocket program's build and LiteSVM tests. No secrets are needed (devnet is never touched).
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  bot:
+    name: Server · typecheck and tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: bot
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: bot/package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+          cache-dependency-path: bot/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      # The scripts load ../.env; the tests need nothing from it.
+      - run: touch ../.env
+      - run: pnpm typecheck
+      - run: pnpm test
+
+  web:
+    name: Mini App · typecheck and build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: web/package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+
+  program:
+    name: Pocket program · build (SBPF v0) and LiteSVM tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: onchain
+    env:
+      SOLANA_VERSION: v3.1.10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Cache the Solana toolchain and the Rust build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.local/share/solana
+            ~/.cache/solana
+            ~/.cargo/registry
+            ~/.cargo/git
+            onchain/target
+          key: program-${{ runner.os }}-${{ env.SOLANA_VERSION }}-${{ hashFiles('onchain/Cargo.lock', 'onchain/rust-toolchain.toml') }}
+      - name: Install the Solana CLI (Agave)
+        run: |
+          [ -x "$HOME/.local/share/solana/install/active_release/bin/solana" ] || sh -c "$(curl -sSfL https://release.anza.xyz/${SOLANA_VERSION}/install)"
+          echo "$HOME/.local/share/solana/install/active_release/bin" >> "$GITHUB_PATH"
+      # The rust-toolchain.toml in onchain/ picks the compiler. SBPF v0 is what devnet runs
+      # (and what LiteSVM loads); the tests read target/deploy/sunny_pocket.so.
+      - run: cargo build-sbf --manifest-path programs/sunny_pocket/Cargo.toml --arch v0
+      - run: cargo test -p sunny_pocket

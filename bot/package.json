@@ -3,12 +3,16 @@
   "private": true,
   "version": "0.1.0",
   "license": "MIT",
+  "engines": {
+    "node": "^20.19.0 || >=22.12.0"
+  },
+  "packageManager": "pnpm@12.9.1",
   "type": "module",
   "scripts": {
     "dev": "node --env-file=../.env --import tsx src/index.ts",
     "build": "esbuild src/index.ts --bundle --platform=node --target=node20 --format=esm --keep-names --outfile=dist/bot.mjs --banner:js=\"import { createRequire } from 'module'; import { fileURLToPath as __bundleFileURLToPath } from 'url'; import { dirname as __bundleDirname } from 'path'; const require = createRequire(import.meta.url); const __filename = __bundleFileURLToPath(import.meta.url); const __dirname = __bundleDirname(__filename);\"",
     "typecheck": "tsc --noEmit",
-    "test": "node --env-file=../.env --import tsx --test test/sign-check.test.ts test/guard.test.ts test/news.test.ts test/groups.test.ts test/streak.test.ts test/blink.test.ts test/links.test.ts test/wallet-auth.test.ts",
+    "test": "node --env-file=../.env --import tsx --test test/sign-check.test.ts test/guard.test.ts test/news.test.ts test/groups.test.ts test/streak.test.ts test/blink.test.ts test/links.test.ts test/wallet-auth.test.ts test/refunds.test.ts",
     "devnet-setup": "node --env-file=../.env --import tsx scripts/devnet-setup.ts --fund"
   },
   "dependencies": {

@@ -10,7 +10,7 @@
   <a href="https://t.me/SunnySolBot"><img alt="Live on Telegram" src="https://img.shields.io/badge/live-@SunnySolBot-29a9eb?logo=telegram&logoColor=white" /></a>
   <a href="https://solscan.io/account/7RhPyrf1C4t3QDce8hW19i6FK5wevEEPgBMne8Pt4wvy?cluster=devnet"><img alt="Solana program on devnet" src="https://img.shields.io/badge/Solana-program%20on%20devnet-9945ff?logo=solana&logoColor=white" /></a>
   <img alt="x402 payments" src="https://img.shields.io/badge/x402-v2%20payments-14f195" />
-  <img alt="Tests" src="https://img.shields.io/badge/tests-40%20passing-2f8f5b" />
+  <a href="https://github.com/jmgomezl/sunny/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/jmgomezl/sunny/actions/workflows/ci.yml/badge.svg" /></a>
   <a href="docs/BUILD_LOG.md"><img alt="Build log" src="https://img.shields.io/badge/built%20in-the%20hackathon%20window-ffb43c" /></a>
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-2f6fb0" /></a>
   <a href="https://github.com/jmgomezl/sunny/releases/latest"><img alt="Android app" src="https://img.shields.io/badge/Android%20%2F%20Seeker-APK-3ddc84?logo=android&logoColor=white" /></a>
@@ -45,6 +45,8 @@
 </p>
 
 And it's a pet people want to open every day. Its energy *is* the pocket money you feed it, its sky is your wallet's weather, it sleeps with a lantern, and it wears sunglasses in dark mode.
+
+> **Before you trust it with anything:** Sunny runs on Solana **devnet with test money**, and its code is **unaudited**. Sunny's agent key lives on its server. The program caps what can leave a pocket (per payment, per day, frozen or not); it does **not** control what happens to money after Sunny has drawn it into its spending wallet. Details in [Honest status](#honest-status).
 
 **Everything above is live** at [@SunnySolBot](https://t.me/SunnySolBot) on Solana **devnet with test USDC**. Market data, watched wallets and Blink simulations use **mainnet**. Built solo for Colosseum's **Crypto World's Fair** (Solana track), entirely inside the hackathon window; the [build log](docs/BUILD_LOG.md) goes commit by commit.
 
@@ -305,9 +307,12 @@ Jupiter (holdings, prices, tokens), RugCheck, alternative.me's Fear & Greed; Met
 
 ## Tests and QA
 
+**[CI](https://github.com/jmgomezl/sunny/actions/workflows/ci.yml) runs all of this on every push**, from a clean checkout and with no secrets: the server's typecheck and tests, the Mini App's typecheck and build, and the program's build and LiteSVM tests.
+
 ```bash
-cd onchain && cargo test -p sunny_pocket     # 7 LiteSVM tests
-cd bot && pnpm test                          # 33 tests
+cd onchain && cargo build-sbf --manifest-path programs/sunny_pocket/Cargo.toml --arch v0 && cargo test -p sunny_pocket   # 7 LiteSVM tests (they load the built .so)
+cd bot && pnpm test                          # 42 tests
+cd web && pnpm build                         # typecheck and production build
 ```
 
 - **Program:** draws within limits only, the allowance refills the next day, freezing stops Sunny, only Sunny can draw and only to itself, the owner stays in control, bad limits are rejected, the owner needs no SOL.
@@ -330,17 +335,19 @@ cd bot && pnpm test                          # 33 tests
 
 ## Run it yourself
 
-You need Node 20+, pnpm, Rust, Solana CLI 3.x and Anchor 1.2.1.
+You need **Node 22.12+ or 20.19+** (Vite's floor; `.nvmrc` says 22), **pnpm 12** (pinned in each `package.json`), Rust (pinned by `onchain/rust-toolchain.toml`), **Solana CLI 3.1.x** and, to deploy the program, **Anchor 1.2.1**.
 
 ```bash
 cp .env.example .env
 ```
 
-Fill in `OPENROUTER_API_KEY` and `TELEGRAM_BOT_TOKEN`, then create Sunny's devnet fee wallet, agent seed and test-USDC mint (written into `.env`, funded from your Solana CLI wallet):
+Fill in `OPENROUTER_API_KEY` and `TELEGRAM_BOT_TOKEN`, then create Sunny's devnet fee wallet, agent seed and test-USDC mint (written into `.env`):
 
 ```bash
 pnpm --dir bot install && pnpm --dir bot devnet-setup
 ```
+
+**This step spends from your local Solana CLI wallet** (`~/.config/solana/id.json`): it sends 1 SOL to the new fee wallet and pays for the mint. It only runs on devnet: before spending anything it checks the network's genesis hash (`EtWTRA…rZBG` is devnet) and refuses anything else, then prints the network, the paying wallet and its balance. To check beforehand, run `solana config get` and `solana balance --url devnet`; get devnet SOL from [faucet.solana.com](https://faucet.solana.com).
 
 ```bash
 pnpm --dir bot dev
@@ -350,7 +357,7 @@ pnpm --dir bot dev
 pnpm --dir web install && pnpm --dir web dev
 ```
 
-The bot serves the Mini App's API on port 8820 and Vite proxies `/api` to it. Outside Telegram the Mini App runs as a guest preview. Add `?demo` to cycle Sunny's moods and `?morning` to show the morning note, for recordings. To build the program: `cd onchain && anchor build --arch v0` (Anchor 1.2 defaults to SBPF v3, which devnet and LiteSVM can't load yet).
+The bot serves the Mini App's API on port 8820 and Vite proxies `/api` to it. Outside Telegram the Mini App runs as a guest preview. Add `?demo` to cycle Sunny's moods and `?morning` to show the morning note, for recordings. To build the program: `cd onchain && anchor build --arch v0` (Anchor 1.2 defaults to SBPF v3, which devnet and LiteSVM can't load yet), or `cargo build-sbf --arch v0` as CI does.
 
 ## Who it's for, and how it could pay
 
@@ -374,7 +381,9 @@ The bot serves the Mini App's API on port 8820 and Vite proxies `/api` to it. Ou
 
 ## Honest status
 
-- **Devnet only, with test USDC.** The program is unaudited.
+- **Devnet only, with test USDC.** The program and the server are unaudited.
+- **What the on-chain limits cover, and what they don't:** every draw is checked by the program (per payment, per day, frozen or not) and can only go to Sunny's agent account. After that, the money is in Sunny's spending wallet, and what happens to it is up to the server's code, not the program. The promise is a ceiling on what can leave the pocket, not control of money already drawn.
+- **Refunds:** if a paid scan fails after the draw, Sunny puts the money back; a refund that doesn't land at once is queued on disk and retried for about two hours, and its outcome shows in "What Sunny did".
 - **No password reset.** Not even Sunny can open your wallet. Keep pocket amounts small.
 - **The agent key lives on the server**, bounded by the program: a stolen or confused key can draw at most your limits, only to itself, and nothing once frozen. Money Sunny draws sits in its spending wallet, a hot wallet our server holds, until it pays for something.
 - **The program's upgrade authority is a single key** on devnet; mainnet would put it behind a multisig or make the program immutable.

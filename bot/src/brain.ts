@@ -512,7 +512,7 @@ async function deepScan(query: string, ctx: Ctx) {
   }
   const reason = `deep scan of ${found.card.symbol}`
   try {
-    const paid = await sunnyBuysDeepScan(wallet, found.card.mint)
+    const paid = await sunnyBuysDeepScan(wallet, found.card.mint, ctx.userId)
     ctx.scans.push({ ...paid.report, price: paid.price, paymentTx: paid.paymentTx, drawTx: paid.drawTx })
     noteHabit(ctx.userId, 'deepScan')
     count('deepScans', ctx.userId)
@@ -530,7 +530,7 @@ async function deepScan(query: string, ctx: Ctx) {
     if (refunded !== undefined) {
       // The pocket paid, the scan didn't come: the money went back, and the card says so.
       ctx.pocket.push({ amount: DEEP_SCAN_PRICE, reason, ok: false, refunded: refunded ?? undefined, message: why })
-      logActivity(ctx.userId, 'check', `Deep scan of ${found.card.symbol} failed`, refunded ? 'Refunded to the pocket' : 'Refund pending')
+      logActivity(ctx.userId, 'check', `Deep scan of ${found.card.symbol} failed`, refunded ? 'Refunded to the pocket' : 'Refund on its way')
       return { not_paid: true, refunded: Boolean(refunded), reason: why, pocket_now: await pocketFacts(wallet) }
     }
     const proof = (err as { explorer?: string }).explorer

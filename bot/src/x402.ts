@@ -18,6 +18,7 @@ import { registerExactSvmScheme as registerFacilitatorScheme } from '@x402/svm/e
 import { deepReport, type DeepReport } from './deepscan.js'
 import { accountKind } from './inspect.js'
 import { agentDraw, agentFor, ensureAta, explorerTx, feePayer, isSolanaAddress, refundToPocket, USD, usdcMint } from './solana.js'
+import { queueRefund } from './refunds.js'
 
 // Sunny's deep scan is a real x402 API (protocol v2, "exact" scheme on Solana devnet).
 // Ask without paying and you get 402 Payment Required with the price; pay by sending a
@@ -147,16 +148,6 @@ export async function deepScanRoute(req: IncomingMessage, res: ServerResponse) {
   reply(res, 200, report, { 'PAYMENT-RESPONSE': encodePaymentResponseHeader(settled) })
 }
 
-/** Tries a refund again, a few times, half a minute apart. */
-function retryRefund(ownerAddress: string, attempt = 1) {
-  if (attempt > 4) return console.warn('[sunny] refund gave up for', ownerAddress)
-  setTimeout(() => {
-    refundToPocket(ownerAddress, DEEP_SCAN_PRICE)
-      .then((r) => console.log('[sunny] refund landed', r.explorer))
-      .catch(() => retryRefund(ownerAddress, attempt + 1))
-  }, 30_000 * attempt).unref()
-}
-
 export type PaidScan = { report: DeepReport; price: number; drawTx: string; paymentTx: string }
 
 /**
@@ -164,7 +155,7 @@ export type PaidScan = { report: DeepReport; price: number; drawTx: string; paym
  * (the program checks the limits and the freeze), then pays the scan API over x402 from
  * its own wallet. A refused draw throws the program's reason.
  */
-export async function sunnyBuysDeepScan(ownerAddress: string, mint: string): Promise<PaidScan> {
+export async function sunnyBuysDeepScan(ownerAddress: string, mint: string, userId = 0): Promise<PaidScan> {
   const drawn = await agentDraw(ownerAddress, DEEP_SCAN_PRICE)
   const agent = agentFor(new PublicKey(ownerAddress))
   const client = new x402Client().setSpendControls({
@@ -174,13 +165,14 @@ export async function sunnyBuysDeepScan(ownerAddress: string, mint: string): Pro
   // The money left the pocket, so if the scan doesn't come back it goes straight back in.
   const refund = async (why: string): Promise<never> => {
     const back = await refundToPocket(ownerAddress, DEEP_SCAN_PRICE).catch(() => null)
-    // If Solana didn't take the refund just now, it keeps trying in the background.
-    if (!back) retryRefund(ownerAddress)
+    // If Solana didn't take it just now, the refund goes on a queue kept on disk and retried
+    // (surviving restarts); its outcome shows up in "What Sunny did" either way.
+    if (!back) queueRefund(ownerAddress, userId, DEEP_SCAN_PRICE, 'A paid scan that didn’t come back')
     throw Object.assign(
       new Error(
         back
           ? `The scan service failed (${why}), so I put the $${DEEP_SCAN_PRICE.toFixed(2)} back in your pocket.`
-          : `The scan service failed (${why}). The $${DEEP_SCAN_PRICE.toFixed(2)} is safe in my wallet, and I’m putting it back in your pocket.`,
+          : `The scan service failed (${why}). The $${DEEP_SCAN_PRICE.toFixed(2)} is still in my spending wallet; I’ll keep trying to put it back, and you’ll see the result in What Sunny did.`,
       ),
       { refunded: back?.explorer ?? null, drawTx: drawn.explorer },
     )

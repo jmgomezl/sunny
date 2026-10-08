@@ -3,6 +3,8 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { Bot, GrammyError, HttpError, InlineKeyboard, InputFile, type Context } from 'grammy'
 import { startApi } from './api.js'
+import { startRefunds } from './refunds.js'
+import { hasChain } from './solana.js'
 import { startAlertChecker } from './alerts.js'
 import { forget, hasBrain, reply } from './brain.js'
 import { sharedSecret } from './guard.js'
@@ -232,6 +234,8 @@ async function main() {
   // Security alerts go out only from the live bot, never from a local API-only run.
   startNews(POLLING ? broadcastAlert : undefined)
   startApi(API_PORT, token!)
+  // Refunds owed from before a restart are picked up again.
+  if (hasChain()) startRefunds()
   if (!POLLING) {
     console.log('[sunny] BOT_POLLING=off: API only')
     return
