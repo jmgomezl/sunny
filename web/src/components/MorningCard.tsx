@@ -59,7 +59,9 @@ export function markMorningSeen() {
   }
 }
 
-const usd = (n: number) => n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: n < 10 ? 2 : 0 })
+// minimumFractionDigits too: older WebViews throw when the maximum drops below the currency's 2.
+const usd = (n: number) =>
+  n.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: n < 10 ? 2 : 0 })
 const time = (d: Date) => d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }).toLowerCase()
 
 type Row = { icon: 'eye' | 'shield' | 'alert' | 'sun'; text: string; tone?: 'warn' | 'ok' }
@@ -67,11 +69,14 @@ type Row = { icon: 'eye' | 'shield' | 'alert' | 'sun'; text: string; tone?: 'war
 function rowsFor(home: Home, last: Visit): Row[] {
   const since = Date.parse(last.at)
   const rows: Row[] = []
+  // Something wrong right now comes first: the morning note never only brings good news.
+  if (home.status.tone === 'warn') rows.push({ icon: 'alert', tone: 'warn', text: home.status.text })
 
   const n = home.wallets.length
   if (home.value !== null) {
     const what = n ? `${n} wallet${n > 1 ? 's' : ''}` : 'Solana'
-    const before = last.value !== null && (last.wallets > 0) === n > 0 ? last.value : null
+    // Only the same set of wallets compares (adding one overnight isn't a +2,700% night).
+    const before = last.value !== null && last.wallets === n ? last.value : null
     const move = before ? ((home.value - before) / before) * 100 : null
     const moved = move !== null ? ` (${move >= 0 ? '+' : ''}${move.toFixed(1)}%)` : ''
     rows.push({

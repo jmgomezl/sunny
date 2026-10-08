@@ -74,7 +74,21 @@ function cloud(g: CanvasRenderingContext2D, x: number, y: number, s: number) {
 function wrap(g: CanvasRenderingContext2D, text: string, width: number, max: number) {
   const lines: string[] = []
   let line = ''
-  for (const word of text.split(/\s+/)) {
+  // A word wider than the line (a long phishing domain) is split, so it never runs off the card.
+  const words = text.split(/\s+/).flatMap((word) => {
+    if (g.measureText(word).width <= width) return [word]
+    const parts: string[] = []
+    let part = ''
+    for (const ch of word) {
+      if (part && g.measureText(part + ch).width > width) {
+        parts.push(part)
+        part = ''
+      }
+      part += ch
+    }
+    return part ? [...parts, part] : parts
+  })
+  for (const word of words) {
     const next = line ? `${line} ${word}` : word
     if (g.measureText(next).width <= width) line = next
     else {
