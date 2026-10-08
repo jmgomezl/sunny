@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "Sunny's pocket money: an allowance vault an AI agent can only draw from within on-chain limits"
 edition.workspace = true
 rust-version.workspace = true
+license = "MIT"
 
 [lib]
 crate-type = ["cdylib", "lib"]

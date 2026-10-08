@@ -12,6 +12,7 @@
   <img alt="x402 payments" src="https://img.shields.io/badge/x402-v2%20payments-14f195" />
   <img alt="Tests" src="https://img.shields.io/badge/tests-36%20passing-2f8f5b" />
   <a href="docs/BUILD_LOG.md"><img alt="Build log" src="https://img.shields.io/badge/built%20in-the%20hackathon%20window-ffb43c" /></a>
+  <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-2f6fb0" /></a>
 </p>
 
 <p align="center">
@@ -364,4 +365,4 @@ The bot serves the Mini App's API on port 8820 and Vite proxies `/api` to it. Ou
 
 ---
 
-<p align="center">Built by Juan (<a href="https://github.com/jmgomezl">@jmgomezl</a>) with Claude Code as pair programmer; commits are co-authored.</p>
+<p align="center">Built by Juan (<a href="https://github.com/jmgomezl">@jmgomezl</a>) with Claude Code as pair programmer; commits are co-authored. Open source under the <a href="LICENSE">MIT license</a>.</p>
