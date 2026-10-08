@@ -13,6 +13,7 @@ import { isAddress } from './wallet.js'
 import { faucet, hasChain, pocketState, prepareOwnerTx, submitOwnerTx, type OwnerAction } from './solana.js'
 import { linkWallet, ownerOf, saveVault, usesOwnWallet, validRecord, vaultOf } from './vaults.js'
 import { challenge, sessionFor, verifySignIn, walletOfSession, walletUserId } from './walletAuth.js'
+import { count, seen, snapshot } from './stats.js'
 import { DEEP_SCAN_PATH, deepScanPreflight, deepScanRoute } from './x402.js'
 import { MAX_SHARE_BYTES, readShare, saveShare, startShareCleanup } from './shares.js'
 import { DEMO_BLINK_PATH, demoBlinkMeta, demoBlinkTransaction } from './demoblink.js'
@@ -134,6 +135,8 @@ function identify(body: Record<string, unknown>, botToken: string, ip: string, r
   }
   // Negative ids keep guest memories apart from real Telegram users.
   const id = -parseInt(createHash('sha256').update(guestId).digest('hex').slice(0, 12), 16)
+  // Someone actually trying the web preview (not just loading it) counts as a visitor.
+  if (route === 'chat' || route === 'inspect') seen(id)
   return { id, name: 'friend', lang: 'en', guest: true }
 }
 
@@ -225,6 +228,15 @@ async function inspectRoute(req: IncomingMessage, res: ServerResponse, botToken:
     (result.kind === 'link' && (result.link.verdict === 'known_scam' || result.link.verdict === 'suspicious')) ||
     (result.kind === 'blink' && result.report.verdict === 'danger')
   if (caught && !person.guest) noteHabit(person.id, 'scamCaught')
+  if (result.kind === 'token' && result.found) count('tokensChecked', person.id)
+  else if (result.kind === 'wallet') count('walletsChecked', person.id)
+  else if (result.kind === 'link') {
+    count('linksChecked', person.id)
+    if (result.link.verdict === 'known_scam' || result.link.verdict === 'suspicious') count('scamsFlagged', person.id)
+  } else if (result.kind === 'blink') {
+    count('blinksChecked', person.id)
+    if (result.report.verdict === 'danger') count('drainersFlagged', person.id)
+  }
   if (result.kind === 'token' && result.found) {
     logActivity(person.id, 'check', `Checked $${result.card.symbol} · ${result.card.risk} risk`, 'Jupiter + RugCheck')
   } else if (result.kind === 'wallet') {
@@ -389,6 +401,13 @@ async function authRoute(req: IncomingMessage, res: ServerResponse) {
   throw new ApiError(400, 'Unknown sign-in request.')
 }
 
+/** GET /api/stats: Sunny's public numbers, for the stats page. */
+async function statsRoute(req: IncomingMessage, res: ServerResponse) {
+  if (!allow(`stats:ip:${clientIp(req)}`, 120, HOUR)) return send(res, 429, { error: 'Too many requests' })
+  res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'public, max-age=60' })
+  res.end(JSON.stringify(await snapshot()))
+}
+
 /** POST /api/badges { op: 'sync' | 'backup' }: mints earned badges and returns every badge's status. */
 async function badgesRoute(req: IncomingMessage, res: ServerResponse, botToken: string) {
   const body = await readJson(req)
@@ -466,6 +485,7 @@ export function startApi(port: number, botToken: string) {
       if (req.method === 'POST' && req.url === '/api/share') return await shareRoute(req, res, botToken)
       if (req.method === 'POST' && req.url === '/api/badges') return await badgesRoute(req, res, botToken)
       if (req.method === 'POST' && req.url === '/api/auth') return await authRoute(req, res)
+      if (req.method === 'GET' && req.url === '/api/stats') return await statsRoute(req, res)
       if (req.url?.split('?')[0] === DEMO_BLINK_PATH) return await demoBlinkRoute(req, res)
       if (req.method === 'GET' && req.url?.startsWith('/api/share/')) return shareImage(req, res)
       // Public x402 API: anyone can pay for a deep scan, not just Sunny.

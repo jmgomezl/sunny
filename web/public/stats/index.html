@@ -1,0 +1,339 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Sunny, in numbers</title>
+    <meta name="description" content="Live numbers from Sunny: groups guarded, scams caught, and what its pocket program did on Solana." />
+    <link rel="icon" href="/favicon.svg" />
+    <meta name="theme-color" content="#BDE7FF" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Figtree:wght@400..800&family=Fraunces:ital,opsz,wght,SOFT,WONK@0,9..144,500..800,100,1;1,9..144,500..800,100,1&display=swap"
+    />
+    <style>
+      /* Sunny's public numbers. Everything on this page comes from /api/stats: the server's own
+         counters (test runs left out) and the pocket program's record on Solana devnet. */
+      :root {
+        --ink: #3a2414;
+        --soft: #6b4a2e;
+        --faint: #9a7b5f;
+        --card: #fffaf0;
+        --edge: rgba(150, 100, 50, 0.16);
+        --honey: #ffc24d;
+        --honey-deep: #f59a2c;
+        --sky-top: #bde7ff;
+        --sky-mid: #e3f3ff;
+        --paper: #fff4dc;
+        --shadow: 0 18px 40px -26px rgba(90, 50, 20, 0.55);
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --ink: #fff3e0;
+          --soft: #e2cdb4;
+          --faint: #b8a28a;
+          --card: #1d2442;
+          --edge: rgba(255, 220, 160, 0.14);
+          --sky-top: #0f1530;
+          --sky-mid: #18204a;
+          --paper: #141a33;
+          --shadow: 0 18px 40px -26px rgba(0, 0, 0, 0.7);
+        }
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html {
+        background: var(--paper);
+      }
+      body {
+        margin: 0;
+        min-height: 100dvh;
+        color: var(--ink);
+        font: 16px/1.5 Figtree, system-ui, sans-serif;
+        background: linear-gradient(180deg, var(--sky-top) 0%, var(--sky-mid) 280px, var(--paper) 620px) no-repeat;
+      }
+      main {
+        max-width: 760px;
+        margin: 0 auto;
+        padding: 28px 16px 64px;
+      }
+      header {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+      }
+      header img {
+        width: 64px;
+        height: 64px;
+        border-radius: 50%;
+        box-shadow: var(--shadow);
+      }
+      h1,
+      h2 {
+        font-family: Fraunces, Georgia, serif;
+        font-variation-settings: 'SOFT' 100, 'WONK' 1;
+        font-weight: 700;
+        margin: 0;
+      }
+      h1 {
+        font-size: clamp(30px, 7vw, 44px);
+        line-height: 1.05;
+      }
+      .lede {
+        margin: 14px 0 0;
+        color: var(--soft);
+        font-size: 16.5px;
+        max-width: 60ch;
+      }
+      .live {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        margin-top: 12px;
+        font-size: 13px;
+        font-weight: 700;
+        color: var(--soft);
+      }
+      .live i {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #2fbf71;
+        box-shadow: 0 0 0 0 rgba(47, 191, 113, 0.6);
+        animation: pulse 2s infinite;
+      }
+      @keyframes pulse {
+        70% {
+          box-shadow: 0 0 0 8px rgba(47, 191, 113, 0);
+        }
+        100% {
+          box-shadow: 0 0 0 0 rgba(47, 191, 113, 0);
+        }
+      }
+      section {
+        margin-top: 26px;
+        padding: 20px;
+        border-radius: 24px;
+        background: var(--card);
+        border: 1px solid var(--edge);
+        box-shadow: var(--shadow);
+      }
+      section > p {
+        margin: 6px 0 0;
+        color: var(--faint);
+        font-size: 13.5px;
+      }
+      h2 {
+        font-size: 22px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+        gap: 12px;
+        margin-top: 16px;
+      }
+      .stat {
+        padding: 14px 14px 12px;
+        border-radius: 18px;
+        background: color-mix(in oklab, var(--honey) 12%, var(--card));
+      }
+      .stat b {
+        display: block;
+        font-family: Fraunces, Georgia, serif;
+        font-size: 36px;
+        line-height: 1;
+        font-variant-numeric: tabular-nums;
+      }
+      .stat span {
+        display: block;
+        margin-top: 6px;
+        font-size: 13.5px;
+        font-weight: 650;
+        color: var(--soft);
+      }
+      .stat--sol {
+        border: 2px solid transparent;
+        background-image: linear-gradient(var(--card), var(--card)), linear-gradient(135deg, #9945ff, #43b4ca 55%, #14f195);
+        background-origin: border-box;
+        background-clip: padding-box, border-box;
+      }
+      /* Red only for something actually caught: a zero is just a zero. */
+      .stat--catch:not(.zero) b {
+        color: #c4472a;
+      }
+      @media (prefers-color-scheme: dark) {
+        .stat--catch:not(.zero) b {
+          color: #ff8a6b;
+        }
+      }
+      a {
+        color: var(--ink);
+        font-weight: 700;
+        text-decoration-color: var(--honey-deep);
+        text-underline-offset: 3px;
+      }
+      .proof {
+        display: inline-block;
+        margin-top: 14px;
+        font-size: 14px;
+      }
+      .cta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-top: 26px;
+      }
+      .cta a {
+        padding: 12px 18px;
+        border-radius: 999px;
+        text-decoration: none;
+        background: var(--card);
+        border: 1px solid var(--edge);
+        box-shadow: var(--shadow);
+      }
+      .cta a.primary {
+        color: #fff8ea;
+        background: #3a2414;
+        border-color: #3a2414;
+      }
+      footer {
+        margin-top: 28px;
+        color: var(--faint);
+        font-size: 13px;
+      }
+      .error {
+        color: #c4472a;
+        font-weight: 700;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <img src="/icon-192.png" alt="Sunny, a small plush sun" />
+        <div>
+          <h1>Sunny, in numbers</h1>
+        </div>
+      </header>
+      <p class="lede">
+        Scams start in chat, not in the wallet. This is what Sunny has guarded, checked and caught, and what its pocket
+        program did on Solana. Live, with nothing rounded up.
+      </p>
+      <div class="live"><i></i><span id="updated">Loading…</span></div>
+
+      <section>
+        <h2>👥 Guarding groups</h2>
+        <p>Telegram groups that added Sunny. It stays quiet and warns when a scam link, drainer Blink or risky token lands.</p>
+        <div class="grid">
+          <div class="stat"><b data-k="groups.guarded">–</b><span>groups guarded</span></div>
+          <div class="stat"><b data-k="groups.members">–</b><span>people in those groups</span></div>
+          <div class="stat stat--catch"><b data-k="groups.warnings">–</b><span>scam warnings posted</span></div>
+          <div class="stat"><b data-k="groups.checks">–</b><span>/check answers</span></div>
+        </div>
+      </section>
+
+      <section>
+        <h2>🛡 Checks and catches</h2>
+        <p>Everything Sunny checked in chats, Scan &amp; check and the web preview.</p>
+        <div class="grid">
+          <div class="stat"><b data-k="checks.links">–</b><span>links checked</span></div>
+          <div class="stat"><b data-k="checks.tokens">–</b><span>tokens checked</span></div>
+          <div class="stat"><b data-k="checks.blinks">–</b><span>Blinks read</span></div>
+          <div class="stat"><b data-k="checks.wallets">–</b><span>wallets checked</span></div>
+          <div class="stat stat--catch"><b data-k="caught.scamLinks">–</b><span>scam links flagged</span></div>
+          <div class="stat stat--catch"><b data-k="caught.drainerBlinks">–</b><span>drainer Blinks stopped</span></div>
+        </div>
+      </section>
+
+      <section>
+        <h2>☀️ The pocket, on Solana</h2>
+        <p>
+          Sunny's spending limits live in a Solana program, not in the AI. These come straight from the program's record
+          on devnet (they include our own testing), and anyone can check them.
+        </p>
+        <div class="grid">
+          <div class="stat stat--sol"><b data-k="onChain.pockets">–</b><span>pockets opened</span></div>
+          <div class="stat stat--sol"><b data-k="onChain.transactions">–</b><span>program transactions</span></div>
+          <div class="stat stat--sol stat--catch"><b data-k="onChain.failed">–</b><span>refused by the program</span></div>
+          <div class="stat"><b data-k="pocket.refused">–</b><span>chat requests Solana said no to</span></div>
+          <div class="stat"><b data-k="pocket.approved">–</b><span>payments inside the limits</span></div>
+          <div class="stat"><b data-k="pocket.deepScans">–</b><span>deep scans paid over x402</span></div>
+        </div>
+        <a class="proof" href="https://solscan.io/account/7RhPyrf1C4t3QDce8hW19i6FK5wevEEPgBMne8Pt4wvy?cluster=devnet" target="_blank" rel="noreferrer"
+          >See the program on Solscan ↗</a
+        >
+      </section>
+
+      <section>
+        <h2>🌤 People</h2>
+        <p>People who used Sunny, counted once each.</p>
+        <div class="grid">
+          <div class="stat"><b data-k="people.telegram">–</b><span>in Telegram</span></div>
+          <div class="stat"><b data-k="people.wallets">–</b><span>signed in with a wallet</span></div>
+          <div class="stat"><b data-k="people.webGuests">–</b><span>tried the web preview</span></div>
+        </div>
+      </section>
+
+      <div class="cta">
+        <a class="primary" href="https://t.me/SunnySolBot?startgroup=guard">🛡 Add Sunny to your group</a>
+        <a href="https://t.me/SunnySolBot">Open Sunny in Telegram</a>
+        <a href="/">Web app</a>
+        <a href="https://github.com/jmgomezl/sunny">Source (MIT)</a>
+      </div>
+
+      <footer>
+        <span id="since"></span> Test runs (our end-to-end script and AI testers) are never counted. Devnet, with test
+        money.
+      </footer>
+    </main>
+    <script>
+      const get = (o, path) => path.split('.').reduce((v, k) => (v == null ? v : v[k]), o)
+      const fmt = (n) => (typeof n === 'number' ? n.toLocaleString('en-US') : '–')
+      const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches
+
+      // Numbers count up the first time, then just update.
+      function show(el, to) {
+        if (typeof to !== 'number') return void (el.textContent = '–')
+        const from = Number(el.dataset.v ?? 0)
+        el.dataset.v = String(to)
+        if (reduce || from === to) return void (el.textContent = fmt(to))
+        const start = performance.now()
+        const step = (now) => {
+          const t = Math.min(1, (now - start) / 900)
+          el.textContent = fmt(Math.round(from + (to - from) * (1 - Math.pow(1 - t, 3))))
+          if (t < 1) requestAnimationFrame(step)
+        }
+        requestAnimationFrame(step)
+      }
+
+      async function load() {
+        try {
+          const res = await fetch('/api/stats', { cache: 'no-store' })
+          if (!res.ok) throw new Error(String(res.status))
+          const s = await res.json()
+          for (const el of document.querySelectorAll('[data-k]')) {
+            const value = get(s, el.dataset.k)
+            el.closest('.stat').classList.toggle('zero', !value)
+            show(el, value)
+          }
+          const at = new Date(s.updatedAt)
+          document.getElementById('updated').textContent = `Live · updated ${at.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`
+          const since = new Date(s.since).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+          document.getElementById('since').textContent = `Sunny's own counters started on ${since}; groups and on-chain numbers cover everything.`
+        } catch {
+          const el = document.getElementById('updated')
+          el.textContent = 'Couldn’t load the numbers right now. Try again in a minute.'
+          el.className = 'error'
+        }
+      }
+      load()
+      setInterval(load, 60_000)
+    </script>
+  </body>
+</html>

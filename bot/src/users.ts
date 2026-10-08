@@ -1,5 +1,6 @@
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { seen } from './stats.js'
 
 // Per-person state: the wallets Sunny watches for them and a short log of what Sunny did.
 // Telegram users have positive ids; web-preview guests have negative ids.
@@ -89,6 +90,7 @@ const utcDay = (d = new Date()) => d.toISOString().slice(0, 10)
  * activity and build the streak; background work (alerts, briefs) never does.
  */
 export function touch(id: number, name?: string, lang?: string) {
+  seen(id)
   const u = get(id)
   const today = utcDay()
   const yesterday = utcDay(new Date(Date.now() - 86_400_000))

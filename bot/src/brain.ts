@@ -6,6 +6,7 @@ import { logActivity, MAX_WATCHED, noteHabit, unwatchWallet, watchedOf, watchWal
 import { agentDraw, DEMO_LIMITS, ensureDemoPocket, hasChain, pocketState, walletHistory, type WalletEvent } from './solana.js'
 import { ownerOf, usesOwnWallet } from './vaults.js'
 import { isWalletUser } from './walletAuth.js'
+import { count } from './stats.js'
 import { accountKind } from './inspect.js'
 import { isAddress, walletReport, type WalletReport } from './wallet.js'
 import {
@@ -514,6 +515,7 @@ async function deepScan(query: string, ctx: Ctx) {
     const paid = await sunnyBuysDeepScan(wallet, found.card.mint)
     ctx.scans.push({ ...paid.report, price: paid.price, paymentTx: paid.paymentTx, drawTx: paid.drawTx })
     noteHabit(ctx.userId, 'deepScan')
+    count('deepScans', ctx.userId)
     logActivity(ctx.userId, 'check', `Deep scan of $${paid.report.symbol} · ${paid.report.risk} risk`, `Paid $${paid.price.toFixed(2)} over x402`)
     return {
       paid_usd: paid.price,
@@ -614,6 +616,7 @@ async function runTool(name: string, rawArgs: string, ctx: Ctx): Promise<unknown
         const result = await lookupToken(String(args.query ?? ''))
         if (result.found && cards.length < 2) cards.push(result.card)
         if (result.found) logActivity(ctx.userId, 'check', `Checked $${result.card.symbol} · ${result.card.risk} risk`, 'Jupiter + RugCheck')
+        if (result.found) count('tokensChecked', ctx.userId)
         return result
       }
       case 'market_overview':
@@ -629,6 +632,8 @@ async function runTool(name: string, rawArgs: string, ctx: Ctx): Promise<unknown
         if (!report) return { not_a_blink: true, hint: 'This isn’t a Blink; use check_link for an ordinary link.' }
         if (ctx.blinks.length < 2) ctx.blinks.push(report)
         if (report.verdict === 'danger') noteHabit(ctx.userId, 'scamCaught')
+        count('blinksChecked', ctx.userId)
+        if (report.verdict === 'danger') count('drainersFlagged', ctx.userId)
         logActivity(
           ctx.userId,
           report.verdict === 'danger' ? 'scam' : 'check',
@@ -686,6 +691,8 @@ async function runTool(name: string, rawArgs: string, ctx: Ctx): Promise<unknown
         if (!('error' in result) && ctx.links.length < 2) ctx.links.push(result)
         if (!('error' in result)) {
           const bad = result.verdict === 'known_scam' || result.verdict === 'suspicious'
+          count('linksChecked', ctx.userId)
+          if (bad) count('scamsFlagged', ctx.userId)
           if (bad) noteHabit(ctx.userId, 'scamCaught')
           logActivity(ctx.userId, bad ? 'scam' : 'check', `${bad ? 'Flagged' : 'Checked'} ${result.domain}`, result.verdict.replace('_', ' '))
         }
@@ -729,6 +736,7 @@ async function runTool(name: string, rawArgs: string, ctx: Ctx): Promise<unknown
           const sent = await agentDraw(wallet, amount)
           ctx.pocket.push({ amount, reason, ok: true, message: 'Approved by your pocket rules', explorer: sent.explorer, demo: owner.demo || undefined })
           logActivity(ctx.userId, 'check', `Took $${amount} of pocket money`, reason)
+          count('drawsApproved', ctx.userId)
           // The real numbers after the draw, so the reply never guesses what's left.
           return { ok: true, ...sent, ...demo, ...(owner.demo ? {} : { pocket_now: await pocketFacts(wallet) }) }
         } catch (err) {
@@ -739,6 +747,7 @@ async function runTool(name: string, rawArgs: string, ctx: Ctx): Promise<unknown
           const limits = now && 'per_payment_limit_usd' in now ? { perTx: now.per_payment_limit_usd, daily: now.daily_limit_usd } : {}
           ctx.pocket.push({ amount, reason, ok: false, message: why, explorer: proof, ...limits, demo: owner.demo || undefined })
           logActivity(ctx.userId, 'check', `Solana stopped a $${amount} draw`, why)
+          count('drawsRefused', ctx.userId)
           // The real numbers, so the explanation never guesses ("you spent it all today").
           // The shared demo pocket's balances belong to every visitor, so only its rule is shared.
           const facts = owner.demo ? { per_payment_limit_usd: DEMO_LIMITS.perTx } : now
