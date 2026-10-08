@@ -17,7 +17,7 @@ import { registerExactSvmScheme as registerClientScheme } from '@x402/svm/exact/
 import { registerExactSvmScheme as registerFacilitatorScheme } from '@x402/svm/exact/facilitator'
 import { deepReport, type DeepReport } from './deepscan.js'
 import { accountKind } from './inspect.js'
-import { agentDraw, agentFor, ensureAta, explorerTx, feePayer, isSolanaAddress, USD, usdcMint } from './solana.js'
+import { agentDraw, agentFor, ensureAta, explorerTx, feePayer, isSolanaAddress, refundToPocket, USD, usdcMint } from './solana.js'
 
 // Sunny's deep scan is a real x402 API (protocol v2, "exact" scheme on Solana devnet).
 // Ask without paying and you get 402 Payment Required with the price; pay by sending a
@@ -161,10 +161,26 @@ export async function sunnyBuysDeepScan(ownerAddress: string, mint: string): Pro
     allowedAssets: [{ network: NETWORK, asset: usdcMint().toBase58(), maxAmountPerPayment: atomic(MAX_PER_PAYMENT_USD) }],
   })
   registerClientScheme(client, { signer: await createKeyPairSignerFromBytes(agent.secretKey), networks: [NETWORK] })
-  const res = await wrapFetchWithPayment(fetch, client)(`${SELF}${DEEP_SCAN_PATH}?mint=${mint}`)
+  // The money left the pocket, so if the scan doesn't come back it goes straight back in.
+  const refund = async (why: string): Promise<never> => {
+    const back = await refundToPocket(ownerAddress, DEEP_SCAN_PRICE).catch(() => null)
+    throw Object.assign(
+      new Error(
+        back
+          ? `The scan service failed (${why}), so I put the $${DEEP_SCAN_PRICE.toFixed(2)} back in your pocket.`
+          : `The scan service failed (${why}). The $${DEEP_SCAN_PRICE.toFixed(2)} is safe in my wallet; I’ll put it back.`,
+      ),
+      { refunded: back?.explorer ?? null, drawTx: drawn.explorer },
+    )
+  }
+  const res = await wrapFetchWithPayment(fetch, client)(`${SELF}${DEEP_SCAN_PATH}?mint=${mint}`).catch((err: unknown) =>
+    refund(err instanceof Error ? err.message.slice(0, 80) : 'no answer'),
+  )
   if (!res.ok) {
     const why = ((await res.json().catch(() => ({}))) as { error?: string }).error
-    throw new Error(`The scan service said no (${why ?? res.status}). The $${DEEP_SCAN_PRICE} stays in my wallet.`)
+    // Paid but not delivered can't be undone here; unpaid failures refund.
+    if (!res.headers.get('payment-response')) await refund(why ?? String(res.status))
+    throw new Error(`The scan service said no (${why ?? res.status}).`)
   }
   const receipt = decodePaymentResponseHeader(res.headers.get('payment-response') ?? '')
   return {

@@ -299,6 +299,34 @@ export async function agentDraw(ownerAddress: string, usd: number) {
 }
 
 /**
+ * Sunny puts money it drew back into the pocket (anyone may top a pocket up): used when
+ * something it paid for didn't arrive, so the owner never pays for nothing.
+ */
+export async function refundToPocket(ownerAddress: string, usd: number) {
+  const owner = new PublicKey(ownerAddress)
+  const agent = agentFor(owner)
+  const pocket = pocketPda(owner)
+  const tx = new Transaction({ feePayer: feePayer().publicKey })
+  tx.add(
+    new TransactionInstruction({
+      programId: POCKET_PROGRAM,
+      keys: [
+        { pubkey: agent.publicKey, isSigner: true, isWritable: false },
+        { pubkey: pocket, isSigner: false, isWritable: false },
+        { pubkey: vaultPda(pocket), isSigner: false, isWritable: true },
+        { pubkey: usdcMint(), isSigner: false, isWritable: false },
+        { pubkey: ata(agent.publicKey), isSigner: false, isWritable: true },
+        { pubkey: TOKEN_PROGRAM, isSigner: false, isWritable: false },
+      ],
+      data: Buffer.concat([disc('top_up'), u64(toBase(usd))]),
+    }),
+  )
+  tx.recentBlockhash = (await connection.getLatestBlockhash()).blockhash
+  tx.sign(feePayer(), agent)
+  return send(tx)
+}
+
+/**
  * Sends straight to the chain, without the preflight check, so a refused draw lands as a
  * failed transaction carrying the program's own error: on-chain proof that Solana said no,
  * not just a server message. A refusal throws with `explorer` pointing at that transaction.
