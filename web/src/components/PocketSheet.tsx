@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
-import { SnowIcon, SunMark } from './Icons'
+import { CoinIcon, EyeIcon, ShieldIcon, SnowIcon, SunMark } from './Icons'
 import { inTelegram } from '../lib/api'
 import { BOT_LINK, type ShareSpec } from '../lib/share'
 import { ShareRow } from './Cards'
@@ -87,6 +87,17 @@ const SHARE_MOMENTS: Record<string, Omit<ShareSpec, 'proof'> | undefined> = {
     pose: 'frozen',
     caption: 'I just froze my AI pet’s pocket money on Solana ❄ It can’t spend a cent:',
   },
+}
+
+// What Sunny says right after something went through: the payoff, up top where it's seen.
+const DONE_LINE: Partial<Record<PocketEventKind, string>> = {
+  opened: 'Yay, my pocket is open! 🥹 Thank you. Every payment I make still has to pass the guardrails below.',
+  topup: 'Nom nom, thank you! ☀️ It’s in my pocket, and the guardrails still hold.',
+  faucet: 'Got it: practice money is in your wallet. Next, if you like, give me a small allowance below.',
+  freeze: 'Brrr, frozen ❄ I can’t spend a cent until you warm me up.',
+  unfreeze: 'Ahh, warm again ☀️ I can spend inside the guardrails again.',
+  withdraw: 'Done: the money is back in your wallet. My pocket stays here for whenever you want it.',
+  limits: 'New limits set. Solana checks every payment against them.',
 }
 
 // What the password is for, when the sheet was opened to do something specific.
@@ -240,7 +251,7 @@ export function PocketSheet({ open, state, intent, feedAmount = 5, onClose, onCh
   const getTestUsdc = () =>
     void run('Getting test USDC…', async () => {
       const sent = await pocketFaucet()
-      setDone({ text: `Got ${sent.amount} test USDC`, explorer: sent.explorer })
+      setDone({ text: `Got ${sent.amount} test USDC`, explorer: sent.explorer, event: 'faucet' })
       onChanged(sent.state, 'faucet', sent)
     })
 
@@ -263,10 +274,12 @@ export function PocketSheet({ open, state, intent, feedAmount = 5, onClose, onCh
         : 'Have a look before you sign. I read this on your phone, not on my server.'
       : loadError
       ? loadError
+      : done?.event && DONE_LINE[done.event]
+      ? DONE_LINE[done.event]!
       : record === undefined
       ? 'Looking for your wallet…'
       : record === null
-        ? `${intent === 'hello' ? `Hi${name ? ` ${name}` : ''}! I’m Sunny ☀️ ` : ''}Let’s make your wallet together. It’s born right here on your phone and locked with a password only you know.`
+        ? `${intent === 'hello' ? `Hi${name ? ` ${name}` : ''}! I’m Sunny ☀️ ` : ''}Let’s make your Sunny wallet: born on your phone, locked with a password only you know.`
         : !unlocked
           ? `${name ? `Hi ${name}! ` : ''}${UNLOCK_FOR[intent ?? ''] ?? 'Welcome back! Tell me your password so I know it’s you.'}`
           : intent === 'feed' && s?.frozen
@@ -281,7 +294,9 @@ export function PocketSheet({ open, state, intent, feedAmount = 5, onClose, onCh
                   ? 'If you like, give me a small daily allowance. I can only spend inside these limits, and Solana checks every payment, not me.'
                   : s.frozen
                     ? 'Brrr, I’m frozen ❄ I can’t spend a cent until you warm me up.'
-                    : `I have ${usd(s.leftToday)} left today. Top me up, freeze me, or take it all back whenever you like.`
+                    : s.vault <= 0
+                      ? 'My pocket is empty. Top me up whenever you like; I can only ever spend inside the guardrails below.'
+                      : `${usd(s.vault)} in my pocket, and I can spend up to ${usd(s.leftToday)} of it today. Top me up, freeze me, or take it all back whenever you like.`
 
   return (
     <AnimatePresence>
@@ -338,6 +353,21 @@ export function PocketSheet({ open, state, intent, feedAmount = 5, onClose, onCh
                 </motion.p>
               </div>
 
+              {/* The payoff sits right under Sunny's words, not two screens down. */}
+              {done && (
+                <p className="pocket-done">
+                  ✓ {done.text}
+                  {done.explorer && (
+                    <a href={done.explorer} target="_blank" rel="noreferrer">
+                      View on Solscan
+                    </a>
+                  )}
+                </p>
+              )}
+              {done?.explorer && SHARE_MOMENTS[done.event ?? ''] && (
+                <ShareRow spec={{ ...SHARE_MOMENTS[done.event ?? '']!, proof: done.explorer }} />
+              )}
+
               {loadError && (
                 <button type="button" className="btn btn--primary pocket-open-tg" onClick={reload}>
                   Try again
@@ -349,6 +379,21 @@ export function PocketSheet({ open, state, intent, feedAmount = 5, onClose, onCh
                 <a className="btn btn--primary pocket-open-tg" href={BOT_LINK} target="_blank" rel="noreferrer">
                   Open Sunny in Telegram
                 </a>
+              )}
+
+              {/* First hello: what Sunny does, before it asks for anything. */}
+              {inTelegram() && record === null && intent === 'hello' && (
+                <ul className="hello-rows">
+                  <li>
+                    <ShieldIcon size={16} /> I check tokens, links and Blinks before you sign
+                  </li>
+                  <li>
+                    <EyeIcon size={16} /> I watch any wallet you give me, read-only
+                  </li>
+                  <li>
+                    <CoinIcon size={16} /> I can spend a little pocket money, only inside limits Solana enforces
+                  </li>
+                </ul>
               )}
 
               {/* 1. Create a self-custodial wallet, OculusVault-style. */}
@@ -377,8 +422,7 @@ export function PocketSheet({ open, state, intent, feedAmount = 5, onClose, onCh
                     </p>
                   )}
                   <p className="scan-hint">
-                    Not even I can open it, so there’s no reset: if you forget the password, the wallet is gone. Network
-                    fees are on me.
+                    No reset, not even by me: forget the password and the wallet is gone. Network fees are on me.
                   </p>
                   <button
                     className="btn btn--primary"
@@ -429,6 +473,10 @@ export function PocketSheet({ open, state, intent, feedAmount = 5, onClose, onCh
                     ))}
                   </ul>
                   <small>Checked on this phone before signing. Sunny pays the network fee.</small>
+                  {/* Opening the pocket sets its guardrails: show them at the moment they're signed. */}
+                  {prepared.event === 'opened' && (
+                    <Guardrails preview compact perTx={Number(perTx) || 5} daily={Number(daily) || 10} />
+                  )}
                   <div className="scan-actions">
                     <button type="button" className="btn btn--primary" onClick={approve} disabled={Boolean(busy)}>
                       Approve & sign
@@ -439,7 +487,7 @@ export function PocketSheet({ open, state, intent, feedAmount = 5, onClose, onCh
                       onClick={() => setPrepared(null)}
                       disabled={Boolean(busy)}
                     >
-                      Cancel
+                      {prepared.event === 'opened' ? 'Change limits' : 'Cancel'}
                     </button>
                   </div>
                 </div>
@@ -457,7 +505,7 @@ export function PocketSheet({ open, state, intent, feedAmount = 5, onClose, onCh
                     <div>
                       <small>In my pocket</small>
                       <strong>{usd(s.vault)}</strong>
-                      <span>{s.exists ? `${usd(s.leftToday)} left today` : 'not open yet'}</span>
+                      <span>{s.exists ? `can spend ${usd(s.leftToday)} today` : 'not open yet'}</span>
                     </div>
                   </div>
 
@@ -538,7 +586,7 @@ export function PocketSheet({ open, state, intent, feedAmount = 5, onClose, onCh
                     <Guardrails
                       perTx={s.perTxLimit}
                       daily={s.dailyLimit}
-                      leftToday={s.leftToday}
+                      spentToday={s.spentToday}
                       frozen={s.frozen}
                       programUrl={PROGRAM_URL(s.cluster)}
                     />
@@ -594,19 +642,6 @@ export function PocketSheet({ open, state, intent, feedAmount = 5, onClose, onCh
                 </div>
               )}
               {error && !passwordForm && <p className="scan-error">{error}</p>}
-              {done && (
-                <p className="pocket-done">
-                  ✓ {done.text}
-                  {done.explorer && (
-                    <a href={done.explorer} target="_blank" rel="noreferrer">
-                      View on Solscan
-                    </a>
-                  )}
-                </p>
-              )}
-              {done?.explorer && SHARE_MOMENTS[done.event ?? ''] && (
-                <ShareRow spec={{ ...SHARE_MOMENTS[done.event ?? '']!, proof: done.explorer }} />
-              )}
             </div>
           </motion.section>
         </>

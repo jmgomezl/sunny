@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { TokenAvatar } from './TokenAvatar'
-import { GuardrailHeld } from './Guardrails'
-import { SolanaMark, SunMark } from './Icons'
+import { GuardrailHeld, refusalFacts } from './Guardrails'
+import { CoinIcon, ShieldIcon, SolanaMark, SunMark } from './Icons'
 import { canShareStory, sendToChat, shareStory, type ShareSpec } from '../lib/share'
 import type { AlertCard, DeepScan, LinkCheck, MyWallet, PocketEvent, TokenCard } from '../lib/chat'
 import type { BlinkReport, WalletReport } from '../lib/home'
@@ -500,26 +500,33 @@ export function BlinkCardView({ report }: { report: BlinkReport }) {
 
 /** A draw from Sunny's pocket: approved, or stopped by the on-chain rules. */
 export function PocketEventView({ event }: { event: PocketEvent }) {
+  const limits = { perTx: event.perTx, daily: event.daily }
   return (
     <div className={`pocket-event pocket-event--${event.ok ? 'ok' : 'stopped'}`}>
-      <span className="alert-card-bell" aria-hidden="true">
-        {event.ok ? '🪙' : '⛔'}
+      <span className="guardrail-post" aria-hidden="true">
+        {event.ok ? <CoinIcon size={16} /> : <ShieldIcon size={16} strokeWidth={2.4} />}
       </span>
       <div>
-        <strong>{event.ok ? `Took $${event.amount} of pocket money` : `Solana stopped a $${event.amount} draw`}</strong>
+        <strong>
+          {event.ok
+            ? `Took $${event.amount} of pocket money`
+            : event.refunded
+              ? `Refunded $${event.amount} to the pocket`
+              : `Solana stopped a $${event.amount} draw`}
+        </strong>
         <small>
-          {event.ok ? `${event.reason} · ${event.message}` : event.message}
-          {event.explorer && (
+          {event.ok ? `${event.reason} · ${event.message}` : event.refunded ? event.message : refusalFacts(event.amount, event.message, limits)}
+          {(event.refunded || event.explorer) && (
             <>
               {' · '}
-              <a href={event.explorer} target="_blank" rel="noreferrer">
-                View tx
+              <a href={event.refunded || event.explorer} target="_blank" rel="noreferrer">
+                {event.ok || event.refunded ? 'View tx' : 'See the refusal on Solana'}
               </a>
             </>
           )}
         </small>
-        {!event.ok && <GuardrailHeld reason={event.message} />}
-        {!event.ok && (
+        {!event.ok && !event.refunded && <GuardrailHeld reason={event.message} {...limits} />}
+        {!event.ok && !event.refunded && (
           <ShareRow
             spec={{
               kicker: 'My AI can’t overspend',
@@ -529,6 +536,7 @@ export function PocketEventView({ event }: { event: PocketEvent }) {
               // Caught overspending: a sheepish blush.
               pose: 'thanks',
               caption: `I asked my AI pet Sunny to spend $${event.amount}. Solana said no: ${event.message.toLowerCase()} ☀️`,
+              ...(event.explorer ? { proof: event.explorer } : {}),
             }}
           />
         )}

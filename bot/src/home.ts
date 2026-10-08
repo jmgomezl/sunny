@@ -152,10 +152,10 @@ export async function buildHome(userId: number, wallets: string[]): Promise<Home
       mood: 'happy',
       status: unreadable
         ? { tone: 'warn', text: 'I can’t read that wallet' }
-        : { tone: 'info', text: 'Give me a wallet to watch over' },
+        : { tone: 'info', text: 'Watch any wallet (read-only)' },
       line: unreadable
         ? 'I couldn’t read the wallet you gave me just now. Check the address, or remove it and add it again.'
-        : 'Hi! Show me a wallet and I’ll keep watch over it. For now, here’s Solana today.',
+        : 'Hi! Give me any Solana wallet address and I’ll watch over it, read-only. For now, here’s Solana today.',
       tokens,
       checked: 0,
       approvals: 0,

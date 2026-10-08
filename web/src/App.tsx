@@ -191,9 +191,10 @@ const DOZE_LINE = 'Zzz… my lantern’s on. Tap me if you need anything.'
 function loadBond() {
   try {
     const v = Number(localStorage.getItem('sunny.bond'))
-    return Number.isFinite(v) && v > 0 ? Math.min(100, v) : 34
+    // A new friend starts at the start: level 1, not halfway to level 2.
+    return Number.isFinite(v) && v > 0 ? Math.min(100, v) : 6
   } catch {
-    return 34
+    return 6
   }
 }
 
@@ -397,7 +398,7 @@ export default function App() {
     void loadPocket().then((p) => {
       // First visit: once Sunny has said hi, it offers to make your wallet together.
       if (p && !p.wallet && !DEMO && !helloSnoozed()) {
-        t = window.setTimeout(() => setPocketSheet((s) => (s.open ? s : { open: true, intent: 'hello' })), 1600)
+        t = window.setTimeout(() => setPocketSheet((s) => (s.open ? s : { open: true, intent: 'hello' })), 3500)
       }
     })
     return () => clearTimeout(t)
@@ -617,7 +618,16 @@ export default function App() {
     }
     play(
       next === 'dark'
-        ? { reaction: 'spin', line: pick(['Shades on 😎 Too bright out there anyway.', 'Deal with it 😎', 'Cool mode: on. Still watching, just stylishly.']), haptic: 'light', ms: 900 }
+        ? {
+            reaction: 'spin',
+            // No jokes while something's wrong: the shades go on, the worry stays.
+            line:
+              status.tone === 'warn'
+                ? 'Shades on 😎 Still keeping an eye on that risk for you.'
+                : pick(['Shades on 😎 Too bright out there anyway.', 'Cool mode: on. Still watching, just stylishly.']),
+            haptic: 'light',
+            ms: 900,
+          }
         : { reaction: 'giggle', line: pick(['Shades off! Hello, sunshine ☀️', 'Ahh, I can see your face again ☀️']), haptic: 'light', ms: 900 },
     )
   }
@@ -839,7 +849,7 @@ export default function App() {
       if (stopped) {
         // The rules working is good news: Solana said no, exactly as designed.
         play({ reaction: 'shiver', haptic: 'warning', ms: 1400, bond: 1 })
-        flagStatus({ tone: 'ok', text: `Solana stopped a ${money(stopped.amount)} draw` })
+        flagStatus({ tone: 'ok', text: `Guardrail held · ${money(stopped.amount)} stopped` })
       } else if (draws.length) {
         play({ reaction: 'yum', particles: ['coin', 4], haptic: 'success', ms: 1300, bond: 1 })
       } else if (scam) {
@@ -937,7 +947,7 @@ export default function App() {
     demo || !home
       ? null
       : mood === 'hungry' && canFeed
-        ? 'My pocket’s nearly empty… drag a coin to me? 🪙'
+        ? `My pocket’s ${ps?.exists && ps.vault <= 0 ? 'empty' : 'nearly empty'}… drag a coin to me? ☀️`
         : mood === 'sleepy'
           ? 'Shh… I’m dozing, but my lantern’s on. I’m still watching 🌙'
           : null
@@ -947,6 +957,10 @@ export default function App() {
       ? DOZE_LINE
       : (demo?.line ??
         moodLine ??
+        // A new Sunny wallet with nothing watched yet: the next step is the coin, not an address.
+        (home && home.wallets.length === 0 && canFeed && ps && !ps.exists
+          ? 'Your Sunny wallet is ready! Drag the coin to me to open my pocket ☀️'
+          : null) ??
         home?.line ??
         (skyDown ? 'I can’t see the sky right now ☁️ I’ll keep trying.' : 'Waking up… checking the sky for you.')))
   const status: Status =
@@ -1068,7 +1082,7 @@ export default function App() {
             aria-label={pocket?.wallet ? `Your Sunny wallet ${pocket.wallet}` : 'Make your Sunny wallet'}
           >
             <SolanaMark size={15} />
-            {pocket?.wallet ? short(pocket.wallet) : pocket && insideTelegram() ? 'Make wallet' : 'My wallet'}
+            {pocket?.wallet ? short(pocket.wallet) : 'Sunny wallet'}
           </button>
           </div>
         </header>
@@ -1273,9 +1287,13 @@ type GuardianProps = { status: Status; onTap?: () => void; watchPrompt?: boolean
 
 /** Sunny's one-line status. When there's an obvious next step, tapping it takes you there. */
 function GuardianStatus({ status, onTap, watchPrompt }: GuardianProps) {
+  // A refusal from the pocket's guardrails is good news, but not a plain ✓: it gets the shield.
+  const held = status.text.startsWith('Guardrail held')
   const IconCmp = watchPrompt
     ? EyeIcon
-    : status.tone === 'warn'
+    : held
+      ? ShieldIcon
+      : status.tone === 'warn'
       ? AlertIcon
       : status.text.startsWith('Pocket frozen')
         ? SnowIcon
@@ -1306,14 +1324,19 @@ function GuardianStatus({ status, onTap, watchPrompt }: GuardianProps) {
         <motion.button
           key={status.text}
           type="button"
-          className={`guardian guardian--${status.tone} guardian--tap`}
+          className={`guardian guardian--${status.tone} guardian--tap${held ? ' guardian--held' : ''}`}
           onClick={onTap}
           {...motionProps}
         >
           {content}
         </motion.button>
       ) : (
-        <motion.div key={status.text} className={`guardian guardian--${status.tone}`} role="status" {...motionProps}>
+        <motion.div
+          key={status.text}
+          className={`guardian guardian--${status.tone}${held ? ' guardian--held' : ''}`}
+          role="status"
+          {...motionProps}
+        >
           {content}
         </motion.div>
       )}
@@ -1396,9 +1419,9 @@ function CareCard({ wellbeing, bond, streak, pocket, onPocket, onRetry }: CarePr
                 </>
               ) : (
                 <>
-                  <strong>{usd(live.left)} left in my pocket</strong>
+                  <strong>{whole(live.vault)} in my pocket</strong>
                   <small>
-                    Max {whole(live.perTx)} each · limit resets in {refillIn()}
+                    {whole(live.perTx)} max · resets in {refillIn()}
                   </small>
                 </>
               )
@@ -1409,8 +1432,8 @@ function CareCard({ wellbeing, bond, streak, pocket, onPocket, onRetry }: CarePr
               </>
             ) : pocket.kind === 'no-wallet' ? (
               <>
-                <strong>Let’s make your wallet</strong>
-                <small>Locked by your password</small>
+                <strong>Make your Sunny wallet</strong>
+                <small>Born on your phone, locked by your password</small>
               </>
             ) : pocket.kind === 'error' ? (
               <>
@@ -1747,9 +1770,18 @@ function refillIn() {
 const ACTIVITY_ICON: Record<ActivityItem['kind'], typeof ShieldIcon> = {
   check: ShieldIcon,
   scam: StopIcon,
-  alert: EyeIcon,
+  alert: BellIcon,
   wallet: SwapIcon,
   watch: EyeIcon,
+}
+
+/** Each kind of moment its own icon: money, a refusal, watching, a check. */
+function activityLook(a: ActivityItem): { Icon: typeof ShieldIcon; held?: boolean } {
+  if (/^Solana stopped|^Guardrail held/.test(a.text)) return { Icon: ShieldIcon, held: true }
+  if (/^Took \$|test USDC|^Refunded|pocket/i.test(a.text)) return { Icon: CoinIcon }
+  if (/^(Watching|Stopped watching)/.test(a.text)) return { Icon: EyeIcon }
+  if (/^Created your Sunny wallet/.test(a.text)) return { Icon: SolanaMark }
+  return { Icon: ACTIVITY_ICON[a.kind] }
 }
 
 const DEMO_KIND: Record<Activity['kind'], ActivityItem['kind']> = {
@@ -1841,15 +1873,18 @@ function ActivityCard({ items }: { items: ActivityItem[] }) {
       ) : (
         <ul>
           {items.slice(0, 6).map((a) => {
-            const IconCmp = ACTIVITY_ICON[a.kind]
+            const { Icon: IconCmp, held } = activityLook(a)
             return (
-              <li key={`${a.at}-${a.text}`} className={`activity-item activity-item--${a.kind}`}>
+              <li
+                key={`${a.at}-${a.text}`}
+                className={`activity-item activity-item--${a.kind}${held ? ' activity-item--held' : ''}`}
+              >
                 <span className="activity-icon">
                   <IconCmp size={17} />
                 </span>
                 <span className="activity-text">
                   {a.text}
-                  <small>{a.meta}</small>
+                  <small>{a.meta.charAt(0).toUpperCase() + a.meta.slice(1)}</small>
                 </span>
                 {a.at && <span className="activity-time">{ago(a.at)}</span>}
               </li>

@@ -26,7 +26,7 @@ export type BadgeId = 'key-keeper' | 'pocket-parent' | 'wallet-watcher' | 'scam-
 
 export const BADGES: { id: BadgeId; name: string; symbol: string; emoji: string; how: string }[] = [
   { id: 'key-keeper', name: 'Key Keeper', symbol: 'SKEY', emoji: '🔑', how: 'Back up your Sunny wallet key' },
-  { id: 'pocket-parent', name: 'Pocket Parent', symbol: 'SPOCKET', emoji: '🪙', how: 'Give Sunny its first pocket money' },
+  { id: 'pocket-parent', name: 'Pocket Parent', symbol: 'SPOCKET', emoji: '🍯', how: 'Give Sunny its first pocket money' },
   { id: 'wallet-watcher', name: 'Wallet Watcher', symbol: 'SWATCH', emoji: '👀', how: 'Ask Sunny to watch a wallet' },
   { id: 'scam-spotter', name: 'Scam Spotter', symbol: 'SSCAM', emoji: '🛡', how: 'Let Sunny catch a scam for you' },
   { id: 'deep-diver', name: 'Deep Diver', symbol: 'SDIVE', emoji: '🔍', how: 'Buy a deep scan over x402' },

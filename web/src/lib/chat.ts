@@ -35,7 +35,18 @@ export type AlertCard = {
 }
 
 /** A pocket-money draw Sunny attempted; the Solana program approved or refused it. */
-export type PocketEvent = { amount: number; reason: string; ok: boolean; message: string; explorer?: string }
+export type PocketEvent = {
+  amount: number
+  reason: string
+  ok: boolean
+  message: string
+  explorer?: string
+  /** A paid tool failed after the draw and the money went back: the refund transaction. */
+  refunded?: string
+  /** The pocket's limits when Solana refused. */
+  perTx?: number
+  daily?: number
+}
 
 /** Something that happened in the user's Sunny wallet, described from the chain. */
 export type WalletEvent = { at: string | null; what: string; amount: number | null; ok: boolean; explorer: string }
