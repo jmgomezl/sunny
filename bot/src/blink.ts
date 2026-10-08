@@ -319,8 +319,12 @@ async function heldTokens(wallet: PublicKey) {
 
 type Simulation = { ok: boolean; error?: string; sends: Change[]; receives: Change[]; warnings: Warning[] }
 
-async function simulate(tx: VersionedTransaction, wallet: PublicKey, held: Map<string, Held>): Promise<Simulation> {
-  const allKeys = new Set(tx.message.staticAccountKeys.map((k) => k.toBase58()))
+async function simulate(
+  tx: VersionedTransaction,
+  wallet: PublicKey,
+  held: Map<string, Held>,
+  allKeys: Set<string>,
+): Promise<Simulation> {
   const watch = [wallet.toBase58(), ...[...held.keys()].filter((a) => allKeys.has(a))]
   const preSol = await mainnet.getBalance(wallet)
   const sim = await mainnet.simulateTransaction(tx, {
@@ -535,7 +539,16 @@ export async function checkBlink(link: string, watched: string | null, probe: st
   base.programs = programs
 
   if (!watched) return finish({ ...base, outcome: 'not_simulated' })
-  const sim = await simulate(tx, owner, held).catch((err) => ({
+  // Every account the transaction touches, including the ones it loads through lookup tables:
+  // a drainer can reach your token accounts that way without listing them directly.
+  const allKeys = new Set(tx.message.staticAccountKeys.map((k) => k.toBase58()))
+  try {
+    const loaded = tx.message.getAccountKeys({ addressLookupTableAccounts: lookups }).accountKeysFromLookups
+    for (const k of [...(loaded?.writable ?? []), ...(loaded?.readonly ?? [])]) allKeys.add(k.toBase58())
+  } catch {
+    // A table that couldn't be read: the instructions above were read without it too.
+  }
+  const sim = await simulate(tx, owner, held, allKeys).catch((err) => ({
     ok: false,
     error: err instanceof Error ? err.message : String(err),
     sends: [],
