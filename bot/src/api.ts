@@ -11,7 +11,8 @@ import { logActivity, MAX_WATCHED, noteHabit, touch, unwatchAll, unwatchWallet, 
 import { syncBadges } from './badges.js'
 import { isAddress } from './wallet.js'
 import { faucet, hasChain, pocketState, prepareOwnerTx, submitOwnerTx, type OwnerAction } from './solana.js'
-import { saveVault, validRecord, vaultOf } from './vaults.js'
+import { linkWallet, ownerOf, saveVault, usesOwnWallet, validRecord, vaultOf } from './vaults.js'
+import { challenge, sessionFor, verifySignIn, walletOfSession, walletUserId } from './walletAuth.js'
 import { DEEP_SCAN_PATH, deepScanPreflight, deepScanRoute } from './x402.js'
 import { MAX_SHARE_BYTES, readShare, saveShare, startShareCleanup } from './shares.js'
 import { DEMO_BLINK_PATH, demoBlinkMeta, demoBlinkTransaction } from './demoblink.js'
@@ -30,7 +31,7 @@ const GUEST_PER_HOUR = 12
 const IP_PER_HOUR = 30
 const GUESTS_PER_DAY = 400
 
-type Person = { id: number; name: string; lang: string; guest: boolean }
+type Person = { id: number; name: string; lang: string; guest: boolean; wallet?: string }
 
 class ApiError extends Error {
   constructor(
@@ -98,6 +99,20 @@ function identify(body: Record<string, unknown>, botToken: string, ip: string, r
     if (!allow(key, limit.user, HOUR)) throw new ApiError(429, 'I need a little rest to save my energy ☀️ Let’s pick this up in a bit.')
     touch(user.id, user.name, user.lang)
     return { ...user, guest: false }
+  }
+
+  // Signed in with their own wallet (outside Telegram: a Seeker, Android or a desktop extension).
+  if (typeof body.walletSession === 'string' && body.walletSession) {
+    const address = walletOfSession(body.walletSession)
+    if (!address) throw new ApiError(401, 'Your wallet sign-in expired. Connect your wallet again ☀️')
+    const id = walletUserId(address)
+    const key = route === 'chat' ? `u:${id}` : `${route}:u:${id}`
+    if (!allow(key, limit.user, HOUR) || !allow(`${route}:ip:${ip}`, limit.ip * 2, HOUR)) {
+      throw new ApiError(429, 'I need a little rest to save my energy ☀️ Let’s pick this up in a bit.')
+    }
+    linkWallet(id, address)
+    touch(id, 'friend', 'en')
+    return { id, name: 'friend', lang: 'en', guest: false, wallet: address }
   }
 
   const guestId = typeof body.guestId === 'string' ? body.guestId : ''
@@ -168,7 +183,7 @@ const clientIp = (req: IncomingMessage) => String(req.headers['x-real-ip'] ?? re
 async function startWatching(userId: number, input: string) {
   const address = input.trim()
   if (!isAddress(address)) throw new ApiError(400, 'That doesn’t look like a Solana wallet address.')
-  if (vaultOf(userId)?.address === address) throw new ApiError(400, 'That’s your Sunny wallet, I already look after it ☀️')
+  if (ownerOf(userId) === address) throw new ApiError(400, 'That’s your pocket’s wallet, I already look after it ☀️')
   if ((await accountKind(address).catch(() => 'wallet')) === 'mint') {
     throw new ApiError(400, 'That’s a token’s address, not a wallet. Paste it in Scan & check to see how safe the token is.')
   }
@@ -220,6 +235,7 @@ async function vaultRoute(req: IncomingMessage, res: ServerResponse, botToken: s
   const body = await readJson(req)
   const person = identify(body, botToken, clientIp(req), 'wallet')
   if (person.guest) throw new ApiError(403, 'Your Sunny wallet lives in Telegram. Open me from @SunnySolBot.')
+  if (person.wallet) throw new ApiError(403, 'You’re signed in with your own wallet, so there’s no Sunny wallet to make.')
   if (body.op === 'get') return send(res, 200, { record: vaultOf(person.id) })
   if (body.op === 'put') {
     if (!validRecord(body.record)) throw new ApiError(400, 'That wallet record doesn’t look right.')
@@ -257,9 +273,11 @@ async function pocketRoute(req: IncomingMessage, res: ServerResponse, botToken: 
   if (!hasChain()) throw new ApiError(503, 'Pocket money is waking up. Try again soon ☀️')
   const body = await readJson(req)
   const person = identify(body, botToken, clientIp(req), 'wallet')
-  const wallet = vaultOf(person.id)?.address
-  if (body.op === 'state') return send(res, 200, { wallet: wallet ?? null, state: wallet ? await pocketState(wallet) : null })
-  if (person.guest || !wallet) throw new ApiError(403, 'Create your Sunny wallet first.')
+  const wallet = ownerOf(person.id)
+  if (body.op === 'state') {
+    return send(res, 200, { wallet, own: usesOwnWallet(person.id), state: wallet ? await pocketState(wallet) : null })
+  }
+  if (person.guest || !wallet) throw new ApiError(403, 'Create your Sunny wallet (or connect yours) first.')
 
   if (body.op === 'prepare') {
     const action = String(body.action)
@@ -308,6 +326,38 @@ async function pocketRoute(req: IncomingMessage, res: ServerResponse, botToken: 
 }
 
 const PUBLIC_URL = process.env.MINI_APP_URL || 'https://sunny.aivylabs.xyz'
+
+// The domain in a sign-in message must be the page's own, or wallets warn about it. Only
+// Sunny's site (and a local dev server) can ask for one.
+function signInDomain(req: IncomingMessage) {
+  const host = String(req.headers.host ?? '')
+  const allowed = new URL(PUBLIC_URL).host
+  if (host === allowed || /^(localhost|127\.0\.0\.1)(:\d+)?$/.test(host)) return host
+  throw new ApiError(400, 'Sign in from Sunny’s own site.')
+}
+
+/** POST /api/auth { op: 'challenge', address } then { op: 'verify', message, signature }: sign in with a wallet. */
+async function authRoute(req: IncomingMessage, res: ServerResponse) {
+  const body = await readJson(req)
+  const domain = signInDomain(req)
+  if (!allow(`auth:ip:${clientIp(req)}`, 60, HOUR)) throw new ApiError(429, 'Too many sign-in attempts. Try again in a bit.')
+  if (body.op === 'challenge') {
+    if (typeof body.address !== 'string' || !isAddress(body.address)) throw new ApiError(400, 'That isn’t a Solana address.')
+    return send(res, 200, { message: challenge(body.address, domain) })
+  }
+  if (body.op === 'verify') {
+    if (typeof body.message !== 'string' || typeof body.signature !== 'string' || body.message.length > 600) {
+      throw new ApiError(400, 'Missing signature.')
+    }
+    const address = verifySignIn(body.message, body.signature, domain)
+    if (!address) throw new ApiError(401, 'That signature didn’t check out. Try connecting again.')
+    const id = walletUserId(address)
+    linkWallet(id, address)
+    touch(id, 'friend', 'en')
+    return send(res, 200, { session: sessionFor(address), address })
+  }
+  throw new ApiError(400, 'Unknown sign-in request.')
+}
 
 /** POST /api/badges { op: 'sync' | 'backup' }: mints earned badges and returns every badge's status. */
 async function badgesRoute(req: IncomingMessage, res: ServerResponse, botToken: string) {
@@ -382,6 +432,7 @@ export function startApi(port: number, botToken: string) {
       if (req.method === 'POST' && req.url === '/api/pocket') return await pocketRoute(req, res, botToken)
       if (req.method === 'POST' && req.url === '/api/share') return await shareRoute(req, res, botToken)
       if (req.method === 'POST' && req.url === '/api/badges') return await badgesRoute(req, res, botToken)
+      if (req.method === 'POST' && req.url === '/api/auth') return await authRoute(req, res)
       if (req.url?.split('?')[0] === DEMO_BLINK_PATH) return await demoBlinkRoute(req, res)
       if (req.method === 'GET' && req.url?.startsWith('/api/share/')) return shareImage(req, res)
       // Public x402 API: anyone can pay for a deep scan, not just Sunny.

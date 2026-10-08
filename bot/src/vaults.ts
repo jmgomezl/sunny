@@ -50,3 +50,17 @@ export function saveVault(userId: number, record: Record) {
   writeFileSync(`${FILE}.tmp`, JSON.stringify(vaults))
   renameSync(`${FILE}.tmp`, FILE)
 }
+
+// People signed in with their own wallet (outside Telegram) have no Sunny wallet: that wallet
+// owns their pocket. Their id comes from the address, so this is refilled on every request.
+const connected = new Map<number, string>()
+
+export function linkWallet(userId: number, address: string) {
+  connected.set(userId, address)
+}
+
+/** The wallet that owns this person's pocket: their Sunny wallet, or the wallet they signed in with. */
+export const ownerOf = (userId: number): string | null => vaultOf(userId)?.address ?? connected.get(userId) ?? null
+
+/** True for someone signed in with their own wallet (not a Sunny wallet). */
+export const usesOwnWallet = (userId: number) => !vaultOf(userId) && connected.has(userId)

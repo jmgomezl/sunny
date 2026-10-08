@@ -15,7 +15,7 @@ import {
 import { createInitializeInstruction, pack, type TokenMetadata } from '@solana/spl-token-metadata'
 import { connection, explorerTx, feePayer, hasChain, pocketState } from './solana.js'
 import { badgesOf, habitsOf, recordBadge, streakOf, watchedOf } from './users.js'
-import { vaultOf } from './vaults.js'
+import { ownerOf } from './vaults.js'
 
 // Good-habit badges: non-transferable Token-2022 tokens on devnet, each with on-chain
 // metadata, minted to your Sunny wallet the first time you earn them. The server checks
@@ -136,7 +136,7 @@ export type BadgeStatus = {
  * returns every badge's status. `newly` lists the ones minted just now, for a celebration.
  */
 export async function syncBadges(userId: number) {
-  const owner = vaultOf(userId)?.address ?? null
+  const owner = ownerOf(userId)
   const has = await earned(userId, owner)
   const mints = badgeMints()
   const newly: BadgeId[] = []
