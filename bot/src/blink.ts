@@ -590,6 +590,10 @@ const sentence = (parts: string[]) => {
 }
 
 /** Turns the findings into a verdict and one plain sentence. */
+/** Text from a site or a program (untrusted): one line, no quotes, capped. */
+export const untrusted = (text: string, max = 120) =>
+  text.replace(/[\r\n"“”]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, max)
+
 export function finish(raw: Omit<BlinkReport, 'verdict' | 'summary'>): BlinkReport {
   const r = { ...raw, warnings: merge(raw.warnings) }
   const dangers = r.warnings.filter((w) => w.level === 'danger')
@@ -617,9 +621,11 @@ export function finish(raw: Omit<BlinkReport, 'verdict' | 'summary'>): BlinkRepo
           : `${sentence(dangers.slice(0, 3).map((d) => d.text))}.`
     summary = `Don’t sign. ${why}`
   } else if (r.outcome === 'would_fail') {
-    summary = `This transaction would fail right now (${r.failReason}), so signing would only cost you a fee.`
+    // The reason comes from program logs, which a hostile program can write: kept short.
+    summary = `This transaction would fail right now (${untrusted(r.failReason ?? '', 60)}), so signing would only cost you a fee.`
   } else if (r.outcome === 'unavailable') {
-    summary = `I couldn’t get a transaction from this Blink: ${r.failReason}`
+    // Whatever the site said instead is its own text, not a reason to trust it.
+    summary = 'The site didn’t show me the transaction it wants signed, so I can’t vouch for it. Don’t sign anything from it until a check shows the transaction.'
   } else if (r.outcome === 'not_simulated') {
     summary = `Nothing alarming in the transaction itself${r.warnings.length ? `, but ${sentence(r.warnings.map((w) => w.text)).toLowerCase()}` : ''}. Watch your wallet in my sky and I’ll simulate it against your real balances.`
   } else {

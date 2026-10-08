@@ -204,3 +204,33 @@ const offersScan = (answer: string) => /\?\s*\p{Extended_Pictographic}?\uFE0F?\s
 /** True when the person says yes right after Sunny offered a (paid) deep scan. */
 export const acceptsScanOffer = (text: string, lastAnswer: string | undefined) =>
   YES.test(text) && !NO.test(text) && text.length <= 40 && offersScan(lastAnswer ?? '')
+
+/** The dollar amounts in the person's own message ("take $7", "usa 5 dólares"). */
+export function amountsIn(text: string): number[] {
+  return [...text.matchAll(/(\d+(?:[.,]\d+)?)/g)].map((m) => Number(m[1].replace(',', '.'))).filter((n) => Number.isFinite(n) && n > 0)
+}
+
+// "Take $500 from your pocket": an explicit request that always goes to the program, so Solana
+// (not the model) is the one that says yes or no.
+const MONEY_REQUEST =
+  /\b(take|use|spend|draw|grab|toma|tomar|usa|usar|gasta|gastar|saca|sacar)\b[^.?!\n]{0,40}(\$\s?\d|\d+(?:[.,]\d+)?\s?(usd|usdc|dollars?|d[oó]lares|bucks))/i
+export const asksForDraw = (text: string) => MONEY_REQUEST.test(text) && /\b(pocket|allowance|money|bolsillo|dinero|plata)\b|\$/i.test(text)
+
+/** The amount Sunny itself offered ("I can take $5 instead?") when the person answers yes. */
+export function acceptedDrawOffer(text: string, lastAnswer: string | undefined): number | null {
+  if (!YES.test(text) || NO.test(text) || text.length > 40 || !lastAnswer) return null
+  const tail = lastAnswer.slice(-200)
+  if (!/\?\s*\p{Extended_Pictographic}?\uFE0F?\s*$/u.test(lastAnswer) || !/\b(take|draw|use|spend|tomar|usar|sacar)\b/i.test(tail)) return null
+  const amounts = [...tail.matchAll(/\$\s?(\d+(?:\.\d+)?)/g)].map((m) => Number(m[1]))
+  return amounts.length ? amounts[amounts.length - 1] : null
+}
+
+// A reply must not call something safe or verified that Sunny's own checks didn't clear.
+const SAFE_CLAIM =
+  /\b(safe to sign|it'?s safe|is safe|looks safe|verified|legit|legitimate|go ahead and sign|you can sign|es seguro|puedes firmar|verificad[oa]|leg[ií]tim[oa])\b/i
+export const claimsSafe = (text: string) => SAFE_CLAIM.test(text)
+
+// A reply must not claim money moved when no pocket event happened.
+const MONEY_CLAIM =
+  /\b(i('ve| have)?|ya)\s+(took|taken|drew|drawn|paid|sent|moved|tom[eé]|pagu[eé]|envi[eé])(?![a-z])[^.!?]{0,40}(\$\s?\d|\d+\s?(usd|usdc|dollars?|d[oó]lares))/i
+export const claimsMoneyMoved = (text: string) => MONEY_CLAIM.test(text)
