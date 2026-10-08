@@ -1,0 +1,14 @@
+{
+  "fallbackType": "webview",
+  "generatorApp": "solana-mobile",
+  "host": "sunny.aivylabs.xyz",
+  "launcherName": "Sunny",
+  "name": "Sunny",
+  "packageId": "xyz.aivylabs.sunny",
+  "startUrl": "/?app=1",
+  "webManifestUrl": "https://sunny.aivylabs.xyz/manifest.webmanifest",
+  "signingKey": {
+    "alias": "sunny",
+    "path": ".keys/sunny-release.keystore"
+  }
+}

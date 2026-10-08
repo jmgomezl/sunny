@@ -57,16 +57,26 @@ export function who() {
 
 const FALLBACK_ERROR = 'My thoughts got cloudy for a second. Try me again? ☁️'
 
+const send = (path: string, body: Record<string, unknown>) =>
+  fetch(path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ...body, ...who() }),
+  })
+
 export async function post<T>(path: string, body: Record<string, unknown>): Promise<T> {
   let res: Response
   try {
-    res = await fetch(path, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...body, ...who() }),
-    })
+    res = await send(path, body)
   } catch {
-    throw new Error('I can’t reach my thoughts right now. Check your connection? ☁️')
+    // Coming back from a wallet app, Android's WebView can fail the very first request while
+    // its network wakes up. That failure never reached the server, so one retry is safe.
+    try {
+      await new Promise((r) => setTimeout(r, 800))
+      res = await send(path, body)
+    } catch {
+      throw new Error('I can’t reach my thoughts right now. Check your connection? ☁️')
+    }
   }
   const data = (await res.json().catch(() => ({}))) as T & { error?: string }
   // An expired wallet sign-in: forget it, so the next step is connecting again.

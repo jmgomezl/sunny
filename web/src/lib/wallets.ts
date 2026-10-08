@@ -65,16 +65,31 @@ export function onWalletsChanged(callback: () => void) {
 
 const connectOf = (w: Wallet) => (w.features as StandardConnectFeature)[StandardConnect]
 
+/** After the wallet app hands back, wait until Sunny is on screen again before going online. */
+async function backInFront() {
+  if (document.visibilityState !== 'visible') {
+    await new Promise<void>((resolve) => {
+      const done = () =>
+        document.visibilityState === 'visible' && (document.removeEventListener('visibilitychange', done), resolve())
+      document.addEventListener('visibilitychange', done)
+      setTimeout(resolve, 5000)
+    })
+  }
+  await new Promise((r) => setTimeout(r, 300))
+}
+
 /** Connects, signs Sunny's one-time sign-in message, and keeps the session. */
 export async function signIn(wallet: Wallet) {
   const { accounts } = await connectOf(wallet).connect()
   const account = accounts[0]
   if (!account) throw new Error('The wallet didn’t share an account. Try again?')
+  await backInFront()
   const { message } = await post<{ message: string }>('/api/auth', { op: 'challenge', address: account.address })
   const [signed] = await (wallet.features as SolanaSignMessageFeature)[SolanaSignMessage].signMessage({
     account,
     message: new TextEncoder().encode(message),
   })
+  await backInFront()
   const { session, address } = await post<{ session: string; address: string }>('/api/auth', {
     op: 'verify',
     message,
@@ -151,6 +166,7 @@ export async function signPocketTransaction(messageBase64: string): Promise<stri
     transaction: unsigned,
     chain: CHAIN,
   })
+  await backInFront()
   const signed = out.signedTransaction
   const [count, at] = readLength(signed, 0)
   if (!sameBytes(signed.slice(at + 64 * count), message)) {
