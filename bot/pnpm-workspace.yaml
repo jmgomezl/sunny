@@ -1,0 +1,7 @@
+# Packages allowed to run install scripts. esbuild bundles the server; the other three are
+# optional native speedups with pure-JS fallbacks, so they stay off (CI installs fail otherwise).
+allowBuilds:
+  bigint-buffer: false
+  bufferutil: false
+  esbuild: true
+  utf-8-validate: false
