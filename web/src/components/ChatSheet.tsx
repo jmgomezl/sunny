@@ -48,10 +48,19 @@ export function ChatSheet({ open, messages, pending, suggestions, sameAsTelegram
   const logRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
-  // Keep the newest message in view.
+  // Keep the newest message in view: your own messages and the typing dots at the bottom, and a
+  // new answer from Sunny from its first line (a long one with cards would open at its end).
   useEffect(() => {
     const log = logRef.current
-    if (log) log.scrollTo({ top: log.scrollHeight, behavior: 'smooth' })
+    if (!log) return
+    const last = messages.at(-1)
+    const el = [...log.querySelectorAll<HTMLElement>('.chat-msg')].at(-1)
+    if (!pending && last?.from === 'sunny' && el && el.offsetHeight > log.clientHeight * 0.6) {
+      const top = log.scrollTop + el.getBoundingClientRect().top - log.getBoundingClientRect().top - 12
+      log.scrollTo({ top, behavior: 'smooth' })
+    } else {
+      log.scrollTo({ top: log.scrollHeight, behavior: 'smooth' })
+    }
   }, [messages, pending])
 
   // Telegram's own back button closes the sheet; Escape does too on desktop.

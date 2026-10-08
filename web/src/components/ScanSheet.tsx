@@ -20,6 +20,9 @@ type ScanSheetProps = {
   onUnwatch: (address: string) => void
   onAsk: (question: string) => void
   onWatch: (symbol: string) => void
+  /** Whether Sunny's pocket can pay for a $0.10 deep scan right now, and what to do if not. */
+  deepScan: 'ready' | 'feed' | 'none'
+  onFeed: () => void
 }
 
 // Telegram's script defines the scanner everywhere, but it only works inside Telegram itself.
@@ -28,8 +31,21 @@ const canScan = () =>
 
 /** Scan a QR or paste anything (wallet, token, link) and Sunny tells you what it is. */
 export function ScanSheet(props: ScanSheetProps) {
-  const { open, mode, initialInput, watching, onClose, onChecking, onResult, onLinkWallet, onUnwatch, onAsk, onWatch } =
-    props
+  const {
+    open,
+    mode,
+    initialInput,
+    watching,
+    onClose,
+    onChecking,
+    onResult,
+    onLinkWallet,
+    onUnwatch,
+    onAsk,
+    onWatch,
+    deepScan,
+    onFeed,
+  } = props
   const [draft, setDraft] = useState('')
   const [pending, setPending] = useState(false)
   const [result, setResult] = useState<Inspection | null>(null)
@@ -54,7 +70,8 @@ export function ScanSheet(props: ScanSheetProps) {
     try {
       const r = await inspectInput(input)
       setResult(r)
-      onResult(r)
+      // A token pasted where a wallet was asked for isn't a little win for Sunny.
+      onResult(mode === 'link' && r.kind === 'token' ? null : r)
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
       onResult(null)
@@ -213,7 +230,14 @@ export function ScanSheet(props: ScanSheetProps) {
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ type: 'spring', stiffness: 420, damping: 32 }}
                 >
-                  {result.kind === 'token' && result.found && (
+                  {/* Watching needs a wallet: a token's address gets a clear word instead of "Watch it". */}
+                  {mode === 'link' && result.kind === 'token' && result.found && (
+                    <p className="scan-error">
+                      That’s the address of a token ({result.card.symbol}), not a wallet. Paste a wallet address to
+                      watch it, or check the token in Scan &amp; check.
+                    </p>
+                  )}
+                  {mode !== 'link' && result.kind === 'token' && result.found && (
                     <>
                       {!result.details.exact_match && (
                         <p className="scan-note">No token is called exactly “{draft}”. This is the closest match.</p>
@@ -238,14 +262,22 @@ export function ScanSheet(props: ScanSheetProps) {
                           Ask Sunny
                         </button>
                       </div>
-                      {/* Sunny buys it with pocket money, over x402; the request goes through the chat. */}
-                      <button
-                        type="button"
-                        className="ghost-btn scan-deep"
-                        onClick={() => onAsk(`Deep scan ${result.card.symbol} (${result.card.mint})`)}
-                      >
-                        Deep scan · $0.10 from my pocket
-                      </button>
+                      {/* Sunny buys it with pocket money, over x402; the request goes through the chat.
+                          Only offered when the pocket can pay; otherwise Sunny asks for a coin first. */}
+                      {deepScan === 'ready' && (
+                        <button
+                          type="button"
+                          className="ghost-btn scan-deep"
+                          onClick={() => onAsk(`Deep scan ${result.card.symbol} (${result.card.mint})`)}
+                        >
+                          Deep scan · $0.10 from my pocket
+                        </button>
+                      )}
+                      {deepScan === 'feed' && (
+                        <button type="button" className="ghost-btn scan-deep" onClick={onFeed}>
+                          Deep scan · feed me $0.10 first 🪙
+                        </button>
+                      )}
                     </>
                   )}
                   {result.kind === 'token' && !result.found && (

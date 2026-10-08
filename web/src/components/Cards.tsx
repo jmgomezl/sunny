@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { TokenAvatar } from './TokenAvatar'
 import { SolanaMark, SunMark } from './Icons'
 import { canShareStory, sendToChat, shareStory, type ShareSpec } from '../lib/share'
 import type { AlertCard, DeepScan, LinkCheck, MyWallet, PocketEvent, TokenCard } from '../lib/chat'
@@ -19,24 +20,11 @@ export function compact(n: number) {
 
 /** Live token card: price, 24h move and the safety audit, straight from Jupiter. */
 export function TokenCardView({ card }: { card: TokenCard }) {
-  const [iconFailed, setIconFailed] = useState(false)
   const dir = (card.change24h ?? 0) > 0 ? 'up' : (card.change24h ?? 0) < 0 ? 'down' : 'flat'
   return (
     <div className={`token-card token-card--${card.risk}`}>
       <div className="token-card-top">
-        {card.icon && !iconFailed ? (
-          <img
-            src={card.icon}
-            alt=""
-            width={30}
-            height={30}
-            loading="lazy"
-            referrerPolicy="no-referrer"
-            onError={() => setIconFailed(true)}
-          />
-        ) : (
-          <span className="token-card-letter">{card.symbol[0]}</span>
-        )}
+        <TokenAvatar symbol={card.symbol} icon={card.icon} />
         <div className="token-card-id">
           <strong>
             {card.symbol}
@@ -201,7 +189,9 @@ export function WalletCardView({ report }: { report: WalletReport }) {
             {report.address.slice(0, 4)}…{report.address.slice(-4)}
           </strong>
           <small>
-            {report.tokenCount} token{report.tokenCount === 1 ? '' : 's'} · {report.sol.toFixed(3)} SOL
+            {report.tokenCount} token{report.tokenCount === 1 ? '' : 's'} ·{' '}
+            {report.sol.toLocaleString('en-US', report.sol >= 10_000 ? { notation: 'compact', maximumFractionDigits: 1 } : { maximumFractionDigits: 3 })}{' '}
+            SOL
           </small>
         </div>
         <div className="token-card-price">
@@ -448,9 +438,9 @@ export function BlinkCardView({ report }: { report: BlinkReport }) {
         )}
         <div className="token-card-id">
           <strong>Should I sign this?</strong>
-          <small>
-            {report.title} · {report.host}
-          </small>
+          <small className="blink-title">{report.title}</small>
+          {/* The site asking for the signature is the key trust signal: always in full. */}
+          <small className="blink-host">{report.host}</small>
         </div>
         <span className={`risk-pill risk-pill--${pill.risk}`}>{pill.label}</span>
       </div>
