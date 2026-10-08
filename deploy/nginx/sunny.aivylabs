@@ -8,6 +8,14 @@ server {
     listen [::]:80;
 
     root /var/www/sunny;
+
+    # Compress the app and API answers (JS 569 KB → ~185 KB): about twice as fast on slow phones.
+    gzip on;
+    gzip_vary on;
+    gzip_proxied any;
+    gzip_comp_level 6;
+    gzip_min_length 1024;
+    gzip_types text/css application/javascript application/json image/svg+xml text/plain;
     index index.html;
 
     # Share cards: the Mini App uploads a story-sized image, Telegram fetches it by link.
