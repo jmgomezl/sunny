@@ -269,6 +269,10 @@ function explain(err: unknown): string {
   const n = hex ? parseInt(hex, 16) : dec ? Number(dec) : NaN
   if (ERRORS[n]) return ERRORS[n]
   if (/insufficient funds/i.test(text)) return 'There isn’t enough in the pocket'
+  // A transaction is only accepted for about a minute after it's made.
+  if (/blockhash not found|block height exceeded|TransactionExpired|has expired/i.test(text)) {
+    return 'That took a little long, so Solana let the request expire. Tap Approve again for a fresh one'
+  }
   return 'The transaction failed'
 }
 

@@ -6,7 +6,7 @@ import { PublicKey } from '@solana/web3.js'
 import { hasBrain, reply } from './brain.js'
 import { buildHome } from './home.js'
 import { accountKind, inspect } from './inspect.js'
-import { allow, DAY, HOUR } from './limits.js'
+import { allow, DAY, hits, HOUR } from './limits.js'
 import { logActivity, MAX_WATCHED, noteHabit, touch, unwatchAll, unwatchWallet, watchedOf, watchWallet } from './users.js'
 import { syncBadges } from './badges.js'
 import { isAddress } from './wallet.js'
@@ -127,7 +127,7 @@ function identify(body: Record<string, unknown>, botToken: string, ip: string, r
   const guestId = typeof body.guestId === 'string' ? body.guestId : ''
   if (!/^[A-Za-z0-9-]{8,64}$/.test(guestId)) throw new ApiError(400, 'Something went wrong. Refresh and try again?')
   if (!allow(`${route}:g:${guestId}`, limit.guest, HOUR) || !allow(`${route}:ip:${ip}`, limit.ip, HOUR)) {
-    throw new ApiError(429, 'That’s all I can do in the web preview for now ☀️ Open me in Telegram to keep going.')
+    throw new ApiError(429, 'That’s all I can do in the web preview for now ☀️ Connect a wallet or open me in Telegram to keep going.')
   }
   if (route === 'chat' && !allow('guests', GUESTS_PER_DAY, DAY)) {
     throw new ApiError(429, 'I’ve had a busy day in the web preview. Open me in Telegram to keep talking ☀️')
@@ -312,6 +312,10 @@ async function pocketRoute(req: IncomingMessage, res: ServerResponse, botToken: 
           ? { action, amount: num(body.amount, 10_000) }
           : { action }
     ) as OwnerAction
+    // The program refuses a per-payment limit above the daily one; say so before anyone signs.
+    if ((a.action === 'open' || a.action === 'limits') && a.perTx > a.daily) {
+      throw new ApiError(400, 'Per payment can’t be more than per day.')
+    }
     // Opening a pocket costs Sunny's fee wallet rent: capped for free-to-make wallet sign-ins.
     if (a.action === 'open' && person.wallet && !allow('fee:open:wallets', WALLET_PAID_ACTIONS_PER_DAY, DAY)) {
       throw new ApiError(429, 'I’ve opened lots of pockets today ☀️ Try again tomorrow.')
@@ -330,11 +334,15 @@ async function pocketRoute(req: IncomingMessage, res: ServerResponse, botToken: 
   }
 
   if (body.op === 'faucet') {
-    if (!allow(`faucet:${person.id}`, 1, FAUCET_EVERY_MS)) throw new ApiError(429, 'You got test USDC recently. Try again in a few hours.')
+    if (hits(`faucet:${person.id}`, FAUCET_EVERY_MS) >= 1) throw new ApiError(429, 'You got test USDC recently. Try again in a few hours.')
+    // One faucet request at a time per person (a double tap can't mint twice).
+    if (!allow(`faucet-busy:${person.id}`, 1, 30_000)) throw new ApiError(429, 'Getting your test USDC already ☀️')
     if (person.wallet && !allow('fee:faucet:wallets', WALLET_PAID_ACTIONS_PER_DAY, DAY)) {
       throw new ApiError(429, 'The test-USDC tap is resting for today ☀️ Try again tomorrow.')
     }
     const sent = await faucet(wallet, FAUCET_USD)
+    // Counted once it worked: a devnet hiccup doesn't lock anyone out for three hours.
+    allow(`faucet:${person.id}`, 1, FAUCET_EVERY_MS)
     logActivity(person.id, 'wallet', `Got ${FAUCET_USD} test USDC`, 'Devnet faucet')
     return send(res, 200, { ...sent, amount: FAUCET_USD, state: await pocketState(wallet) })
   }
