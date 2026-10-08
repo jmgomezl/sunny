@@ -286,8 +286,11 @@ async function send(tx: Transaction) {
   }
 }
 
-/** Sunny draws pocket money into its own wallet. The program enforces the owner's limits. */
-export async function agentDraw(ownerAddress: string, usd: number) {
+/**
+ * Sunny draws pocket money into its own wallet. The program enforces the owner's limits.
+ * `onSigned` hears the signature before the draw is sent, so a caller can write it down first.
+ */
+export async function agentDraw(ownerAddress: string, usd: number, onSigned?: (signature: string, validUntil: number) => void) {
   const owner = new PublicKey(ownerAddress)
   const agent = agentFor(owner)
   const pocket = pocketPda(owner)
@@ -307,37 +310,82 @@ export async function agentDraw(ownerAddress: string, usd: number) {
       data: Buffer.concat([disc('draw'), u64(toBase(usd))]),
     }),
   )
-  tx.recentBlockhash = (await connection.getLatestBlockhash()).blockhash
+  const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash()
+  tx.recentBlockhash = blockhash
   tx.sign(feePayer(), agent)
+  onSigned?.(base58.encode(tx.signature!), lastValidBlockHeight)
   return sendToChain(tx)
 }
 
+/** A refund transaction, signed once and kept as bytes, so a retry can resend the very same one. */
+export type SignedRefund = { signature: string; raw: string; blockhash: string; validUntil: number }
+
 /**
- * Sunny puts money it drew back into the pocket (anyone may top a pocket up): used when
- * something it paid for didn't arrive, so the owner never pays for nothing.
+ * The refund queue's view of the chain. Sunny puts money it drew back into the pocket (anyone
+ * may top a pocket up) when something it paid for didn't arrive, so the owner never pays for
+ * nothing. A refund is built and signed once; until that one can no longer land, retries only
+ * ask what happened to it or resend the same bytes, so a refund can't be paid twice.
  */
-export async function refundToPocket(ownerAddress: string, usd: number) {
-  const owner = new PublicKey(ownerAddress)
-  const agent = agentFor(owner)
-  const pocket = pocketPda(owner)
-  const tx = new Transaction({ feePayer: feePayer().publicKey })
-  tx.add(
-    new TransactionInstruction({
-      programId: POCKET_PROGRAM,
-      keys: [
-        { pubkey: agent.publicKey, isSigner: true, isWritable: false },
-        { pubkey: pocket, isSigner: false, isWritable: false },
-        { pubkey: vaultPda(pocket), isSigner: false, isWritable: true },
-        { pubkey: usdcMint(), isSigner: false, isWritable: false },
-        { pubkey: ata(agent.publicKey), isSigner: false, isWritable: true },
-        { pubkey: TOKEN_PROGRAM, isSigner: false, isWritable: false },
-      ],
-      data: Buffer.concat([disc('top_up'), u64(toBase(usd))]),
-    }),
-  )
-  tx.recentBlockhash = (await connection.getLatestBlockhash()).blockhash
-  tx.sign(feePayer(), agent)
-  return send(tx)
+export const refundChain = {
+  async build(ownerAddress: string, usd: number): Promise<SignedRefund> {
+    const owner = new PublicKey(ownerAddress)
+    const agent = agentFor(owner)
+    const pocket = pocketPda(owner)
+    const tx = new Transaction({ feePayer: feePayer().publicKey })
+    tx.add(
+      new TransactionInstruction({
+        programId: POCKET_PROGRAM,
+        keys: [
+          { pubkey: agent.publicKey, isSigner: true, isWritable: false },
+          { pubkey: pocket, isSigner: false, isWritable: false },
+          { pubkey: vaultPda(pocket), isSigner: false, isWritable: true },
+          { pubkey: usdcMint(), isSigner: false, isWritable: false },
+          { pubkey: ata(agent.publicKey), isSigner: false, isWritable: true },
+          { pubkey: TOKEN_PROGRAM, isSigner: false, isWritable: false },
+        ],
+        data: Buffer.concat([disc('top_up'), u64(toBase(usd))]),
+      }),
+    )
+    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash()
+    tx.recentBlockhash = blockhash
+    tx.sign(feePayer(), agent)
+    return { signature: base58.encode(tx.signature!), raw: tx.serialize().toString('base64'), blockhash, validUntil: lastValidBlockHeight }
+  },
+
+  /** Sends a signed refund and waits for it; throws unless it's confirmed and succeeded. */
+  async submit(sent: SignedRefund) {
+    try {
+      await connection.sendRawTransaction(Buffer.from(sent.raw, 'base64'), { skipPreflight: false })
+    } catch (err) {
+      // Sent before and already landed: the same signature can only ever land once.
+      if (!/already been processed/i.test(String((err as Error)?.message))) throw Object.assign(new Error(explain(err)), { cause: err })
+    }
+    const { value } = await connection.confirmTransaction(
+      { signature: sent.signature, blockhash: sent.blockhash, lastValidBlockHeight: sent.validUntil },
+      'confirmed',
+    )
+    if (value.err) throw new Error(`The refund failed on Solana: ${JSON.stringify(value.err)}`)
+  },
+
+  /** Landed, failed on-chain, or not seen (yet). */
+  async status(signature: string): Promise<'landed' | 'failed' | 'unknown'> {
+    const s = (await connection.getSignatureStatuses([signature], { searchTransactionHistory: true })).value[0]
+    if (!s) return 'unknown'
+    if (s.err) return 'failed'
+    return s.confirmationStatus === 'processed' ? 'unknown' : 'landed'
+  },
+
+  /** True once a transaction with this last valid block height can never land. */
+  async expired(validUntil: number) {
+    return (await connection.getBlockHeight('finalized')) > validUntil
+  },
+
+  /** What Sunny's spending wallet holds for this owner, in USD. */
+  async spendable(ownerAddress: string) {
+    const agent = agentFor(new PublicKey(ownerAddress))
+    const balance = await connection.getTokenAccountBalance(ata(agent.publicKey)).catch(() => null)
+    return Number(balance?.value.uiAmount ?? 0)
+  },
 }
 
 /**

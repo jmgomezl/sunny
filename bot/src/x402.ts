@@ -17,8 +17,8 @@ import { registerExactSvmScheme as registerClientScheme } from '@x402/svm/exact/
 import { registerExactSvmScheme as registerFacilitatorScheme } from '@x402/svm/exact/facilitator'
 import { deepReport, type DeepReport } from './deepscan.js'
 import { accountKind } from './inspect.js'
-import { agentDraw, agentFor, ensureAta, explorerTx, feePayer, isSolanaAddress, refundToPocket, USD, usdcMint } from './solana.js'
-import { queueRefund } from './refunds.js'
+import { agentDraw, agentFor, ensureAta, explorerTx, feePayer, isSolanaAddress, USD, usdcMint } from './solana.js'
+import { holdPurchase, noteDraw, owe, refundNow, releasePurchase } from './refunds.js'
 
 // Sunny's deep scan is a real x402 API (protocol v2, "exact" scheme on Solana devnet).
 // Ask without paying and you get 402 Payment Required with the price; pay by sending a
@@ -156,7 +156,15 @@ export type PaidScan = { report: DeepReport; price: number; drawTx: string; paym
  * its own wallet. A refused draw throws the program's reason.
  */
 export async function sunnyBuysDeepScan(ownerAddress: string, mint: string, userId = 0): Promise<PaidScan> {
-  const drawn = await agentDraw(ownerAddress, DEEP_SCAN_PRICE)
+  // Written down before any money moves, so a crash at any point leaves a record to settle from.
+  const hold = holdPurchase(ownerAddress, userId, DEEP_SCAN_PRICE, 'A paid scan that didn’t come back')
+  const drawn = await agentDraw(ownerAddress, DEEP_SCAN_PRICE, (signature, validUntil) => noteDraw(hold, signature, validUntil)).catch(
+    (err: unknown) => {
+      // Refused on-chain: nothing left the pocket. Without an answer, the hold waits for the chain.
+      if ((err as { signature?: string })?.signature) releasePurchase(hold, 'void')
+      throw err
+    },
+  )
   const agent = agentFor(new PublicKey(ownerAddress))
   const client = new x402Client().setSpendControls({
     allowedAssets: [{ network: NETWORK, asset: usdcMint().toBase58(), maxAmountPerPayment: atomic(MAX_PER_PAYMENT_USD) }],
@@ -164,17 +172,17 @@ export async function sunnyBuysDeepScan(ownerAddress: string, mint: string, user
   registerClientScheme(client, { signer: await createKeyPairSignerFromBytes(agent.secretKey), networks: [NETWORK] })
   // The money left the pocket, so if the scan doesn't come back it goes straight back in.
   const refund = async (why: string): Promise<never> => {
-    const back = await refundToPocket(ownerAddress, DEEP_SCAN_PRICE).catch(() => null)
-    // If Solana didn't take it just now, the refund goes on a queue kept on disk and retried
-    // (surviving restarts); its outcome shows up in "What Sunny did" either way.
-    if (!back) queueRefund(ownerAddress, userId, DEEP_SCAN_PRICE, 'A paid scan that didn’t come back')
+    // Owed on disk first, then tried at once; if Solana doesn't take it now, the queue retries
+    // (surviving restarts) and its outcome shows up in "What Sunny did" either way.
+    owe(hold)
+    const back = await refundNow(hold)
     throw Object.assign(
       new Error(
         back
           ? `The scan service failed (${why}), so I put the $${DEEP_SCAN_PRICE.toFixed(2)} back in your pocket.`
           : `The scan service failed (${why}). The $${DEEP_SCAN_PRICE.toFixed(2)} is still in my spending wallet; I’ll keep trying to put it back, and you’ll see the result in What Sunny did.`,
       ),
-      { refunded: back?.explorer ?? null, drawTx: drawn.explorer },
+      { refunded: back, drawTx: drawn.explorer },
     )
   }
   const res = await wrapFetchWithPayment(fetch, client)(`${SELF}${DEEP_SCAN_PATH}?mint=${mint}`).catch((err: unknown) =>
@@ -184,8 +192,10 @@ export async function sunnyBuysDeepScan(ownerAddress: string, mint: string, user
     const why = ((await res.json().catch(() => ({}))) as { error?: string }).error
     // Paid but not delivered can't be undone here; unpaid failures refund.
     if (!res.headers.get('payment-response')) await refund(why ?? String(res.status))
+    releasePurchase(hold, 'settled')
     throw new Error(`The scan service said no (${why ?? res.status}).`)
   }
+  releasePurchase(hold, 'settled')
   const receipt = decodePaymentResponseHeader(res.headers.get('payment-response') ?? '')
   return {
     report: (await res.json()) as DeepReport,
