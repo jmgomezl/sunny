@@ -98,6 +98,8 @@ const UNLOCK_FOR: Record<string, string> = {
 
 export function PocketSheet({ open, state, intent, feedAmount = 5, onClose, onChanged, onBusy, onBackup }: PocketSheetProps) {
   const [record, setRecord] = useState<VaultRecord | null | undefined>(undefined)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [copied, setCopied] = useState(false)
   const [unlocked, setUnlocked] = useState(isUnlocked())
   const [password, setPassword] = useState('')
   const [confirm, setConfirm] = useState('')
@@ -122,21 +124,32 @@ export function PocketSheet({ open, state, intent, feedAmount = 5, onClose, onCh
     setConfirm('')
     setShowPassword(false)
     setUnlocked(isUnlocked())
-    if (inTelegram())
-      loadRecord()
-        .then(setRecord)
-        .catch(() => setRecord(null))
+    setRecord(undefined)
+    if (inTelegram()) reload()
     else setRecord(null)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
+
+  // Loading the wallet failed: say so and offer a retry, never the "make a wallet" form.
+  const reload = () => {
+    setLoadError(null)
+    loadRecord()
+      .then(setRecord)
+      .catch((err) => setLoadError(err instanceof Error ? err.message : String(err)))
+  }
 
   useEffect(() => {
     if (!open) return
     const back = window.Telegram?.WebApp?.BackButton
     back?.show()
     back?.onClick(onClose)
+    // Escape closes it too, like the other sheets.
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
+    window.addEventListener('keydown', onKey)
     return () => {
       back?.offClick(onClose)
       back?.hide()
+      window.removeEventListener('keydown', onKey)
     }
   }, [open, onClose])
 
@@ -234,13 +247,17 @@ export function PocketSheet({ open, state, intent, feedAmount = 5, onClose, onCh
   const amountChips = [5, 10, 20]
   // One step at a time: test money first, then the pocket.
   const wantsFaucet = Boolean(s && !s.exists && s.ownerUsdc < 5 && !skipFaucet)
+  // Fed a coin without the test USDC to pay it: getting some is the only thing to do first.
+  const feedNeedsUsdc = Boolean(intent === 'feed' && s && !s.frozen && s.ownerUsdc < feedAmount)
   // While a password form is showing, its errors and progress appear inside it, by the fields.
   const passwordForm = inTelegram() && (record === null || Boolean(record && !unlocked))
   const name = firstName()
   // Sunny walks you through every step in its own words.
   const line = !inTelegram()
     ? 'My wallet lives inside Telegram, where you’re verified. Open me from @SunnySolBot to make yours.'
-    : record === undefined
+    : loadError
+      ? loadError
+      : record === undefined
       ? 'Looking for your wallet…'
       : record === null
         ? `${intent === 'hello' ? `Hi${name ? ` ${name}` : ''}! I’m Sunny ☀️ ` : ''}Let’s make your wallet together. It’s born right here on your phone and locked with a password only you know.`
@@ -318,6 +335,12 @@ export function PocketSheet({ open, state, intent, feedAmount = 5, onClose, onCh
                   {line}
                 </motion.p>
               </div>
+
+              {loadError && (
+                <button type="button" className="btn btn--primary pocket-open-tg" onClick={reload}>
+                  Try again
+                </button>
+              )}
 
               {/* Outside Telegram (the web preview), the way in is one tap away. */}
               {!inTelegram() && (
@@ -439,7 +462,7 @@ export function PocketSheet({ open, state, intent, feedAmount = 5, onClose, onCh
                   {s.ownerUsdc < 5 && (
                     <button
                       type="button"
-                      className={`btn ${wantsFaucet ? 'btn--primary' : 'btn--ice'}`}
+                      className={`btn ${wantsFaucet || feedNeedsUsdc ? 'btn--primary' : 'btn--ice'}`}
                       onClick={getTestUsdc}
                       disabled={Boolean(busy)}
                     >
@@ -447,11 +470,11 @@ export function PocketSheet({ open, state, intent, feedAmount = 5, onClose, onCh
                     </button>
                   )}
 
-                  {wantsFaucet ? (
+                  {wantsFaucet && !feedNeedsUsdc ? (
                     <button type="button" className="ghost-btn pocket-later" onClick={() => setSkipFaucet(true)}>
                       Skip for now
                     </button>
-                  ) : !s.exists ? (
+                  ) : feedNeedsUsdc ? null : !s.exists ? (
                     <form
                       className="pocket-form"
                       onSubmit={(e) => {
@@ -524,9 +547,24 @@ export function PocketSheet({ open, state, intent, feedAmount = 5, onClose, onCh
                   </button>
                   {backup && (
                     <p className="pocket-secret">
-                      <b>Never share this.</b> Anyone with it controls your Sunny wallet. You can import it into
-                      Phantom.
+                      <b>Never share this, and check nobody can see your screen.</b> Anyone with it controls your
+                      Sunny wallet. You can import it into Phantom.
                       <code>{backup}</code>
+                      <button
+                        type="button"
+                        className="ghost-btn pocket-copy"
+                        onClick={() =>
+                          void navigator.clipboard
+                            ?.writeText(backup)
+                            .then(() => {
+                              setCopied(true)
+                              window.setTimeout(() => setCopied(false), 2000)
+                            })
+                            .catch(() => {})
+                        }
+                      >
+                        {copied ? 'Copied ✓' : 'Copy key'}
+                      </button>
                     </p>
                   )}
                 </>

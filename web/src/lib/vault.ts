@@ -128,7 +128,11 @@ function cloudSet(value: string): Promise<void> {
 export async function loadRecord(): Promise<VaultRecord | null> {
   const local = await cloudGet().catch(() => null)
   if (local) return JSON.parse(local) as VaultRecord
-  const remote = await post<{ record: VaultRecord | null }>('/api/vault', { op: 'get' }).catch(() => ({ record: null }))
+  // A failed request is not "no wallet": offering to make a new one then could overwrite the
+  // only copy of someone's key in Telegram.
+  const remote = await post<{ record: VaultRecord | null }>('/api/vault', { op: 'get' }).catch(() => {
+    throw new Error('I couldn’t reach your wallet just now. Your key is safe; let’s try again.')
+  })
   if (remote.record) await cloudSet(JSON.stringify(remote.record)).catch(() => {})
   return remote.record
 }
@@ -143,8 +147,10 @@ export function walletProof(seed: Uint8Array, userId: number) {
 
 /** Saves the encrypted record in both places. A new wallet comes with its ownership proof. */
 export async function saveRecord(record: VaultRecord, proof?: string) {
-  await cloudSet(JSON.stringify(record))
+  // The server first: if it says no (say, this person already has a wallet), Telegram's copy
+  // of the existing key is never touched.
   await post('/api/vault', { op: 'put', record, proof })
+  await cloudSet(JSON.stringify(record))
 }
 
 // ── The unlocked key, held in memory only and wiped after a while ────────────
