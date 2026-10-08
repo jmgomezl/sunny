@@ -9,3 +9,6 @@ test-ledger
 .DS_Store
 *.log
 data/
+
+# Android release signing key: back it up, never commit it
+.keys/
