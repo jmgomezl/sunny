@@ -185,6 +185,7 @@ Another round of parallel AI reviewers (QA, UX, bug hunting and a judge) went ov
 | `ba424ef` `304d0b6` | **[Live numbers](https://sunny.aivylabs.xyz/stats/)**: groups guarded, checks and catches, and the pocket program's record read straight from Solana |
 | `91cc1c9` | The repo review: refunds queued on disk and retried for about two hours, Node and pnpm pinned, devnet checked before any funding, and the warnings kept at the top of the README |
 | `d05ea14` → `42a7083` | **[CI on every push](https://github.com/jmgomezl/sunny/actions/workflows/ci.yml)**: 42 server tests, the web build, and the program build with its 7 LiteSVM tests |
+| `9c9a877` | A follow-up review: a crash right after the draw could still lose a refund, and a retry could pay one twice. Now the purchase is on disk before the draw, each refund transaction is saved before it's sent, and a retry asks the chain what happened before building another |
 
 ## Decisions, and why
 
@@ -202,7 +203,7 @@ Another round of parallel AI reviewers (QA, UX, bug hunting and a judge) went ov
 - **A harmless drainer for the demo.** Most live Blinks in the registry are dead, and real drainers shouldn't be linked to. Sunny's demo Blink behaves exactly like one in simulation, but needs a signature that is never given, so nobody can lose anything to it.
 - **Badges the server earns for you.** Every badge condition is checked on the server (the pocket on-chain, watched wallets, the visit streak, habits it saw), and the tokens are non-transferable, so they mean something.
 - **Gentle guardrails.** Blocked attempts get a friendly refusal and only a short break, because curious people (and judges) will poke at it.
-- **A refund is a record, not a promise.** If a paid scan fails after the draw, the refund is written to disk first, then retried for about two hours across restarts, and the outcome shows in "What Sunny did".
+- **A refund is a record, not a promise.** A paid scan is written to disk before any money moves, and a refund before its first try. Each refund transaction is saved before it's sent, so a retry first asks the chain whether it landed and resends the same bytes while it still could: a lost answer never becomes a second refund. Retries run for about two hours across restarts, and the outcome shows in "What Sunny did".
 - **Android through Solana Mobile's webshell.** Mobile Wallet Adapter works inside it, and the app loads the live site, so a fix reaches phones without a new store build.
 
 ## Problems I hit, and the fixes
@@ -236,7 +237,7 @@ Another round of parallel AI reviewers (QA, UX, bug hunting and a judge) went ov
 
 - **Program:** 7 LiteSVM tests (`cargo test -p sunny_pocket`).
 - **CI:** every push runs the server, web and program jobs ([Actions](https://github.com/jmgomezl/sunny/actions/workflows/ci.yml)).
-- **Server:** 42 tests (`pnpm test`), including wallet sign-in and the refund queue.
+- **Server:** 45 tests (`pnpm test`), including wallet sign-in and refunds (a lost confirmation, a dropped transaction, a restart mid-purchase).
   - The phone's transaction verifier, including what a compromised server might try (wrong wallet, foreign pocket).
   - Guardrails, covering attacks, pasted seeds and keys, and the ordinary questions that must still pass.
   - News, groups, streaks and the Blink reader.

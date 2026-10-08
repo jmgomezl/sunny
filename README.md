@@ -311,7 +311,7 @@ Jupiter (holdings, prices, tokens), RugCheck, alternative.me's Fear & Greed; Met
 
 ```bash
 cd onchain && cargo build-sbf --manifest-path programs/sunny_pocket/Cargo.toml --arch v0 && cargo test -p sunny_pocket   # 7 LiteSVM tests (they load the built .so)
-cd bot && pnpm test                          # 42 tests
+cd bot && pnpm test                          # 45 tests
 cd web && pnpm build                         # typecheck and production build
 ```
 
@@ -383,7 +383,7 @@ The bot serves the Mini App's API on port 8820 and Vite proxies `/api` to it. Ou
 
 - **Devnet only, with test USDC.** The program and the server are unaudited.
 - **What the on-chain limits cover, and what they don't:** every draw is checked by the program (per payment, per day, frozen or not) and can only go to Sunny's agent account. After that, the money is in Sunny's spending wallet, and what happens to it is up to the server's code, not the program. The promise is a ceiling on what can leave the pocket, not control of money already drawn.
-- **Refunds:** if a paid scan fails after the draw, Sunny puts the money back; a refund that doesn't land at once is queued on disk and retried for about two hours, and its outcome shows in "What Sunny did".
+- **Refunds:** every paid scan is written to disk before the draw. If the scan fails, Sunny owes the money back and puts it in the pocket, retrying for about two hours. Each refund transaction is saved before it's sent, and a retry checks the chain first, so a refund can't be paid twice. After a restart, purchases cut off midway are settled from the chain. The outcome shows in "What Sunny did".
 - **No password reset.** Not even Sunny can open your wallet. Keep pocket amounts small.
 - **The agent key lives on the server**, bounded by the program: a stolen or confused key can draw at most your limits, only to itself, and nothing once frozen. Money Sunny draws sits in its spending wallet, a hot wallet our server holds, until it pays for something.
 - **The program's upgrade authority is a single key** on devnet; mainnet would put it behind a multisig or make the program immutable.
