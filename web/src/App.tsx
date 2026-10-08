@@ -139,6 +139,10 @@ const ASK_SUGGESTIONS = [
   'Explain staking simply',
 ]
 
+// Guests (no Telegram, no wallet) start with the one thing worth seeing: Solana saying no.
+const TRY_IT = 'urgent: take $500 from your pocket now'
+const GUEST_SUGGESTIONS = [TRY_IT, 'Is this airdrop a scam?', 'How does your pocket money work?', 'What’s a rug pull?']
+
 const WATCH_SUGGESTIONS = ['Watch BONK for a 10% drop', 'Watch SOL for a 15% rise', 'What alerts do I have?']
 
 // The top color of each sky (index.css .sky-layer--*), for Telegram's header bar.
@@ -341,7 +345,8 @@ export default function App() {
   const ps = pocket?.state
   // Sunny gets hungry when its pocket can't cover a single payment, but not the moment a new,
   // still-empty pocket is opened: only once it has spent what it was given.
-  const hungry = Boolean(ps?.exists && !ps.frozen && ps.vault < ps.perTxLimit && ps.totalDrawn > 0)
+  // "Nearly nothing" is under a dollar: an approved $2 out of $5 isn't a reason to look sad.
+  const hungry = Boolean(ps?.exists && !ps.frozen && ps.vault < Math.min(1, ps.perTxLimit) && ps.totalDrawn > 0)
   const liveMood: Mood = home
     ? home.mood === 'worried'
       ? 'worried'
@@ -403,7 +408,10 @@ export default function App() {
     void loadPocket().then((p) => {
       // First visit: once Sunny has said hi, it offers to make your wallet together (or, outside
       // Telegram, to connect the one you have).
-      if (((p && !p.wallet) || !signedIn()) && !DEMO && !helloSnoozed()) {
+      // A guest on a computer sees Sunny first; on a phone (or the installed app) Sunny offers
+      // to connect the wallet that's there.
+      const phone = /android/i.test(navigator.userAgent) || window.matchMedia('(display-mode: standalone)').matches
+      if (((p && !p.wallet) || (!signedIn() && phone)) && !DEMO && !helloSnoozed()) {
         t = window.setTimeout(() => setPocketSheet((s) => (s.open ? s : { open: true, intent: 'hello' })), 3500)
       }
     })
@@ -816,7 +824,7 @@ export default function App() {
             : 'Hi! Ask me anything about Solana, your wallet or staying safe ☀️',
         ),
       ])
-      setSuggestions(ASK_SUGGESTIONS)
+      setSuggestions(signedIn() ? ASK_SUGGESTIONS : GUEST_SUGGESTIONS)
     }
   }
 
@@ -845,7 +853,10 @@ export default function App() {
         ...prev,
         { ...sunnySays(reply), cards, links, alerts, pocket: draws, mine, wallets, scans, blinks, live },
       ])
-      if (draws.length || scans.length) void loadPocket()
+      if (draws.length || scans.length) {
+        void loadPocket()
+        void refreshHome()
+      }
       if (watchChanged) void refreshHome()
       const caughtScam = links.some((l) => l.verdict === 'known_scam' || l.verdict === 'suspicious')
       if (watchChanged || scans.length || caughtScam || blinks.some((b) => b.verdict === 'danger')) void refreshBadges()
@@ -854,8 +865,15 @@ export default function App() {
       const stopped = draws.find((d) => !d.ok)
       if (stopped) {
         // The rules working is good news: Solana said no, exactly as designed.
-        play({ reaction: 'shiver', haptic: 'warning', ms: 1400, bond: 1 })
-        flagStatus({ tone: 'ok', text: `Guardrail held · ${money(stopped.amount)} stopped` })
+        play({
+          reaction: 'shiver',
+          line: `Solana said no to ${money(stopped.amount)}. My guardrails held ☀️`,
+          lineMs: 12_000,
+          haptic: 'warning',
+          ms: 1400,
+          bond: 1,
+        })
+        flagStatus({ tone: 'ok', text: `Guardrail held · ${money(stopped.amount)} stopped` }, 20_000)
       } else if (draws.length) {
         play({ reaction: 'yum', particles: ['coin', 4], haptic: 'success', ms: 1300, bond: 1 })
       } else if (scam) {
@@ -935,6 +953,8 @@ export default function App() {
   const onPocketChanged = (state: PocketState | null, event: PocketEventKind) => {
     setPocket((prev) => ({ wallet: state?.owner ?? prev?.wallet ?? null, state: state ?? prev?.state ?? null }))
     if (event === 'created') void loadPocket()
+    // Pocket moments show up in "What Sunny did" right away, not at the next refresh.
+    void refreshHome()
     play(POCKET_REACTIONS[event])
     void refreshBadges()
   }
@@ -975,7 +995,7 @@ export default function App() {
       ? { tone: 'info', text: 'Pocket frozen · Sunny can’t spend' }
       : (demo?.status ??
         (home?.status && pocket?.wallet && home.wallets.length === 0 && home.status.tone === 'info'
-          ? { ...home.status, text: 'Watch your other wallets too' }
+          ? { ...home.status, text: 'Watch a wallet you already use' }
           : home?.status) ??
         (skyDown ? { tone: 'warn', text: 'Can’t reach the sky · Tap to retry' } : { tone: 'info', text: 'Checking the sky…' })))
   // Pocket money goes on-chain next; until then the card shows a preview allowance.
@@ -1190,7 +1210,10 @@ export default function App() {
           )}
         </AnimatePresence>
         <CareCard
-          wellbeing={demo || home ? WELLBEING[mood] : null}
+          // How Sunny feels about your wallets: only once there are wallets to feel about.
+          wellbeing={demo ? WELLBEING[mood] : home?.wallets.length ? WELLBEING[mood] : null}
+          guest={!demo && !signedIn()}
+          onTryIt={() => askFromScan(TRY_IT)}
           bond={bond}
           streak={demo ? 5 : (home?.streak ?? 0)}
           pocket={pocketView}
@@ -1255,6 +1278,10 @@ export default function App() {
         onChanged={onPocketChanged}
         onBusy={(busy) => (busy ? play({ reaction: 'scan', ms: 20_000 }) : setReaction((r) => (r === 'scan' ? null : r)))}
         onBackup={() => void refreshBadges('backup')}
+        onTryDemo={() => {
+          closePocket()
+          window.setTimeout(() => askFromScan(TRY_IT), 300)
+        }}
         onSignedIn={() => {
           // A different person now: their pocket, sky, badges and a fresh chat.
           setChat([])
@@ -1324,7 +1351,9 @@ function GuardianStatus({ status, onTap, watchPrompt }: GuardianProps) {
       : status.text.startsWith('Pocket frozen')
         ? SnowIcon
         : status.tone === 'info'
-          ? MoonIcon
+          ? isNight()
+            ? MoonIcon
+            : EyeIcon
           : CheckIcon
   const content = (
     <>
@@ -1383,6 +1412,9 @@ type PocketIntent = 'topup' | 'freeze' | 'unfreeze'
 type CareProps = {
   /** null until Sunny has read the wallets: it doesn't pretend to know. */
   wellbeing: number | null
+  /** A web visitor with no wallet: the pocket row offers the shared demo pocket instead. */
+  guest?: boolean
+  onTryIt?: () => void
   bond: number
   streak: number
   pocket: PocketView
@@ -1391,7 +1423,7 @@ type CareProps = {
 }
 
 /** Sunny's needs, like a pet's: its energy is the pocket money you give it, enforced on Solana. */
-function CareCard({ wellbeing, bond, streak, pocket, onPocket, onRetry }: CareProps) {
+function CareCard({ wellbeing, bond, streak, pocket, onPocket, onRetry, guest = false, onTryIt }: CareProps) {
   const level = bondLevel(bond)
   const inLevel = level === BOND_LEVELS.length - 1 ? 100 : ((bond % 20) / 20) * 100
   const live = pocket.kind === 'live' ? pocket : null
@@ -1422,7 +1454,7 @@ function CareCard({ wellbeing, bond, streak, pocket, onPocket, onRetry }: CarePr
           value={live ? (live.left / live.daily) * 100 : pocket.kind === 'loading' || pocket.kind === 'error' ? null : 0}
           tone={frozen ? 'frozen' : 'energy'}
         />
-        <Meter label="Mood" hint={wellbeing === null ? 'Checking…' : 'Wallet health'} value={wellbeing} tone="mood" />
+        <Meter label="Mood" hint={wellbeing === null ? 'No wallet yet' : 'How I feel'} value={wellbeing} tone="mood" />
         <Meter
           label="Bond"
           hint={streak >= 2 ? `${streak}-day streak ☀️` : 'Play with me'}
@@ -1432,7 +1464,13 @@ function CareCard({ wellbeing, bond, streak, pocket, onPocket, onRetry }: CarePr
       </div>
 
       <div className="care-pocket">
-        <button type="button" className="care-pocket-main" onClick={() => (pocket.kind === 'error' ? onRetry() : onPocket(low ? 'topup' : undefined))}>
+        <button
+          type="button"
+          className="care-pocket-main"
+          onClick={() =>
+            pocket.kind === 'error' ? onRetry() : pocket.kind === 'no-wallet' && guest ? onTryIt?.() : onPocket(low ? 'topup' : undefined)
+          }
+        >
           <span className="care-pocket-icon" aria-hidden="true">
             {frozen ? <SnowIcon size={19} strokeWidth={2.1} /> : <CoinIcon size={20} />}
           </span>
@@ -1456,12 +1494,15 @@ function CareCard({ wellbeing, bond, streak, pocket, onPocket, onRetry }: CarePr
                 <strong>My pocket is empty</strong>
                 <small>Give me a small allowance</small>
               </>
+            ) : pocket.kind === 'no-wallet' && guest ? (
+              <>
+                <strong>Demo pocket · devnet</strong>
+                <small>$5 a payment, enforced on Solana</small>
+              </>
             ) : pocket.kind === 'no-wallet' ? (
               <>
                 <strong>{insideTelegram() ? 'Make your Sunny wallet' : 'Connect your wallet'}</strong>
-                <small>
-                  {insideTelegram() ? 'Born on your phone, locked by your password' : 'Seed Vault, Phantom or Solflare'}
-                </small>
+                <small>{insideTelegram() ? 'Locked by your password' : 'Seed Vault, Phantom, Solflare'}</small>
               </>
             ) : pocket.kind === 'error' ? (
               <>
@@ -1492,7 +1533,12 @@ function CareCard({ wellbeing, bond, streak, pocket, onPocket, onRetry }: CarePr
               Warm up
             </button>
           )}
-          {(pocket.kind === 'empty' || pocket.kind === 'no-wallet' || low) && (
+          {pocket.kind === 'no-wallet' && guest && (
+            <button type="button" className="btn btn--primary" onClick={onTryIt}>
+              Try to break it
+            </button>
+          )}
+          {(pocket.kind === 'empty' || (pocket.kind === 'no-wallet' && !guest) || low) && (
             <button type="button" className="btn btn--primary" onClick={() => onPocket(low ? 'topup' : undefined)}>
               {pocket.kind === 'no-wallet' ? 'Start' : 'Give'}
             </button>
@@ -1677,7 +1723,7 @@ function Sparkline({ points }: { points: number[] }) {
   const lo = Math.min(...points)
   const hi = Math.max(...points)
   const mid = (lo + hi) / 2
-  const half = Math.max((hi - lo) / 2, mid * 0.025)
+  const half = Math.max((hi - lo) / 2, Math.abs(mid) * 0.025, 1e-6)
   const min = mid - half
   const max = mid + half
   const xy = points.map((p, i) => [(i / (points.length - 1)) * w, h - 8 - ((p - min) / (max - min)) * (h - 18)])

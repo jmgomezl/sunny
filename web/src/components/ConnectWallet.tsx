@@ -13,9 +13,12 @@ const isAndroid = () => /android/i.test(navigator.userAgent)
 export function ConnectWallet({
   onSignedIn,
   onError,
+  onTryWithout,
 }: {
   onSignedIn: (address: string) => void
   onError: (message: string) => void
+  /** No wallet here: the demo pocket is the way to see the guardrails. */
+  onTryWithout?: () => void
 }) {
   const [options, setOptions] = useState<Option[] | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
@@ -30,7 +33,7 @@ export function ConnectWallet({
           availableWallets().map((wallet) => ({
             wallet,
             // On a phone, MWA opens whichever wallet app you use (Seed Vault on a Seeker).
-            label: isMobileAdapter(wallet) ? 'Use a wallet on this phone' : wallet.name,
+            label: isMobileAdapter(wallet) ? 'Use a wallet on this phone' : `Sign in with ${wallet.name}`,
             icon: wallet.icon,
           })),
         )
@@ -70,18 +73,25 @@ export function ConnectWallet({
           </button>
         ))
       ) : (
-        <p className="scan-hint">
-          {isAndroid()
-            ? 'No wallet found. Open me in Chrome with Seed Vault, Phantom or Solflare installed.'
-            : 'No wallet found in this browser. On a Seeker or Android phone, open me in Chrome; on a computer, add Phantom or Solflare.'}
-        </p>
+        <>
+          {onTryWithout && (
+            <button type="button" className="btn btn--primary" onClick={onTryWithout}>
+              Try it without a wallet
+            </button>
+          )}
+          <p className="scan-hint">
+            {isAndroid()
+              ? 'No wallet app found. Seed Vault, Phantom or Solflare work.'
+              : 'No wallet extension found. Phantom or Solflare work, or open me on your phone.'}
+          </p>
+        </>
       )}
       <p className="scan-hint connect-note">
         Signing in costs nothing and moves no money. Your wallet then owns my pocket on devnet, with test money, and
         Solana enforces its guardrails.
       </p>
       <a className="btn btn--ice pocket-open-tg" href={BOT_LINK} target="_blank" rel="noreferrer">
-        Or open Sunny in Telegram
+        {options?.length ? 'Or open Sunny in Telegram' : 'Open Sunny in Telegram'}
       </a>
     </div>
   )

@@ -65,8 +65,8 @@ export function Guardrails({ perTx, daily, spentToday, frozen = false, programUr
     {
       key: 'onlySunny',
       icon: <ShieldIcon size={16} />,
-      title: 'Only into Sunny’s own account',
-      detail: 'It can’t send your money anywhere else',
+      title: 'Only into Sunny’s spending wallet',
+      detail: 'So no more than your daily limit can ever leave',
     },
     {
       key: 'freeze',

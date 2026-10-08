@@ -172,7 +172,7 @@ export function ScanSheet(props: ScanSheetProps) {
                   </span>
                 </button>
               ) : (
-                <p className="scan-hint">Open me in Telegram to scan QR codes. Pasting works everywhere.</p>
+                <p className="scan-hint">Paste a link, a wallet or a token. In Telegram you can also scan QR codes.</p>
               )}
 
               <form className="chat-input scan-input" onSubmit={onSubmit}>

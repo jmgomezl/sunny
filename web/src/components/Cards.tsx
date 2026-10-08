@@ -322,8 +322,8 @@ export function DeepScanView({ scan }: { scan: DeepScan }) {
     ['Top 10 hold', pct(h.top10Pct), (h.top10Pct ?? 0) > 50],
     ['Holders', h.total === null ? '—' : compact(h.total), false],
     [
-      'Insiders',
-      h.insiderNetworks ? `${h.insiderNetworks} network${h.insiderNetworks > 1 ? 's' : ''}` : 'None found',
+      'Insider networks',
+      h.insiderNetworks ? `${h.insiderNetworks} found` : 'None found',
       h.insiderNetworks > 0,
     ],
     [
@@ -521,7 +521,7 @@ export function PocketEventView({ event }: { event: PocketEvent }) {
             <>
               {' · '}
               <a href={event.refunded || event.explorer} target="_blank" rel="noreferrer">
-                {event.ok || event.refunded ? 'View tx' : 'See the refusal on Solana'}
+                {event.ok || event.refunded ? 'View tx' : 'View the refusal on Solscan ↗'}
               </a>
             </>
           )}

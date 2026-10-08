@@ -64,13 +64,18 @@ const send = (path: string, body: Record<string, unknown>) =>
     body: JSON.stringify({ ...body, ...who() }),
   })
 
-export async function post<T>(path: string, body: Record<string, unknown>): Promise<T> {
+/**
+ * `retry` is for requests that are safe to repeat (reads, and pocket submits, which the server
+ * answers once). Coming back from a wallet app, Android's WebView can fail the very first request
+ * while its network wakes up, and a failed fetch may still have reached the server, so a request
+ * that does something new (chat, faucet, sign-in) is never sent twice.
+ */
+export async function post<T>(path: string, body: Record<string, unknown>, { retry = false } = {}): Promise<T> {
   let res: Response
   try {
     res = await send(path, body)
   } catch {
-    // Coming back from a wallet app, Android's WebView can fail the very first request while
-    // its network wakes up. That failure never reached the server, so one retry is safe.
+    if (!retry) throw new Error('I can’t reach my thoughts right now. Check your connection? ☁️')
     try {
       await new Promise((r) => setTimeout(r, 800))
       res = await send(path, body)

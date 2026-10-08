@@ -31,12 +31,12 @@ export type PocketAction =
 export type Sent = { signature: string; explorer: string; state: PocketState }
 
 export const fetchPocket = () =>
-  post<{ wallet: string | null; own?: boolean; state: PocketState | null }>('/api/pocket', { op: 'state' })
+  post<{ wallet: string | null; own?: boolean; state: PocketState | null }>('/api/pocket', { op: 'state' }, { retry: true })
 
 /** Step 1: the server prepares the transaction; this device decodes it into plain words. */
 export async function preparePocket(a: PocketAction, owner: string) {
   const [prepared, { describeTransaction }] = await Promise.all([
-    post<{ id: string; message: string }>('/api/pocket', { op: 'prepare', ...a }),
+    post<{ id: string; message: string }>('/api/pocket', { op: 'prepare', ...a }, { retry: true }),
     vault(),
   ])
   return { ...prepared, summary: describeTransaction(prepared.message, owner) }
@@ -50,7 +50,8 @@ export async function submitPocket(prepared: { id: string; message: string }, ex
   const signature = external
     ? await (await import('./wallets')).signPocketTransaction(prepared.message)
     : (await vault()).signMessage(prepared.message)
-  return post<Sent>('/api/pocket', { op: 'submit', id: prepared.id, signature })
+  // Safe to repeat: the server answers a repeated submit with the first result.
+  return post<Sent>('/api/pocket', { op: 'submit', id: prepared.id, signature }, { retry: true })
 }
 
 export const pocketFaucet = () => post<Sent & { amount: number }>('/api/pocket', { op: 'faucet' })

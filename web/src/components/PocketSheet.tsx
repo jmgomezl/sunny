@@ -41,6 +41,8 @@ type PocketSheetProps = {
   onChanged: (state: PocketState | null, event: PocketEventKind, sent?: Sent) => void
   /** Signed in (or out) with their own wallet, outside Telegram: everything reloads for them. */
   onSignedIn?: () => void
+  /** No wallet in this browser: try the shared demo pocket instead. */
+  onTryDemo?: () => void
   onBusy: (busy: boolean) => void
   /** Called when the key backup is shown, which earns the Key Keeper badge. */
   onBackup?: () => void
@@ -121,6 +123,7 @@ export function PocketSheet({
   onBusy,
   onBackup,
   onSignedIn,
+  onTryDemo,
 }: PocketSheetProps) {
   const [record, setRecord] = useState<VaultRecord | null | undefined>(undefined)
   // Outside Telegram: the wallet you signed in with owns the pocket and signs for it.
@@ -438,7 +441,7 @@ export function PocketSheet({
                       </li>
                     </ul>
                   )}
-                  <ConnectWallet onSignedIn={signedIn} onError={setError} />
+                  <ConnectWallet onSignedIn={signedIn} onError={setError} onTryWithout={onTryDemo} />
                   {intent === 'hello' && (
                     <button type="button" className="ghost-btn pocket-later" onClick={onClose}>
                       Maybe later

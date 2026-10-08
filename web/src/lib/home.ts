@@ -64,7 +64,7 @@ export type Home = {
 export type WatchChange = { watch: string } | { unwatch: string }
 
 /** Loads the home screen, optionally watching or unwatching a wallet first. */
-export const fetchHome = (change?: WatchChange) => post<Home>('/api/home', change ?? {})
+export const fetchHome = (change?: WatchChange) => post<Home>('/api/home', change ?? {}, { retry: !change })
 
 export type WalletReport = {
   address: string

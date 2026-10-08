@@ -84,7 +84,7 @@ export async function signIn(wallet: Wallet) {
   const account = accounts[0]
   if (!account) throw new Error('The wallet didn’t share an account. Try again?')
   await backInFront()
-  const { message } = await post<{ message: string }>('/api/auth', { op: 'challenge', address: account.address })
+  const { message } = await post<{ message: string }>('/api/auth', { op: 'challenge', address: account.address }, { retry: true })
   const [signed] = await (wallet.features as SolanaSignMessageFeature)[SolanaSignMessage].signMessage({
     account,
     message: new TextEncoder().encode(message),
