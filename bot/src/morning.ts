@@ -3,6 +3,7 @@ import { latestNews } from './news.js'
 import { hasChain, pocketState } from './solana.js'
 import { markBriefSent, morningSubscribers, streakInfo, watchedOf } from './users.js'
 import { vaultOf } from './vaults.js'
+import { isTestUser } from './stats.js'
 
 // Sunny's good-morning ritual: once a day, a short Telegram note with the wallets' weather,
 // what's left in the pocket, one headline and one safety tip, plus the visit streak.
@@ -111,7 +112,8 @@ export function startMorning(send: (id: number, text: string) => Promise<void>) 
     running = true
     const day = now.toISOString().slice(0, 10)
     try {
-      const due = morningSubscribers(day)
+      // Test identities (the end-to-end script, the AI testers) have no chat to send to.
+      const due = morningSubscribers(day).filter((p) => !isTestUser(p.id))
       if (due.length) console.log(`[sunny] morning notes for ${due.length} people`)
       for (const p of due) {
         // Marked first, so a failure never turns into a second note the same day.
