@@ -212,7 +212,8 @@ async function inspectRoute(req: IncomingMessage, res: ServerResponse, botToken:
   send(res, 200, result)
 }
 
-const short = (a: string) => `${a.slice(0, 4)}…${a.slice(-4)}`
+// Word joiners keep "9AhK…sbkw" on one line wherever it wraps.
+const short = (a: string) => `${a.slice(0, 4)}\u2060…\u2060${a.slice(-4)}`
 
 /** The encrypted Sunny wallet backup. Telegram users only: the wallet needs a verified identity. */
 async function vaultRoute(req: IncomingMessage, res: ServerResponse, botToken: string) {

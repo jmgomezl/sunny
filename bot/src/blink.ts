@@ -242,7 +242,8 @@ const u64 = (data: Uint8Array, at: number) => {
   for (let i = 7; i >= 0; i--) v = (v << 8n) | BigInt(data[at + i] ?? 0)
   return v
 }
-const short = (a: string) => `${a.slice(0, 4)}…${a.slice(-4)}`
+// Word joiners keep "9AhK…sbkw" on one line wherever it wraps.
+const short = (a: string) => `${a.slice(0, 4)}\u2060…\u2060${a.slice(-4)}`
 
 /**
  * Checks every instruction for the ways drainers take over a wallet: reassigning the wallet,

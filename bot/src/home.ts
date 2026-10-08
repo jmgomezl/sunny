@@ -74,7 +74,8 @@ async function fearGreed() {
   }
 }
 
-const short = (a: string) => `${a.slice(0, 4)}…${a.slice(-4)}`
+// Word joiners keep "9AhK…sbkw" on one line wherever it wraps.
+const short = (a: string) => `${a.slice(0, 4)}\u2060…\u2060${a.slice(-4)}`
 
 const walletRisk = (p: Portfolio): WatchedWallet['risk'] => riskOf(holdingFlags(p))
 

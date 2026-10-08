@@ -134,7 +134,8 @@ export function markBriefSent(id: number, day: string) {
 
 export const watchedOf = (id: number) => get(id).wallets
 
-const short = (a: string) => `${a.slice(0, 4)}…${a.slice(-4)}`
+// Word joiners keep "9AhK…sbkw" on one line wherever it wraps.
+const short = (a: string) => `${a.slice(0, 4)}\u2060…\u2060${a.slice(-4)}`
 
 /** Adds a wallet for Sunny to watch (newest first) and notes it in the activity log. */
 export function watchWallet(id: number, address: string): 'added' | 'already' | 'full' {
