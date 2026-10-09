@@ -74,7 +74,11 @@ export function seen(userId: number) {
 
 // The program's own record, read from devnet at most every ten minutes.
 let chain: { at: number; value: Promise<OnChain | null> } | null = null
-type OnChain = { pockets: number; transactions: number; failed: number; complete: boolean }
+type OnChain = { pockets: number; transactions: number; failed: number; refused: number; complete: boolean }
+// The pocket program's refusals: frozen (6002), over the per-payment (6003) or daily limit (6004).
+const REFUSALS = new Set([6002, 6003, 6004])
+const refusal = (err: unknown) =>
+  REFUSALS.has((err as { InstructionError?: [number, { Custom?: number }] } | null)?.InstructionError?.[1]?.Custom ?? -1)
 
 async function readChain(): Promise<OnChain | null> {
   try {
@@ -82,18 +86,20 @@ async function readChain(): Promise<OnChain | null> {
     let before: string | undefined
     let transactions = 0
     let failed = 0
+    let refused = 0
     let complete = false
     for (let page = 0; page < 5; page++) {
       const sigs = await connection.getSignaturesForAddress(POCKET_PROGRAM, { limit: 1000, before })
       transactions += sigs.length
       failed += sigs.filter((s) => s.err).length
+      refused += sigs.filter((s) => refusal(s.err)).length
       if (sigs.length < 1000) {
         complete = true
         break
       }
       before = sigs.at(-1)?.signature
     }
-    return { pockets: accounts.length, transactions, failed, complete }
+    return { pockets: accounts.length, transactions, failed, refused, complete }
   } catch (err) {
     console.warn('[sunny] stats: chain read failed', String(err))
     return null

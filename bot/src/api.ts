@@ -432,65 +432,73 @@ async function shareRoute(req: IncomingMessage, res: ServerResponse, botToken: s
 }
 
 function shareImage(req: IncomingMessage, res: ServerResponse) {
-  const image = readShare(/^\/api\/share\/([a-f0-9]{32})\.jpg$/.exec(req.url ?? '')?.[1] ?? '')
+  const image = readShare(/^\/api\/share\/([a-f0-9]{32})\.jpg$/.exec(new URL(req.url ?? '/', 'http://sunny').pathname)?.[1] ?? '')
   if (!image) return send(res, 404, { error: 'Not found' })
   res.writeHead(200, { 'Content-Type': 'image/jpeg', 'Cache-Control': 'public, max-age=604800, immutable' })
   res.end(image)
 }
 
 // Solana Actions must answer CORS preflights and allow any origin (wallets and blink clients).
+// The same headers as @solana/actions' ACTIONS_CORS_HEADERS, plus the chain (the demo builds a
+// mainnet transaction, to read real balances) and the spec version.
 const ACTION_HEADERS = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET,POST,PUT,OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization, Content-Encoding, Accept-Encoding',
+  'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
+  'Access-Control-Allow-Headers':
+    'Content-Type, Authorization, Content-Encoding, Accept-Encoding, X-Accept-Action-Version, X-Accept-Blockchain-Ids',
+  'Access-Control-Expose-Headers': 'X-Action-Version, X-Blockchain-Ids',
+  'X-Action-Version': '2.4',
+  'X-Blockchain-Ids': 'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp',
   'Content-Type': 'application/json',
+}
+
+/** Every Blink answer, errors included, carries the Actions headers; errors use {message}. */
+function actionReply(res: ServerResponse, status: number, body?: unknown) {
+  if (res.headersSent) return void res.end()
+  res.writeHead(status, ACTION_HEADERS)
+  res.end(body === undefined ? undefined : JSON.stringify(body))
 }
 
 /** Sunny's harmless scam-demo Blink (see demoblink.ts). */
 async function demoBlinkRoute(req: IncomingMessage, res: ServerResponse) {
-  if (req.method === 'OPTIONS') {
-    res.writeHead(204, ACTION_HEADERS)
-    return res.end()
+  if (req.method === 'OPTIONS') return actionReply(res, 204)
+  if (!allow(`blink-demo:${clientIp(req)}`, 120, HOUR)) return actionReply(res, 429, { message: 'Too many requests. Try again later.' })
+  if (req.method === 'GET' || req.method === 'HEAD') return actionReply(res, 200, demoBlinkMeta(PUBLIC_URL))
+  if (req.method !== 'POST') return actionReply(res, 405, { message: 'Method not allowed' })
+  const body = await readJson(req).catch(() => null)
+  if (typeof body?.account !== 'string' || !isAddress(body.account)) {
+    return actionReply(res, 400, { message: 'Send the account that would sign.' })
   }
-  if (!allow(`blink-demo:${clientIp(req)}`, 120, HOUR)) return send(res, 429, { error: 'Too many requests' })
-  if (req.method === 'GET') {
-    res.writeHead(200, ACTION_HEADERS)
-    return res.end(JSON.stringify(demoBlinkMeta(PUBLIC_URL)))
-  }
-  if (req.method !== 'POST') return send(res, 405, { error: 'Method not allowed' })
-  const body = await readJson(req)
-  if (typeof body.account !== 'string' || !isAddress(body.account)) {
-    res.writeHead(400, ACTION_HEADERS)
-    return res.end(JSON.stringify({ message: 'Send the account that would sign.' }))
-  }
-  // Built before any header goes out, so a failure can still answer properly.
   const tx = await demoBlinkTransaction(body.account).catch((err) => {
     console.error('[sunny] demo blink failed', err)
     return null
   })
-  res.writeHead(tx ? 200 : 500, ACTION_HEADERS)
-  res.end(JSON.stringify(tx ?? { message: 'The demo couldn’t build its transaction right now.' }))
+  actionReply(res, tx ? 200 : 500, tx ?? { message: 'The demo couldn’t build its transaction right now.' })
 }
 
 export function startApi(port: number, botToken: string) {
   startShareCleanup()
   const server = createServer(async (req, res) => {
     try {
-      if (req.method === 'GET' && req.url === '/api/health') return send(res, 200, { ok: true, brain: hasBrain() })
-      if (req.method === 'POST' && req.url === '/api/chat') return await chat(req, res, botToken)
-      if (req.method === 'POST' && req.url === '/api/home') return await home(req, res, botToken)
-      if (req.method === 'POST' && req.url === '/api/inspect') return await inspectRoute(req, res, botToken)
-      if (req.method === 'POST' && req.url === '/api/vault') return await vaultRoute(req, res, botToken)
-      if (req.method === 'POST' && req.url === '/api/pocket') return await pocketRoute(req, res, botToken)
-      if (req.method === 'POST' && req.url === '/api/share') return await shareRoute(req, res, botToken)
-      if (req.method === 'POST' && req.url === '/api/badges') return await badgesRoute(req, res, botToken)
-      if (req.method === 'POST' && req.url === '/api/auth') return await authRoute(req, res)
-      if (req.method === 'GET' && req.url === '/api/stats') return await statsRoute(req, res)
-      if (req.url?.split('?')[0] === DEMO_BLINK_PATH) return await demoBlinkRoute(req, res)
-      if (req.method === 'GET' && req.url?.startsWith('/api/share/')) return shareImage(req, res)
+      // Matched on the path alone, so a query string (?ts=…) or a HEAD check still finds a route.
+      const path = new URL(req.url ?? '/', 'http://sunny').pathname
+      const get = req.method === 'GET' || req.method === 'HEAD'
+      const post = req.method === 'POST'
+      if (get && path === '/api/health') return send(res, 200, { ok: true, brain: hasBrain() })
+      if (post && path === '/api/chat') return await chat(req, res, botToken)
+      if (post && path === '/api/home') return await home(req, res, botToken)
+      if (post && path === '/api/inspect') return await inspectRoute(req, res, botToken)
+      if (post && path === '/api/vault') return await vaultRoute(req, res, botToken)
+      if (post && path === '/api/pocket') return await pocketRoute(req, res, botToken)
+      if (post && path === '/api/share') return await shareRoute(req, res, botToken)
+      if (post && path === '/api/badges') return await badgesRoute(req, res, botToken)
+      if (post && path === '/api/auth') return await authRoute(req, res)
+      if (get && path === '/api/stats') return await statsRoute(req, res)
+      if (path === DEMO_BLINK_PATH) return await demoBlinkRoute(req, res)
+      if (get && path.startsWith('/api/share/')) return shareImage(req, res)
       // Public x402 API: anyone can pay for a deep scan, not just Sunny.
-      if (req.method === 'OPTIONS' && req.url?.startsWith(DEEP_SCAN_PATH)) return deepScanPreflight(res)
-      if (req.method === 'GET' && req.url?.startsWith(DEEP_SCAN_PATH)) {
+      if (req.method === 'OPTIONS' && path === DEEP_SCAN_PATH) return deepScanPreflight(res)
+      if (get && path === DEEP_SCAN_PATH) {
         if (!allow(`x402:${clientIp(req)}`, 120, HOUR)) return send(res, 429, { error: 'Too many scans. Try again later.' })
         return await deepScanRoute(req, res)
       }

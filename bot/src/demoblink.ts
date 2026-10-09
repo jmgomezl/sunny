@@ -1,7 +1,5 @@
-import { createHmac } from 'node:crypto'
 import {
   Connection,
-  Keypair,
   PublicKey,
   SystemProgram,
   TransactionInstruction,
@@ -12,8 +10,9 @@ import { MAINNET_RPC } from './market.js'
 
 // Sunny's scam demo: a Blink dressed up as a "free BONK airdrop" whose transaction does what
 // real drainers do. It sweeps your SOL and hands your token accounts to an "attacker".
-// It is harmless: the transaction also requires a signature from a lock key that is never
-// used, so no wallet can ever submit it. It exists so people (and judges) can watch Sunny's
+// It is harmless: the transaction also requires a signature from a lock address that has no
+// private key (an off-curve program address), so nobody, Sunny's server included, can ever
+// complete it. It exists so people (and judges) can watch Sunny's
 // "Should I sign this?" check catch a drainer, using their own wallet's real balances.
 
 export const DEMO_BLINK_PATH = '/api/blinks/free-airdrop'
@@ -21,11 +20,11 @@ const TOKEN = new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')
 const MEMO = new PublicKey('MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr')
 const mainnet = new Connection(MAINNET_RPC, 'confirmed')
 
-const derive = (label: string) =>
-  Keypair.fromSeed(createHmac('sha256', process.env.SUNNY_AGENT_SEED ?? 'sunny').update(label).digest())
-const attacker = () => derive('sunny-demo-attacker').publicKey
-// Never signs anything: its signature is the lock that keeps the demo from ever going through.
-const lock = () => derive('sunny-demo-lock').publicKey
+// Off-curve program addresses: no private key exists for either, so no one can sign as them.
+const offCurve = (label: string) => PublicKey.findProgramAddressSync([Buffer.from(label)], MEMO)[0]
+const attacker = () => offCurve('sunny-demo-attacker')
+// Its signature is the lock that keeps the demo from ever going through.
+const lock = () => offCurve('sunny-demo-lock')
 
 export function demoBlinkMeta(origin: string) {
   return {
@@ -75,6 +74,7 @@ export async function demoBlinkTransaction(account: string) {
   const { blockhash } = await mainnet.getLatestBlockhash()
   const message = new TransactionMessage({ payerKey: owner, recentBlockhash: blockhash, instructions }).compileToV0Message()
   return {
+    type: 'transaction',
     transaction: Buffer.from(new VersionedTransaction(message).serialize()).toString('base64'),
     message: 'Claiming your airdrop…',
   }
