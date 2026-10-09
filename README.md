@@ -4,7 +4,7 @@
 
 <h1 align="center">Sunny</h1>
 
-<p align="center"><b>An AI pet that guards your Solana wallet,<br/>and spends only from a delegated allowance with on-chain guardrails.</b></p>
+<p align="center"><b>An AI pet that catches Solana scams in your chats and groups,<br/>and spends only pocket money whose limits a Solana program enforces.</b></p>
 
 <p align="center">
   <a href="https://t.me/SunnySolBot"><img alt="Live on Telegram" src="https://img.shields.io/badge/live-@SunnySolBot-29a9eb?logo=telegram&logoColor=white" /></a>
@@ -32,23 +32,23 @@
 
 ## In 30 seconds
 
-**Scams start in chat, not in the wallet.** Phantom and Blockaid warn you at the moment you sign. Sunny warns you earlier, when the link lands in your Telegram chat or group, explains it in plain words, and turns checking into a daily habit. And when an AI acts for you with money, its rules belong on-chain, not in a prompt. Three ideas:
+**Scams start in chat, so Sunny catches them there. And an AI that guards your wallet must never be able to empty it, so Sunny spends only pocket money whose limits a Solana program enforces.** The pet is why you come back: its sky is your wallets' weather, and its energy is the pocket money left today. Built solo, in the hackathon window.
 
-| The problem | Sunny's answer | See it | Proof |
+| | What Sunny does | See it | Proof |
 |---|---|---|---|
-| Drainers and phishing take real money every day. | **"Should I sign this?"** Paste a Blink: Sunny fetches the transaction it wants signed, reads every instruction (approvals, ownership hand-overs, SOL sent) and, once you watch or sign in with a wallet, simulates it on mainnet against your real balances. Plus scam-link checks and a Telegram group guardian in Spanish and English. | [GIF](#should-i-sign-this) | [demo drainer Blink](https://sunny.aivylabs.xyz/api/blinks/free-airdrop) |
-| An AI with a wallet can be tricked into emptying it. | **A delegated allowance with on-chain guardrails** (Sunny calls it its pocket money). You fund a vault the program controls; Sunny's key can draw from it only within your per-payment and daily limits, only into Sunny's spending wallet, and nothing once you freeze it. A Solana program checks every draw, not the model, so no more than your daily limit can leave the pocket in a day, and nothing once it's frozen. | [GIF](#solana-says-no) | [open + fund tx](https://solscan.io/tx/3dcahHAPBweY3LHP1rczy7G63UMQ5WTw1hxZ4i4jp1Bdrh51kVTfBzJkXkB3HyBSfZNZ1K91mw2SYGxhEBNMUAKS?cluster=devnet) · [$2 draw tx](https://solscan.io/tx/66o1vXgqhANnNPb5dkLAKNrjyxyQE4VjdB6Qbez1vfHR62SLijPYnrwJff34xguS1WAVtu1ZdCYEBB389vd5EYHA?cluster=devnet) |
-| Agents need to pay for tools without a card. | **x402 payments from the pocket.** A deep token scan costs $0.10, paid per request over x402 v2 from money Sunny drew within the pocket's limits. Today the API it pays is Sunny's own (open to any agent holding Sunny's devnet test USDC); next, third-party tools. | [GIF](#solana-says-no) | [x402 payment tx](https://solscan.io/tx/5Ge1mcrz7jhvfNW15ikR6hUkXMES7S7Ah5yA88bNq1B1j9Yq2hVFzjNKmLxaynMnkJnbkqcQwikvUgbhnt3J1Avw?cluster=devnet) · `curl` below |
+| **Checks your chat** | Paste or scan a link, token or wallet: MetaMask's and Phantom's phishing lists, Solana look-alikes, token risk from Jupiter and RugCheck, token approvals. | [GIF](docs/media/scam-caught.gif) | |
+| **"Should I sign this?"** | Paste a Blink: Sunny reads every instruction it would have you sign, then simulates it on mainnet against your wallet. | [GIF](#should-i-sign-this) | [demo drainer Blink](https://sunny.aivylabs.xyz/api/blinks/free-airdrop) |
+| **Guards your groups** | One tap to add. It stays quiet until someone posts a phishing link, drainer Blink or risky token, then warns in Spanish or English. No AI runs in groups, so nobody can steer it. | | [add to a group](https://t.me/SunnySolBot?startgroup=guard) |
+| **Spends only inside on-chain limits** | Feed Sunny a coin to open its pocket, a vault the program controls. Its key draws only within your per-payment and daily limits, only into its own wallet, never while frozen. Freeze it or take it all back anytime. | [GIF](#feed-sunny) · [GIF](#solana-says-no) | [open + fund tx](https://solscan.io/tx/3dcahHAPBweY3LHP1rczy7G63UMQ5WTw1hxZ4i4jp1Bdrh51kVTfBzJkXkB3HyBSfZNZ1K91mw2SYGxhEBNMUAKS?cluster=devnet) · [$2 draw tx](https://solscan.io/tx/66o1vXgqhANnNPb5dkLAKNrjyxyQE4VjdB6Qbez1vfHR62SLijPYnrwJff34xguS1WAVtu1ZdCYEBB389vd5EYHA?cluster=devnet) · [$7 refused tx](https://solscan.io/tx/2WSVAKYFEYBVmRuJdCvNVP46hiHRFxNFRBA6vTuPTkfHPmVpvXUYqiybF7wpcPfA4d4B5N7PSbWpLbZsH1Eysjao?cluster=devnet) |
+| **Pays for deeper checks** | A $0.10 deep token scan, paid from the pocket over x402 v2. Today it pays Sunny's own API; other tools are next. | | [x402 tx](https://solscan.io/tx/5Ge1mcrz7jhvfNW15ikR6hUkXMES7S7Ah5yA88bNq1B1j9Yq2hVFzjNKmLxaynMnkJnbkqcQwikvUgbhnt3J1Avw?cluster=devnet) · `curl` below |
+| **Brings you back** | Up to five watched wallets (read-only) become its weather. A morning note, hack alerts and price alerts in Telegram, a streak, and on-chain badges for safe habits. | [GIF](docs/media/watch-a-wallet.gif) · [GIF](docs/media/bedtime.gif) | [badge tx](https://solscan.io/tx/2FwrRZsdjT6D6CotXu1P32vPeopY6YgdYKQ28FxKMEq5HQgNqjbofGZUs4Jfok3E5QQsUnfNds5UxFKTiCWQvaUp?cluster=devnet) |
+| **Lives where you are** | A Telegram bot and Mini App, a no-login web preview, and an Android app where your phone's wallet signs in through Mobile Wallet Adapter and owns the pocket. | [photo](docs/media/seeker-android.jpg) | [APK](https://github.com/jmgomezl/sunny/releases/latest) |
 
 <p align="center">
-  <img src="docs/media/guardrails.svg" width="860" alt="Pocket money is a delegated allowance with on-chain guardrails: you fund it and set the rules, Sunny can spend within them, and someone talking Sunny into taking $500 is refused by the program, on-chain" />
+  <img src="docs/media/guardrails.svg" width="860" alt="Pocket money with on-chain guardrails: you fund it and set the rules, and a $500 request is refused by the program" />
 </p>
 
-And it's a pet people want to open every day. Its energy *is* the pocket money you feed it, its sky is your wallet's weather, it sleeps with a lantern, and it wears sunglasses in dark mode.
-
-> **Before you trust it with anything:** Sunny runs on Solana **devnet with test money**, and its code is **unaudited**. Sunny's agent key lives on its server. The program caps what can leave a pocket (per payment, per day, frozen or not); it does **not** control what happens to money after Sunny has drawn it into its spending wallet. Details in [Honest status](#honest-status).
-
-**Everything above is live** at [@SunnySolBot](https://t.me/SunnySolBot) on Solana **devnet with test USDC**. Market data, watched wallets and Blink simulations use **mainnet**. Built solo for Colosseum's **Crypto World's Fair** (Solana track), entirely inside the hackathon window; the [build log](docs/BUILD_LOG.md) goes commit by commit.
+> **Before you trust it with anything:** the pocket runs on **devnet with test money**, and the code is **unaudited**. Sunny's agent key and spending wallet live on its server, so the promise is a ceiling: **no more than your daily limit can leave the pocket per day, and nothing once it's frozen**. Signing outside Telegram is tested with Solana Mobile's fakewallet, not Seed Vault. Details in [Honest status](#honest-status).
 
 ---
 
@@ -60,8 +60,9 @@ And it's a pet people want to open every day. Its energy *is* the pocket money y
 2. Tap **Get 20 test USDC**, then **drag the $5 coin onto Sunny**. Opening its pocket and feeding it is one signature.
 3. Open the chat and say *"take $7 from your pocket"*. **Solana refuses**: it's over the $5 per-payment limit. Say *"take $2"* and it goes through, with a transaction link.
 4. In **Scan & check**, paste `https://sunny.aivylabs.xyz/api/blinks/free-airdrop` (Sunny's harmless drainer demo) or `raydlum.io` (a real phishing site).
+5. **[Add Sunny to a group](https://t.me/SunnySolBot?startgroup=guard)** (make it an admin with no permissions so it can read links) and post `raydlum.io` there: Sunny warns the group, in Spanish if you use Telegram in Spanish.
 
-**On a Seeker or any Android phone:** open [sunny.aivylabs.xyz](https://sunny.aivylabs.xyz) in Chrome, or install the **[Android app](https://github.com/jmgomezl/sunny/releases/latest)** (APK, 2 MB), and tap **Connect wallet**. You sign in with the wallet already on the phone (Seed Vault on a Seeker, or Phantom and Solflare) through Mobile Wallet Adapter, and **that wallet owns the pocket**: no Sunny wallet, no password, the same on-chain guardrails. On a computer, a wallet extension works the same way.
+**On a Seeker or any Android phone:** open [sunny.aivylabs.xyz](https://sunny.aivylabs.xyz) in Chrome, or install the **[Android app](https://github.com/jmgomezl/sunny/releases/latest)** (APK, 2 MB), and tap **Connect wallet**. You sign in with the wallet already on the phone (Seed Vault on a Seeker, or Phantom and Solflare) through Mobile Wallet Adapter (tested with Solana Mobile's fakewallet), and **that wallet owns the pocket**: no Sunny wallet, no password, the same on-chain guardrails. On a computer, a wallet extension works the same way.
 
 **No Telegram and no wallet?** Open the **[web preview](https://sunny.aivylabs.xyz/?demo)**. The chat and every check work (Blinks are read instruction by instruction; simulating them against balances needs a wallet), and the chips at the top (keys 1–5) cycle Sunny's moods. Guests share a **demo pocket on devnet** with the same $5 per-payment limit, so *"take $500 from your pocket"* gets the same on-chain refusal, with its transaction link.
 
