@@ -721,7 +721,7 @@ export default function App() {
     if (!r || r.kind === 'unknown' || (r.kind === 'token' && !r.found)) return play({ reaction: 'blush', ms: 900 })
     if (r.kind === 'blink' && r.report.verdict === 'danger') {
       void refreshBadges()
-      const where = r.report.host === window.location.host ? 'practice drainer' : r.report.host
+      const where = r.report.host.toLowerCase().replace(/\.$/, '') === window.location.host ? 'practice drainer' : r.report.host
       return warn(`Don’t sign · ${where}`, 'Don’t sign that one! I read what it would do to your wallet.')
     }
     if (r.kind === 'link' && (r.link.verdict === 'known_scam' || r.link.verdict === 'suspicious')) {

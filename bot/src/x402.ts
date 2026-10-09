@@ -94,10 +94,11 @@ export function deepScanPreflight(res: ServerResponse) {
 /** GET /api/x402/deep-scan?mint=… — 402 with the price, or the report once paid. */
 export async function deepScanRoute(req: IncomingMessage, res: ServerResponse) {
   const mint = new URL(req.url ?? '/', 'http://localhost').searchParams.get('mint') ?? ''
-  if (!isSolanaAddress(mint)) return reply(res, 400, { error: 'Add ?mint=<token mint address>' })
+  if (!isSolanaAddress(mint)) return reply(res, 400, { error: 'That isn’t a token mint address. Add ?mint=<token mint address>' })
   // Only tokens get a price quote: a wallet address has nothing to scan.
-  if ((await accountKind(mint).catch(() => 'mint')) !== 'mint') {
-    return reply(res, 400, { error: 'That address isn’t a token mint (it’s a wallet, or nothing exists there).' })
+  const kind = await accountKind(mint).catch(() => 'mint' as const)
+  if (kind !== 'mint') {
+    return reply(res, 400, { error: kind === 'none' ? 'That isn’t a token mint: nothing exists at that address.' : 'That isn’t a token mint: it’s a wallet.' })
   }
   treasuryReady ??= ensureAta(treasury().publicKey).catch((err) => {
     treasuryReady = undefined

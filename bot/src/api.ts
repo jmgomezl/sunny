@@ -17,6 +17,7 @@ import { count, seen, snapshot } from './stats.js'
 import { DEEP_SCAN_PATH, deepScanPreflight, deepScanRoute } from './x402.js'
 import { MAX_SHARE_BYTES, readShare, saveShare, startShareCleanup } from './shares.js'
 import { DEMO_BLINK_PATH, DEMO_HOST, demoBlinkMeta, demoBlinkTransaction } from './demoblink.js'
+import { bareHost } from './blink.js'
 
 // Small HTTP API for the Mini App, served behind nginx at /api/.
 // Telegram users are identified from the signed initData, so chatting in the Mini App
@@ -35,6 +36,9 @@ const GUESTS_PER_DAY = 400
 // devnet) has a shared daily ceiling for them, on top of the per-person limits.
 const WALLET_CHATS_PER_DAY = 600
 const WALLET_SIGNINS_PER_DAY = 400
+// No single address can use up the day's shared ceilings for everyone.
+const GUEST_CHATS_PER_IP_PER_DAY = 60
+const WALLET_SIGNINS_PER_IP_PER_DAY = 20
 const WALLET_PAID_ACTIONS_PER_DAY = 150
 
 type Person = { id: number; name: string; lang: string; guest: boolean; wallet?: string }
@@ -61,8 +65,9 @@ export function verifyInitData(initData: string, botToken: string): { id: number
       .map(([k, v]) => `${k}=${v}`)
       .sort()
       .join('\n')
+    if (!/^[0-9a-f]{64}$/i.test(hash)) return false
     const expected = createHmac('sha256', secret).update(check).digest('hex')
-    return expected.length === hash.length && timingSafeEqual(Buffer.from(expected), Buffer.from(hash))
+    return timingSafeEqual(Buffer.from(expected), Buffer.from(hash.toLowerCase()))
   }
   // Telegram's docs have described the check string both with and without `signature`;
   // either form is only producible with the bot token, so accept both.
@@ -127,10 +132,10 @@ function identify(body: Record<string, unknown>, botToken: string, ip: string, r
 
   const guestId = typeof body.guestId === 'string' ? body.guestId : ''
   if (!/^[A-Za-z0-9-]{8,64}$/.test(guestId)) throw new ApiError(400, 'Something went wrong. Refresh and try again?')
-  if (!allow(`${route}:g:${guestId}`, limit.guest, HOUR) || !allow(`${route}:ip:${ip}`, limit.ip, HOUR)) {
+  if (!allow(`${route}:ip:${ip}`, limit.ip, HOUR) || !allow(`${route}:g:${guestId}`, limit.guest, HOUR)) {
     throw new ApiError(429, 'That’s all I can do in the web preview for now ☀️ Connect a wallet or open me in Telegram to keep going.')
   }
-  if (route === 'chat' && !allow('guests', GUESTS_PER_DAY, DAY)) {
+  if (route === 'chat' && (!allow(`guests:ip:${ip}`, GUEST_CHATS_PER_IP_PER_DAY, DAY) || !allow('guests', GUESTS_PER_DAY, DAY))) {
     throw new ApiError(429, 'I’ve had a busy day in the web preview. Open me in Telegram to keep talking ☀️')
   }
   // Negative ids keep guest memories apart from real Telegram users.
@@ -235,7 +240,7 @@ async function inspectRoute(req: IncomingMessage, res: ServerResponse, botToken:
     if (result.link.verdict === 'known_scam' || result.link.verdict === 'suspicious') count('scamsFlagged', person.id)
   } else if (result.kind === 'blink') {
     count('blinksChecked', person.id)
-    if (result.report.verdict === 'danger' && result.report.host !== DEMO_HOST) count('drainersFlagged', person.id)
+    if (result.report.verdict === 'danger' && bareHost(result.report.host) !== DEMO_HOST) count('drainersFlagged', person.id)
   }
   if (result.kind === 'token' && result.found) {
     logActivity(person.id, 'check', `Checked $${result.card.symbol} · ${result.card.risk} risk`, 'Jupiter + RugCheck')
@@ -389,12 +394,13 @@ async function authRoute(req: IncomingMessage, res: ServerResponse) {
       throw new ApiError(400, 'Missing signature.')
     }
     // The day's ceiling counts real sign-ins only, so junk signatures can't use it up for everyone.
-    if (hits('wallet-signins', DAY) >= WALLET_SIGNINS_PER_DAY) {
+    if (hits('wallet-signins', DAY) >= WALLET_SIGNINS_PER_DAY || hits(`wallet-signins:ip:${clientIp(req)}`, DAY) >= WALLET_SIGNINS_PER_IP_PER_DAY) {
       throw new ApiError(429, 'Lots of new friends today ☀️ Try again tomorrow, or open me in Telegram.')
     }
     const address = verifySignIn(body.message, body.signature, domain)
     if (!address) throw new ApiError(401, 'That signature didn’t check out. Try connecting again.')
     allow('wallet-signins', WALLET_SIGNINS_PER_DAY, DAY)
+    allow(`wallet-signins:ip:${clientIp(req)}`, WALLET_SIGNINS_PER_IP_PER_DAY, DAY)
     const id = walletUserId(address)
     linkWallet(id, address)
     touch(id, 'friend', 'en')
@@ -408,7 +414,7 @@ async function authRoute(req: IncomingMessage, res: ServerResponse) {
 
 /** GET /api/stats: Sunny's public numbers, for the stats page. */
 async function statsRoute(req: IncomingMessage, res: ServerResponse) {
-  if (!allow(`stats:ip:${clientIp(req)}`, 120, HOUR)) return send(res, 429, { error: 'Too many requests' })
+  if (!allow(`stats:ip:${clientIp(req)}`, 600, HOUR)) return send(res, 429, { error: 'Too many requests' })
   res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'public, max-age=60' })
   res.end(JSON.stringify(await snapshot()))
 }

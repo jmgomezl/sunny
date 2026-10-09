@@ -425,7 +425,7 @@ export function BlinkCardView({ report }: { report: BlinkReport }) {
   const pill = VERDICT_PILL[report.verdict]
   const short = report.wallet ? `${report.wallet.slice(0, 4)}…${report.wallet.slice(-4)}` : ''
   // Sunny's own harmless drainer demo: never shown with Sunny's face, as if Sunny were the scam.
-  const practice = report.host === window.location.host
+  const practice = report.host.toLowerCase().replace(/\.$/, '') === window.location.host
   return (
     <div className={`token-card blink-card token-card--${pill.risk}`}>
       <div className="token-card-top">

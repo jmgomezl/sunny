@@ -5,6 +5,13 @@ const windows = new Map<string, number[]>()
 export const HOUR = 60 * 60 * 1000
 export const DAY = 24 * HOUR
 
+// No window is longer than a day: keys with nothing in the last day are dropped, so the map can't
+// grow forever under a stream of fresh ids.
+setInterval(() => {
+  const cutoff = Date.now() - DAY
+  for (const [key, times] of windows) if (!times.some((t) => t > cutoff)) windows.delete(key)
+}, 10 * 60_000).unref()
+
 /** How many hits `key` has within `windowMs`, without recording one. */
 export function hits(key: string, windowMs: number) {
   const now = Date.now()

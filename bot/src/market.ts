@@ -67,6 +67,8 @@ export async function getJson<T>(path: string): Promise<T> {
   if (!res.ok) throw new Error(`Jupiter ${res.status} for ${path}`)
   const data = (await res.json()) as T
   cache.set(url, { at: Date.now(), data })
+  // At most a few hundred answers, oldest out first (a Map keeps insertion order).
+  if (cache.size > 400) for (const key of [...cache.keys()].slice(0, cache.size - 400)) cache.delete(key)
   return data
 }
 

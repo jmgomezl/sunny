@@ -38,7 +38,7 @@ import {
 import type { DeepReport } from './deepscan.js'
 import { DEEP_SCAN_PRICE, sunnyBuysDeepScan } from './x402.js'
 import { ago, latestNews } from './news.js'
-import { checkBlink, hasBlinkShapedLink, probeAccount, untrusted, type BlinkReport } from './blink.js'
+import { bareHost, checkBlink, hasBlinkShapedLink, probeAccount, untrusted, type BlinkReport } from './blink.js'
 import { DEMO_HOST } from './demoblink.js'
 import { allow, HOUR } from './limits.js'
 
@@ -680,7 +680,7 @@ async function runTool(name: string, rawArgs: string, ctx: Ctx): Promise<unknown
         if (ctx.blinks.length < 2) ctx.blinks.push(report)
         if (report.verdict === 'danger') noteHabit(ctx.userId, 'scamCaught')
         count('blinksChecked', ctx.userId)
-        if (report.verdict === 'danger' && report.host !== DEMO_HOST) count('drainersFlagged', ctx.userId)
+        if (report.verdict === 'danger' && bareHost(report.host) !== DEMO_HOST) count('drainersFlagged', ctx.userId)
         logActivity(
           ctx.userId,
           report.verdict === 'danger' ? 'scam' : 'check',

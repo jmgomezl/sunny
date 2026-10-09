@@ -51,7 +51,9 @@ for (const [net, bits] of [
   ['0.0.0.0', 8], ['10.0.0.0', 8], ['100.64.0.0', 10], ['127.0.0.0', 8], ['169.254.0.0', 16], ['172.16.0.0', 12],
   ['192.0.0.0', 24], ['192.168.0.0', 16], ['198.18.0.0', 15], ['224.0.0.0', 4], ['240.0.0.0', 4],
 ] as const) PRIVATE.addSubnet(net, bits, 'ipv4')
-for (const [net, bits] of [['::', 128], ['::1', 128], ['fc00::', 7], ['fe80::', 10], ['ff00::', 8]] as const) PRIVATE.addSubnet(net, bits, 'ipv6')
+for (const [net, bits] of [
+  ['::', 96], ['::1', 128], ['64:ff9b::', 96], ['2002::', 16], ['fc00::', 7], ['fe80::', 10], ['ff00::', 8],
+] as const) PRIVATE.addSubnet(net, bits, 'ipv6')
 // Local development only: lets the demo Blink be checked on http://127.0.0.1.
 const ALLOW_PRIVATE = process.env.SUNNY_ALLOW_PRIVATE_FETCH === '1'
 
@@ -88,11 +90,15 @@ async function readCapped(res: Response) {
   return Buffer.concat(chunks).toString('utf8')
 }
 
+/** A hostname compared as people read it: lower case, without a trailing dot. */
+export const bareHost = (host: string) => host.toLowerCase().replace(/\.$/, '')
+
 // Sunny's own demo Blink is read in-process: no trip out to the internet and back in through
 // its own public rate limit, which every visitor shares.
 async function ownDemo<T>(url: URL, init?: RequestInit) {
-  if (url.hostname !== DEMO_HOST || url.pathname.replace(/\/$/, '') !== DEMO_BLINK_PATH) return null
-  if (init?.method !== 'POST') return { ok: true, status: 200, body: demoBlinkMeta(`https://${DEMO_HOST}`) as T }
+  if (bareHost(url.hostname) !== DEMO_HOST || url.pathname.replace(/\/$/, '') !== DEMO_BLINK_PATH) return null
+  const at = `https://${DEMO_HOST}${DEMO_BLINK_PATH}`
+  if (init?.method !== 'POST') return { ok: true, status: 200, body: demoBlinkMeta(`https://${DEMO_HOST}`) as T, url: at }
   let account = ''
   try {
     account = String((JSON.parse(String(init.body ?? '{}')) as { account?: unknown }).account ?? '')
@@ -100,7 +106,7 @@ async function ownDemo<T>(url: URL, init?: RequestInit) {
     // no account
   }
   const tx = account ? await demoBlinkTransaction(account).catch(() => null) : null
-  return { ok: Boolean(tx), status: tx ? 200 : 400, body: (tx ?? { message: 'Send the account that would sign.' }) as T }
+  return { ok: Boolean(tx), status: tx ? 200 : 400, body: (tx ?? { message: 'Send the account that would sign.' }) as T, url: at }
 }
 
 const json = async <T>(target: string, init?: RequestInit) => {
@@ -127,7 +133,7 @@ const json = async <T>(target: string, init?: RequestInit) => {
     } catch {
       body = null
     }
-    return { ok: res.ok, status: res.status, body }
+    return { ok: res.ok, status: res.status, body, url: url.toString() }
   }
 }
 
@@ -180,6 +186,8 @@ export async function looksLikeBlink(input: string) {
  * Does a chat message carry a link shaped like a Blink (an Action link, a dial.to link, or an
  * Action-style API path)? No network: it decides whether the Blink reader must run first.
  */
+const ACTION_PATH = /\/(api\/)?(actions?|blinks?)(\/|$)/i
+
 export function hasBlinkShapedLink(message: string) {
   // Links wrapped in «», backticks, Markdown or a label ("link:"), or glued to a word ("¡Mira!https…").
   const spaced = message
@@ -196,7 +204,7 @@ export function hasBlinkShapedLink(message: string) {
     if (!scheme && !/^[^\s/?#]+\.[^\s/?#]+[/?]/u.test(word)) continue
     try {
       const url = new URL(scheme ? word : `https://${word}`)
-      if (url.searchParams.has('action') || /\/(api\/)?(actions?|blinks?)(\/|$)/i.test(url.pathname)) return true
+      if (url.searchParams.has('action') || ACTION_PATH.test(url.pathname)) return true
     } catch {
       // not a link
     }
@@ -223,18 +231,20 @@ export async function resolveAction(input: string): Promise<string | null> {
   // Interstitial links: https://dial.to/?action=solana-action:https://…
   const param = url.searchParams.get('action')
   if (param) return decodeURIComponent(param).replace(/^solana-action:/i, '')
-  // A website that maps its pages to Actions in /actions.json.
-  const map = await json<{ rules?: Rule[] }>(`${url.origin}/actions.json`).catch(() => null)
+  // A website that maps its pages to Actions in /actions.json, or the link is an Action API
+  // itself: both asked at once, so a slow site can't use up the check's time twice.
+  const [map, direct] = await Promise.all([
+    json<{ rules?: Rule[] }>(`${url.origin}/actions.json`).catch(() => null),
+    json<ActionMeta>(url.toString()).catch(() => null),
+  ])
   for (const rule of map?.body?.rules ?? []) {
     const api = applyRule(rule, url)
     if (api) return api
   }
-  // Or the link is an Action API itself.
-  const direct = await json<ActionMeta>(url.toString()).catch(() => null)
   if (direct?.ok && direct.body?.title && (direct.body.links?.actions?.length || direct.body.label)) return url.toString()
-  // An Action API path that won't answer Sunny (a drainer can hide from checkers) is still read
+  // An Action-shaped path that won't answer Sunny (a drainer can hide from checkers) is still read
   // as a Blink, so the verdict is "it won't show me its transaction", never a neutral link.
-  if (/\/api\/(actions?|blinks?)(\/|$)/i.test(url.pathname)) return url.toString()
+  if (ACTION_PATH.test(url.pathname)) return url.toString()
   return null
 }
 
@@ -526,7 +536,61 @@ export function checkBlink(link: string, watched: string | null, probe: string):
   const deadline = new Promise<never>((_, reject) => {
     timer = setTimeout(() => reject(new Error('That site took too long to answer, so I couldn’t read what it wants signed.')), CHECK_DEADLINE_MS)
   })
-  return Promise.race([readBlink(link, watched, probe), deadline]).finally(() => clearTimeout(timer))
+  return Promise.race([readBlink(link, watched, probe), deadline])
+    .catch(async (err) => {
+      if (!hasBlinkShapedLink(link) && !/^solana(-action)?:/i.test(link.trim())) throw err
+      return unreadable(link)
+    })
+    .finally(() => clearTimeout(timer))
+}
+
+/** A Blink that wouldn't answer in time: caution, with the same host checks as any other. */
+async function unreadable(link: string): Promise<BlinkReport> {
+  const target = link.trim().replace(/^solana(-action)?:/i, '')
+  const host = (() => {
+    try {
+      return bareHost(new URL(/^https?:\/\//i.test(target) ? target : `https://${target}`).hostname)
+    } catch {
+      return 'unknown'
+    }
+  })()
+  const phish = checkLink(host)
+  return finish({
+    link,
+    actionUrl: target,
+    host,
+    registry: await registryState(host).catch(() => 'unknown' as const),
+    phishing: 'error' in phish ? null : phish.verdict,
+    title: 'Unknown Action',
+    description: '',
+    buttons: [],
+    tried: null,
+    wallet: null,
+    yourWallet: false,
+    sends: [],
+    receives: [],
+    programs: [],
+    warnings: [],
+    outcome: 'unavailable',
+    failReason: 'It took too long to answer.',
+  })
+}
+
+const PHISH_RANK = { known_scam: 3, suspicious: 2, unknown: 1, official: 0 } as const
+
+/** Folds another host into a report's checks: malicious or scam anywhere wins; trusted needs all. */
+async function alsoCheck(base: { host: string; registry: BlinkReport['registry']; phishing: BlinkReport['phishing'] }, other: string) {
+  const host = bareHost(other)
+  if (host === bareHost(base.host)) return
+  const reg = await registryState(host).catch(() => 'unknown' as const)
+  if (reg === 'malicious' || base.registry === 'malicious') base.registry = 'malicious'
+  else if (reg !== 'trusted' || base.registry !== 'trusted') base.registry = 'unknown'
+  const phish = checkLink(host)
+  const verdict = 'error' in phish ? null : phish.verdict
+  if (verdict && (!base.phishing || PHISH_RANK[verdict] > PHISH_RANK[base.phishing])) {
+    base.phishing = verdict
+    base.host = host
+  }
 }
 
 async function readBlink(link: string, watched: string | null, probe: string): Promise<BlinkReport | null> {
@@ -569,6 +633,10 @@ async function readBlink(link: string, watched: string | null, probe: string): P
   if (!meta?.ok || !meta.body) {
     return finish({ ...base, outcome: 'unavailable', failReason: 'The site didn’t answer like a working Blink.' })
   }
+  // A redirect (a link shortener, an open redirect on a trusted site) can't launder a drainer:
+  // the host the answer really came from is checked too, and the worst verdict wins.
+  const metaUrl = meta.url ?? actionUrl
+  await alsoCheck(base, new URL(metaUrl).hostname)
   const m = meta.body
   Object.assign(base, {
     // Solana Pay transaction requests call it a label.
@@ -579,7 +647,8 @@ async function readBlink(link: string, watched: string | null, probe: string): P
   })
 
   // Ask for the transaction, built for your wallet (or a stand-in, just to read it).
-  const button = pickButton(m, actionUrl)
+  const button = pickButton(m, metaUrl)
+  await alsoCheck(base, new URL(button.href).hostname)
   base.tried = button.label
   const account = watched ?? probe
   const posted = await json<{ transaction?: string; message?: string }>(button.href, {

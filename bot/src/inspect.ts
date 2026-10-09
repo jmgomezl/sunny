@@ -28,7 +28,7 @@ export function extractAddress(input: string): string | null {
 }
 
 /** Whether an address is a token's mint or a wallet. */
-export async function accountKind(address: string): Promise<'mint' | 'wallet'> {
+export async function accountKind(address: string): Promise<'mint' | 'wallet' | 'none'> {
   const res = await fetch(MAINNET_RPC, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -36,7 +36,8 @@ export async function accountKind(address: string): Promise<'mint' | 'wallet'> {
     signal: globalThis.AbortSignal.timeout(8_000),
   })
   const value = ((await res.json()) as { result?: { value?: { owner: string; data: { parsed?: { type?: string } } } } }).result?.value
-  return value && TOKEN_PROGRAMS.has(value.owner) && value.data?.parsed?.type === 'mint' ? 'mint' : 'wallet'
+  if (!value) return 'none'
+  return TOKEN_PROGRAMS.has(value.owner) && value.data?.parsed?.type === 'mint' ? 'mint' : 'wallet'
 }
 
 /** `watched` is a wallet you watch: Blinks are simulated against its real balances. */
