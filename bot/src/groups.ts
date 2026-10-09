@@ -5,7 +5,8 @@ import type { Message, MessageEntity } from 'grammy/types'
 import { allow, HOUR } from './limits.js'
 import { lookupToken } from './market.js'
 import { checkLink } from './scams.js'
-import { checkBlink, looksLikeBlink, probeAccount } from './blink.js'
+import { checkBlink, looksLikeBlink, probeAccount, type BlinkReport } from './blink.js'
+import { DEMO_HOST } from './demoblink.js'
 import { languageOf } from './guard.js'
 
 // Sunny as a group guardian. In a group it stays quiet and only speaks up when someone
@@ -24,10 +25,11 @@ const T = {
     signOff: '— Sunny ☀️ guarding this group',
     intro:
       'Hi everyone, I’m Sunny ☀️ I’ll quietly watch this group for phishing links, fake airdrop pages and risky tokens, ' +
-      'and warn you when I spot one. Anyone can ask me /check BONK or /check some-link.com.\n\n' +
+      'and warn you when I spot one. Anyone can ask me /check BONK or /check raydium.io.\n\n' +
       'I never DM people first and never ask for keys or seed phrases. Anyone who does is not me.\n\n' +
       'Admins: if I don’t react to links, make me an admin (no permissions needed) so I can read messages.',
     blink: (host: string) => `🚨 Don’t sign this Blink (${host}).`,
+    blinkUnread: (host: string) => `🤔 This Blink (${host}) won’t show me the transaction it wants signed. Don’t sign it until a check shows what it does.`,
     scam: (d: string) => `⚠️ ${d} is a known phishing site. Don’t open it, connect a wallet or sign anything there.`,
     suspicious: (d: string, why: string) => `🤔 ${d} looks suspicious: ${why}. Check the official site before connecting a wallet.`,
     risky: (sym: string, flags: string) => `⚠️ $${sym} has red flags: ${flags}. Be careful before buying.`,
@@ -48,13 +50,14 @@ const T = {
     signOff: '— Sunny ☀️ cuidando este grupo',
     intro:
       'Hola a todos, soy Sunny ☀️ Voy a cuidar este grupo en silencio: links de phishing, páginas de airdrops falsos y tokens riesgosos. ' +
-      'Les aviso cuando vea uno. Cualquiera puede preguntarme /check BONK o /check algun-link.com.\n\n' +
+      'Les aviso cuando vea uno. Cualquiera puede preguntarme /check BONK o /check raydium.io.\n\n' +
       'Nunca escribo primero por privado y nunca pido llaves ni frases semilla. Quien lo haga no soy yo.\n\n' +
       'Admins: si no reacciono a los links, háganme admin (sin permisos) para poder leer los mensajes.',
     blink: (host: string) => `🚨 No firmes este Blink (${host}): tiene señales de drainer.`,
+    blinkUnread: (host: string) => `🤔 No pude leer qué quiere que firmes este Blink (${host}). No lo firmes hasta que una revisión muestre la transacción.`,
     scam: (d: string) => `⚠️ ${d} es un sitio de phishing conocido. No lo abras, no conectes tu wallet ni firmes nada ahí.`,
-    suspicious: (d: string) => `🤔 ${d} parece sospechoso. Revisa el sitio oficial antes de conectar tu wallet.`,
-    risky: (sym: string) => `⚠️ $${sym} tiene señales de alto riesgo según Jupiter y RugCheck. Cuidado antes de comprar.`,
+    suspicious: (d: string, why: string) => `🤔 ${d} parece sospechoso: ${why}. Revisa el sitio oficial antes de conectar tu wallet.`,
+    risky: (sym: string, _flags?: string) => `⚠️ $${sym} tiene señales de alto riesgo según Jupiter y RugCheck. Cuidado antes de comprar.`,
     advertises: (sym: string) =>
       `⚠️ El nombre de $${sym} anuncia un sitio web o dice ser “oficial”. Los nombres de tokens no se verifican: es una estafa común. Revisa el mint, no el nombre.`,
     usage: 'Envía /check con un token, una dirección de mint o un link, como /check BONK ☀️',
@@ -72,12 +75,44 @@ const T = {
 
 // A token's name and symbol are whatever its creator typed: links and "official" claims in them
 // are never repeated, and they're a warning sign of their own.
-const ADVERTISES =
-  /https?:\/\/|\bwww\.|\b[\w-]+\.(app|xyz|io|com|net|org|site|online|fun|top|click|link|gg|live|pro|vip)\b|\b(airdrop|claim|official|verified|reclama|oficial|verificad[oa])\b/i
-const safeName = (name: string) =>
-  name
-    .replace(/https?:\/\/\S+|\bwww\.\S+|\b[\w-]+\.(app|xyz|io|com|net|org|site|online|fun|top|click|link|gg|live|pro|vip)\b\S*/gi, '[link]')
-    .slice(0, 40)
+const ADVERTISES = /https?:\/\/|\bwww\.|\b[\p{L}\p{N}-]+\.[a-z]{2,}\b|\b(airdrop|claim|official|verified|reclama|oficial|verificad[oa])\b/iu
+/** Whatever someone else typed, as one plain line: no links, no line breaks, no control characters. */
+const plainLine = (text: string, max = 40) =>
+  text
+    .replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]+/g, ' ')
+    .replace(/https?:\/\/\S+|\bwww\.\S+|\b[\p{L}\p{N}-]+\.[a-z]{2,}\b\S*/giu, '[link]')
+    .trim()
+    .slice(0, max)
+const safeName = (name: string) => plainLine(name)
+// A dangerous domain is shown so Telegram won't turn it into a tappable link: raydlum[.]io.
+const defang = (domain: string) => domain.replace(/\./g, '[.]')
+
+// Link-check reasons, in Spanish (the checks themselves explain in English).
+const reasonEs = (reason: string) =>
+  reason
+    .replace(/^Pretends to be (.+), but the real site is (.+)$/, 'se hace pasar por $1; el sitio real es $2')
+    .replace(/^Uses bait words in the address \((.+)\)$/, 'usa palabras de cebo en la dirección ($1)')
+    .replace(/^Uses look-alike characters \(punycode\)$/, 'usa letras que imitan a otras (punycode)')
+    .replace(/^Hosted on a free site builder, common for throwaway scam pages$/, 'está en un hosting gratuito, común en páginas de estafa desechables')
+    .replace(/^Listed as a phishing site by MetaMask\/Phantom’s open blocklists$/, 'figura como phishing en las listas abiertas de MetaMask y Phantom')
+    .replace(/^This is the real, official site$/, 'es el sitio real y oficial')
+    .replace(/^Not on any scam list I check \((.+) known sites\)$/, 'no está en ninguna lista de estafas que reviso ($1 sitios conocidos)')
+
+/** A drainer Blink's line: the worst finding, in the group's language. */
+function blinkLine(report: BlinkReport, lang: Lang) {
+  const t = T[lang]
+  // Sunny's own demo drainer says so, so it never looks like Sunny's site is the scam.
+  const practice = report.host.toLowerCase().replace(/\.$/, '') === DEMO_HOST
+  const host = practice ? (lang === 'es' ? 'el drainer de práctica de Sunny' : 'Sunny’s practice drainer') : defang(report.host)
+  if (report.verdict !== 'danger') return t.blinkUnread(host)
+  if (lang === 'en') return `${t.blink(host)} ${report.summary.replace(/^Don’t sign\. /, '')}`
+  const sol = report.warnings.map((w) => /sends ([\d.,]+) SOL/.exec(w.text)?.[1]).find(Boolean)
+  return `${t.blink(host)}${sol ? ` Enviaría ${sol} SOL de la wallet que firma.` : ''}`
+}
+
+/** Waits at most `ms` for a network check: a slow site never holds the group up. */
+const within = <T>(ms: number, p: Promise<T>) =>
+  Promise.race([p.catch(() => null), new Promise<null>((r) => setTimeout(() => r(null), ms).unref())])
 
 type Group = {
   title: string
@@ -88,6 +123,8 @@ type Group = {
   checks: number
   /** The language of whoever added Sunny, until the group's own messages say otherwise. */
   lang?: Lang
+  /** Spanish messages seen in an English group: three of them switch it, one word never does. */
+  esVotes?: number
 }
 let groups: Record<string, Group> = {}
 let loaded = false
@@ -130,51 +167,67 @@ export function groupStats() {
 }
 
 /** Links in a message: Telegram marks them as entities, including text links with other wording. */
-export function linksIn(msg: Pick<Message, 'text' | 'caption' | 'entities' | 'caption_entities'>): string[] {
+export function linksIn(msg: Pick<Message, 'text' | 'caption' | 'entities' | 'caption_entities'> & { reply_markup?: Message['reply_markup'] }, max = 5): string[] {
   const text = msg.text ?? msg.caption ?? ''
   const entities: MessageEntity[] = [...(msg.entities ?? []), ...(msg.caption_entities ?? [])]
   const links = entities.flatMap((e) =>
     e.type === 'url' ? [text.slice(e.offset, e.offset + e.length)] : e.type === 'text_link' ? [e.url] : [],
   )
-  return [...new Set(links)].slice(0, 5)
+  // Inline bots post "🎁 Claim" buttons whose link never appears in the text.
+  const buttons = (msg.reply_markup?.inline_keyboard ?? []).flat().flatMap((b) => ('url' in b && b.url ? [b.url] : []))
+  return [...new Set([...links, ...buttons])].slice(0, max)
 }
 
 /** Solana addresses in a message, outside of links. Could be tokens or wallets. */
 export function addressesIn(text: string): string[] {
   const bare = text.replace(/https?:\/\/\S+/g, ' ')
-  return [...new Set(bare.match(/\b[1-9A-HJ-NP-Za-km-z]{32,44}\b/g) ?? [])].slice(0, 3)
+  return [...new Set(bare.match(/\b[1-9A-HJ-NP-Za-km-z]{32,44}\b/g) ?? [])].slice(0, 5)
 }
 
-async function warningsFor(msg: Message, lang: Lang): Promise<{ key: string; text: string }[]> {
+// A whole message's network checks share one budget, so one slow site can't hold a group up.
+const GROUP_CHECK_MS = 8_000
+
+type Warning = { key: string; text: string; severe: boolean }
+
+async function warningsFor(msg: Message, lang: Lang): Promise<Warning[]> {
   const t = T[lang]
-  const found: { key: string; text: string }[] = []
-  for (const link of linksIn(msg)) {
-    // A Blink is read for drainer patterns (no wallet to simulate with in a group).
-    if (await looksLikeBlink(link)) {
-      const blink = await checkBlink(link, null, probeAccount()).catch(() => null)
-      if (blink?.verdict === 'danger') {
-        const detail = lang === 'en' ? ` ${blink.summary.replace(/^Don’t sign\. /, '')}` : ''
-        found.push({ key: blink.host, text: `${t.blink(blink.host)}${detail}` })
-        continue
-      }
+  const found: Warning[] = []
+  const links = linksIn(msg, 20)
+  // Blinks need the network: the first five, read together, within the budget.
+  const blinks = await Promise.all(
+    links.slice(0, 5).map((link) =>
+      within(GROUP_CHECK_MS, looksLikeBlink(link).then((is) => (is ? checkBlink(link, null, probeAccount()) : null))),
+    ),
+  )
+  links.forEach((link, i) => {
+    const blink = blinks[i]
+    if (blink && blink.verdict !== 'ok') {
+      found.push({ key: blink.host, text: blinkLine(blink, lang), severe: blink.verdict === 'danger' })
+      return
     }
+    // Every link gets the instant list and look-alike check, however many a message has.
     const r = checkLink(link)
-    if ('error' in r) continue
-    if (r.verdict === 'known_scam') {
-      found.push({ key: r.domain, text: t.scam(r.domain) })
-    } else if (r.verdict === 'suspicious') {
-      const why = r.reasons[0].charAt(0).toLowerCase() + r.reasons[0].slice(1)
-      found.push({ key: r.domain, text: t.suspicious(r.domain, why) })
+    if ('error' in r) return
+    if (r.verdict === 'known_scam') found.push({ key: r.domain, text: t.scam(defang(r.domain)), severe: true })
+    // A page on a platform anyone can post to (Medium, X, GitHub) is for /check, not a group alarm.
+    else if (r.verdict === 'suspicious' && !/anyone can/i.test(r.reasons[0])) {
+      const reason = lang === 'es' ? reasonEs(r.reasons[0]) : r.reasons[0]
+      const why = reason.charAt(0).toLowerCase() + reason.slice(1)
+      found.push({ key: r.domain, text: t.suspicious(defang(r.domain), why), severe: false })
     }
-  }
-  for (const address of addressesIn(msg.text ?? msg.caption ?? '')) {
-    const token = await lookupToken(address).catch(() => null)
-    if (!token?.found || token.card.mint !== address) continue
+  })
+  const addresses = addressesIn(msg.text ?? msg.caption ?? '')
+  const tokens = await Promise.all(addresses.map((a) => within(GROUP_CHECK_MS, lookupToken(a))))
+  addresses.forEach((address, i) => {
+    const token = tokens[i]
+    if (!token?.found || token.card.mint !== address) return
+    // Verified tokens (JitoSOL, mSOL, stablecoins) are pasted all day: /check has their details.
+    if (token.card.verified) return
     const symbol = safeName(token.card.symbol)
     // A name that advertises a site or claims to be "official" is a lure, whatever the stats say.
     if (ADVERTISES.test(`${token.card.name} ${token.card.symbol}`)) {
-      found.push({ key: address, text: t.advertises(symbol) })
-      continue
+      found.push({ key: address, text: t.advertises(symbol), severe: false })
+      return
     }
     // Otherwise only serious red flags are worth interrupting a group for.
     if (token.card.risk === 'high') {
@@ -182,9 +235,9 @@ async function warningsFor(msg: Message, lang: Lang): Promise<{ key: string; tex
         .filter((f) => f.level === 'high')
         .slice(0, 2)
         .map((f) => f.text.charAt(0).toLowerCase() + f.text.slice(1))
-      found.push({ key: address, text: t.risky(symbol, flags.join('; ')) })
+      found.push({ key: address, text: t.risky(symbol, flags.join('; ')), severe: false })
     }
-  }
+  })
   return found
 }
 
@@ -192,19 +245,26 @@ async function warningsFor(msg: Message, lang: Lang): Promise<{ key: string; tex
 export async function checkCommand(query: string, lang: Lang = 'en') {
   const t = T[lang]
   if (!query) return t.usage
-  if (/^https?:\/\/|^[\w-]+(\.[\w-]+)+(\/\S*)?$/i.test(query) && !/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(query)) {
+  if (/^(solana(-action)?:)?https?:\/\/|^[\p{L}\p{N}_-]+(\.[\p{L}\p{N}_-]+)+([/?]\S*)?$/iu.test(query) && !/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(query)) {
+    // A Blink is judged by the transaction it wants signed, never by the page around it.
+    if (await looksLikeBlink(query)) {
+      const blink = await within(GROUP_CHECK_MS * 2, checkBlink(query, null, probeAccount()))
+      if (blink) return blink.verdict === 'ok' ? `${t.labels.unknown}: ${blink.host}` : blinkLine(blink, lang)
+    }
     const r = checkLink(query)
     if ('error' in r) return t.badLink
-    return `${t.labels[r.verdict]}: ${r.domain}${lang === 'en' ? `\n${r.reasons[0]}` : ''}`
+    const bad = r.verdict === 'known_scam' || r.verdict === 'suspicious'
+    const reason = lang === 'es' ? reasonEs(r.reasons[0]) : r.reasons[0]
+    return `${t.labels[r.verdict]}: ${bad ? defang(r.domain) : r.domain}\n${reason.charAt(0).toUpperCase() + reason.slice(1)}`
   }
   const token = await lookupToken(query).catch(() => null)
-  if (!token?.found) return t.notFound(query.slice(0, 40))
+  if (!token?.found) return t.notFound(plainLine(query))
   const advertises = ADVERTISES.test(`${token.card.name} ${token.card.symbol}`)
   // A name that advertises a site never gets a bare green "Low risk".
   const risk = t.risk[advertises && token.card.risk === 'low' ? 'medium' : token.card.risk]
   const flags = token.card.flags.slice(0, 3).map((f) => `• ${f.text}`)
   const copycats = token.details.other_tokens_with_same_symbol ? `\n${t.copycats(token.details.other_tokens_with_same_symbol)}` : ''
-  const exact = token.details.exact_match ? '' : `\n${t.closest(query.slice(0, 40))}`
+  const exact = token.details.exact_match ? '' : `\n${t.closest(plainLine(query))}`
   const caveat = advertises ? `\n⚠️ ${t.namesCaveat}` : ''
   return `${risk}: $${safeName(token.card.symbol)} (${safeName(token.card.name)})\n${token.card.mint}${exact}${caveat}${flags.length ? `\n${flags.join('\n')}` : advertises ? '' : `\n${t.clean}`}${copycats}\n${t.notAdvice}`
 }
@@ -232,36 +292,50 @@ export async function handleGroup(ctx: Context) {
     return
   }
 
-  const msg = ctx.message
-  if (!msg || msg.from?.is_bot) return
+  // Edited messages too: a clean message can be edited into a scam link afterwards.
+  const msg = ctx.message ?? ctx.editedMessage
+  if (!msg) return
+  // Real bots are skipped, but a post "as a channel" arrives from Telegram's channel bot: it's read.
+  // The group's own anonymous admins are trusted.
+  if (msg.from?.is_bot && !msg.sender_chat) return
+  if (msg.sender_chat?.id === ctx.chat!.id) return
   const text = msg.text ?? msg.caption ?? ''
   const g = group(ctx)
-  const lang = langFor(g, text)
-  // A group that writes in Spanish hears Sunny in Spanish from then on.
-  if (lang === 'es' && g.lang !== 'es' && /\p{L}{4,}/u.test(text)) {
-    g.lang = 'es'
+  // A group that writes in Spanish hears Sunny in Spanish from then on: after three Spanish
+  // messages, so one "hola" in an English group doesn't switch it.
+  // A group with no language yet takes its first Spanish message's.
+  if (g.lang !== 'es' && langFor({ ...g, lang: 'en' }, text) === 'es' && /\p{L}{4,}/u.test(text)) {
+    g.esVotes = (g.esVotes ?? 0) + 1
+    if (!g.lang || g.esVotes >= 3) g.lang = 'es'
     save()
   }
-  const command = /^\/check(?:@\w+)?(?:\s+([\s\S]*))?$/i.exec(text.trim())
+  // Warnings come in the group's language once it has one; before that, in the message's.
+  const lang = g.lang ?? langFor(g, text)
+  const command = /^\/check(?:@(\w+))?(?:\s+([\s\S]*))?$/i.exec(text.trim())
+  // "/check@SomeOtherBot" is for another bot.
+  if (command && command[1] && ctx.me?.username && command[1].toLowerCase() !== ctx.me.username.toLowerCase()) return
   if (command) {
     if (!allow(`group-check:${ctx.chat!.id}`, 30, HOUR)) return
     g.checks++
     save()
-    await ctx.reply(await checkCommand((command[1] ?? '').trim().slice(0, 200), g.lang ?? 'en'), {
-      reply_parameters: { message_id: msg.message_id },
+    await ctx.reply(await checkCommand((command[2] ?? '').trim().slice(0, 200), lang), {
+      reply_parameters: { message_id: msg.message_id, allow_sending_without_reply: true },
       link_preview_options: { is_disabled: true },
     })
     return
   }
 
-  const found = await warningsFor(msg, lang)
+  const found = await warningsFor(msg as Message, lang)
   // The same warning at most once an hour per group, and a cap so a raid can't make Sunny spam.
+  // Known phishing and drainers have their own, larger allowance, so look-alike spam can't use up
+  // the hour and let a real drainer through.
   const fresh = found.filter((w) => allow(`group-warn:${ctx.chat!.id}:${w.key}`, 1, HOUR))
-  if (!fresh.length || !allow(`group-warns:${ctx.chat!.id}`, WARNINGS_PER_HOUR, HOUR)) return
+  const severe = fresh.some((w) => w.severe)
+  if (!fresh.length || !allow(`group-warns${severe ? ':severe' : ''}:${ctx.chat!.id}`, severe ? WARNINGS_PER_HOUR * 2 : WARNINGS_PER_HOUR, HOUR)) return
   g.warnings += fresh.length
   save()
   await ctx.reply(`${fresh.map((w) => w.text).join('\n\n')}\n\n${T[lang].signOff}`, {
-    reply_parameters: { message_id: msg.message_id },
+    reply_parameters: { message_id: msg.message_id, allow_sending_without_reply: true },
     link_preview_options: { is_disabled: true },
   })
 }

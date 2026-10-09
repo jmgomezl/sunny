@@ -312,7 +312,7 @@ Jupiter (holdings, prices, tokens), RugCheck, alternative.me's Fear & Greed; Met
 
 ```bash
 cd onchain && cargo build-sbf --manifest-path programs/sunny_pocket/Cargo.toml --arch v0 && cargo test -p sunny_pocket   # 7 LiteSVM tests (they load the built .so)
-cd bot && pnpm test                          # 52 tests
+cd bot && pnpm test                          # 55 tests
 cd web && pnpm build                         # typecheck and production build
 ```
 

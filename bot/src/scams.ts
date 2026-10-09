@@ -27,7 +27,7 @@ const OFFICIAL: Record<string, string[]> = {
   jito: ['jito.network', 'jito.wtf'],
   drift: ['drift.trade'],
   solscan: ['solscan.io'],
-  bonk: ['bonkcoin.com'],
+  bonk: ['bonkcoin.com', 'bonk.fun'],
 }
 // Real Solana tools that aren't impersonation targets themselves, but whose names would
 // otherwise look like it (solana.fm has "solana" in it, bonkbot.io has "bonk").
@@ -164,7 +164,8 @@ export function checkLink(input: string): LinkCheck | { error: string } {
     }
     return { domain, verdict: 'unknown', reasons: [`${platform} is real, but anyone can post there: trust this page only if it came from the project’s official site`] }
   }
-  if (parents.some((d) => TRUSTED.has(d)) && !parents.some((d) => blocked.has(d))) {
+  // A trusted page that wraps an Action (dial.to/?action=…) is only as safe as the Action inside.
+  if (parents.some((d) => TRUSTED.has(d)) && !parents.some((d) => blocked.has(d)) && !url.searchParams.has('action')) {
     return { domain, verdict: 'official', reasons: ['This is the real, official site'] }
   }
   if (parents.some((d) => blocked.has(d)) && !parents.some((d) => allowed.has(d))) {
@@ -201,7 +202,8 @@ export function checkLink(input: string): LinkCheck | { error: string } {
   }
   if (bait.length) reasons.push(`Uses bait words in the address (${bait.join(', ')})`)
   if (domain.includes('xn--')) reasons.push('Uses look-alike characters (punycode)')
-  if (freeHost) reasons.push('Hosted on a free site builder, common for throwaway scam pages')
+  // Free hosting is where builders ship demos too: it only adds to a brand or bait signal.
+  if (freeHost && reasons.length) reasons.push('Hosted on a free site builder, common for throwaway scam pages')
 
   return {
     domain: shown,

@@ -252,7 +252,7 @@ Four reviewers ran in parallel again: a server bug hunt, a QA pass against produ
 
 - **Program:** 7 LiteSVM tests (`cargo test -p sunny_pocket`).
 - **CI:** every push runs the server, web and program jobs ([Actions](https://github.com/jmgomezl/sunny/actions/workflows/ci.yml)).
-- **Server:** 52 tests (`pnpm test`), including wallet sign-in and refunds (a lost confirmation, a dropped transaction, a restart mid-purchase, a balance that can’t be read).
+- **Server:** 55 tests (`pnpm test`), including wallet sign-in and refunds (a lost confirmation, a dropped transaction, a restart mid-purchase, a balance that can’t be read).
   - The phone's transaction verifier, including what a compromised server might try (wrong wallet, foreign pocket).
   - Guardrails, covering attacks, pasted seeds and keys, and the ordinary questions that must still pass.
   - News, groups, streaks and the Blink reader.

@@ -273,7 +273,8 @@ async function main() {
   await loadStickers(bot.api, me.username)
   console.log(`[sunny] @${me.username} is awake; Mini App at ${MINI_APP_URL}; free chat ${HAS_BRAIN ? 'on' : 'off'}`)
   await bot.api.deleteWebhook({ drop_pending_updates: true })
-  runner = run(bot, { runner: { fetch: { allowed_updates: ['message', 'my_chat_member'] } } })
+  // Edited messages too, so a group message edited into a scam link is still checked.
+  runner = run(bot, { runner: { fetch: { allowed_updates: ['message', 'edited_message', 'my_chat_member'] } } })
 }
 
 // The API server would keep the process alive on its own, so shutting down exits explicitly.
