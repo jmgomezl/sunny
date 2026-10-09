@@ -380,11 +380,14 @@ export const refundChain = {
     return (await connection.getBlockHeight('finalized')) > validUntil
   },
 
-  /** What Sunny's spending wallet holds for this owner, in USD. */
+  /**
+   * What Sunny's spending wallet holds for this owner, in USD. Zero only when its token account
+   * doesn't exist; an RPC error throws, because "unknown" must never be read as "empty".
+   */
   async spendable(ownerAddress: string) {
-    const agent = agentFor(new PublicKey(ownerAddress))
-    const balance = await connection.getTokenAccountBalance(ata(agent.publicKey)).catch(() => null)
-    return Number(balance?.value.uiAmount ?? 0)
+    const account = ata(agentFor(new PublicKey(ownerAddress)).publicKey)
+    if (!(await connection.getAccountInfo(account))) return 0
+    return Number((await connection.getTokenAccountBalance(account)).value.uiAmount ?? 0)
   },
 }
 

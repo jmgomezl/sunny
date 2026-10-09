@@ -157,7 +157,8 @@ async function recover(r: Refund, chain: RefundChain) {
   }
   // The draw landed. If the money is still in Sunny's spending wallet, put it back. That wallet
   // is this owner's alone, so even if the scan did get paid, a refund only moves their own money
-  // back into their own pocket; nobody can be paid twice.
+  // back into their own pocket; nobody can be paid twice. If the balance can't be read, this
+  // throws and the purchase stays held for the next pass: unknown is never taken as empty.
   if ((await chain.spendable(r.owner)) >= r.amount) return owe(r)
   console.warn('[sunny] a purchase was paid but its answer was lost in a restart', r.owner, r.draw.signature)
   releasePurchase(r, 'settled')

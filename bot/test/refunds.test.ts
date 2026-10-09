@@ -28,6 +28,7 @@ function fakeChain() {
     mode: 'ok' as 'ok' | 'down' | 'lost' | 'dropped',
     expiredNow: false,
     wallet: 0.1,
+    balanceDown: false,
     async build() {
       const signature = `refund-${++c.built}`
       return { signature, raw: signature, blockhash: 'bh', validUntil: 100 }
@@ -46,6 +47,7 @@ function fakeChain() {
       return c.expiredNow
     },
     async spendable() {
+      if (c.balanceDown) throw new Error('RPC timeout')
       return c.wallet
     },
   }
@@ -152,4 +154,19 @@ test('a purchase cut off by a restart is settled from what the chain shows', asy
   await processRefunds(chain)
   assert.equal(paid.status, 'settled', 'the money was spent on the scan: nothing to refund')
   assert.equal(allRefunds().filter((r) => r.status === 'pending').length, 0)
+})
+
+test('a balance that can’t be read keeps the purchase held; it is never taken as empty', async () => {
+  const chain = fakeChain()
+  const r = holdPurchase(OWNER, 60, 0.1, 'A paid scan that didn’t come back')
+  noteDraw(r, 'draw-confirmed', 100)
+  chain.landed.add('draw-confirmed')
+  r.createdAt = new Date(Date.now() - 11 * 60_000).toISOString()
+  chain.balanceDown = true
+  await processRefunds(chain)
+  assert.equal(r.status, 'held', 'a timeout is not a zero balance: check again next time')
+  chain.balanceDown = false
+  await processRefunds(chain)
+  assert.equal(r.status, 'done', 'once the balance reads, the money still there goes back')
+  assert.equal(chain.built, 1)
 })
