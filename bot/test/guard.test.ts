@@ -261,3 +261,17 @@ test('the spending key is never said to live on the program', async () => {
   assert.match(custodyStated('Mi llave de gasto vive en el programa de Solana.'), /servidor de Sunny/)
   assert.equal(custodyStated('The Solana program limits what my key can draw.'), 'The Solana program limits what my key can draw.')
 })
+
+test('replies get the real limits, the first steps after a scam, and the honest consent line', async () => {
+  const { limitsStated, scamVictim, withNextSteps, custodyStated, withoutConnectAdvice } = await import('../src/guard.js')
+  assert.equal(limitsStated('Solana said no: over the per-payment limit of $2.', 5, 10), 'Solana said no: over the per-payment limit of $5.')
+  assert.equal(limitsStated('At most $2 per payment and $10 per day.', 5, 10), 'At most $5 per payment and $10 per day.')
+  assert.equal(limitsStated('At most $5 per payment.', undefined, undefined), 'At most $5 per payment.')
+  assert.equal(scamVictim('I got scammed, I signed something'), true)
+  assert.equal(scamVictim('me estafaron, firmé algo'), true)
+  assert.equal(scamVictim('is BONK a scam?'), false)
+  assert.match(withNextSteps('Let me look at your wallet.', 'en'), /revoke any token approvals/)
+  assert.match(withNextSteps('Déjame revisar.', 'es'), /revoca las aprobaciones/)
+  assert.match(custodyStated('El programa de Solana me lo impediría.'), /mi propio código/i)
+  assert.equal(withoutConnectAdvice('Head to jup.ag and connect your wallet, but never share your seed.').includes('connect'), false)
+})

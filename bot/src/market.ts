@@ -161,7 +161,7 @@ export async function lookupToken(query: string) {
       tags: (pick.tags ?? []).slice(0, 6),
       rugcheck: rug
         ? {
-            score_out_of_10: rug.score_normalised ?? null,
+            rugcheck_risk_0_to_10_higher_is_riskier: rug.score_normalised ?? null,
             lp_locked_pct: round(rug.lpLockedPct, 0),
             risks: (rug.risks ?? []).map((r) => `${r.name} (${r.level})`),
           }

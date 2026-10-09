@@ -149,8 +149,8 @@ const REFUSALS: Record<Block, { en: string; es: string }> = {
     es: 'Eso es mi pequeño secreto ☀️ Soy Sunny, un guardián de Solana que vive en Telegram. ¡Pregúntame por un token, una wallet o un link!',
   },
   too_long: {
-    en: 'That’s a lot of words for a little sun ☀️ Could you send me something shorter?',
-    es: 'Son muchas palabras para un sol tan pequeño ☀️ ¿Me lo mandas más corto?',
+    en: 'That’s a lot of words for a little sun ☀️ Send me the link or the key part, under 1,000 characters. One rule always holds: anyone asking you to send crypto to unlock, claim or verify something is scamming you.',
+    es: 'Son muchas palabras para un sol tan pequeño ☀️ Mándame el link o la parte clave, en menos de 1.000 caracteres. Una regla siempre se cumple: si alguien te pide enviar cripto para desbloquear, reclamar o verificar algo, es una estafa.',
   },
 }
 
@@ -299,18 +299,41 @@ const KEY_ON_PROGRAM_EN =
   /\b(my|the|sunny'?s)?\s*(spending|agent)\s+key\s+(lives|is held|is kept|is stored|sits|is)\s+(on|by|in|inside)\s+(solana'?s|the solana|the on-?chain|the)\s+(on-?chain\s+)?program\b/gi
 const KEY_ON_PROGRAM_ES = /\b(mi|la)\s+(llave|clave)\s+(de gasto|del agente)\s+(vive|est[aá]|se guarda)\s+en\s+el\s+programa(\s+de\s+solana)?\b/gi
 const sameCase = (match: string, fix: string) => (/^\s*[A-ZÁÉÍÓÚ]/.test(match) ? fix[0].toUpperCase() + fix.slice(1) : fix)
+// Consent is Sunny's own code; the program only enforces the limits and the freeze.
+const PROGRAM_CONSENT_EN = /\b(?:the\s+)?(?:solana'?s?\s+)?(?:on-?chain\s+)?program\s+would\s+(?:stop|prevent|block)\s+me\b[^.!?]*/gi
+const PROGRAM_CONSENT_ES = /\bel\s+programa(\s+de\s+solana)?\s+me\s+lo\s+impedir[ií]a\b[^.!?]*/gi
 export const custodyStated = (text: string) =>
   text
     .replace(KEY_ON_PROGRAM_EN, (m) => sameCase(m, 'my spending key lives on Sunny’s server, and the Solana program limits what it can draw'))
     .replace(KEY_ON_PROGRAM_ES, (m) => sameCase(m, 'mi llave de gasto está en el servidor de Sunny, y el programa de Solana limita lo que puede sacar'))
+    .replace(PROGRAM_CONSENT_EN, (m) => sameCase(m, 'my own code only draws when you ask, and the Solana program caps every draw at your limits'))
+    .replace(PROGRAM_CONSENT_ES, (m) => sameCase(m, 'mi propio código solo saca cuando tú lo pides, y el programa de Solana limita cada retiro'))
+
+// Someone who just got scammed always gets the first steps, whatever else the reply says.
+const SCAMMED =
+  /\b(got scammed|been scammed|i was scammed|scammed me|drained|got hacked|been hacked|i signed something|signed a (bad|scam|malicious)|me estafaron|me robaron|me vaciaron|me hackearon|firm[eé] algo)\b/i
+const NEXT_STEPS = {
+  en: 'Right now: don’t sign anything else from that link or chat, revoke any token approvals you don’t recognize, and if you typed your recovery phrase anywhere, move everything to a new wallet.',
+  es: 'Ahora mismo: no firmes nada más de ese link o chat, revoca las aprobaciones de tokens que no reconozcas, y si escribiste tu frase de recuperación en algún lado, mueve todo a una wallet nueva.',
+}
+export const scamVictim = (text: string) => SCAMMED.test(normalized(text))
+export function withNextSteps(reply: string, lang: string) {
+  if (/\b(revok|revoca)/i.test(reply)) return reply
+  return `${reply}\n\n${NEXT_STEPS[spanish(lang) ? 'es' : 'en']}`
+}
 
 // Sunny never tells anyone to connect a wallet to a site (even an official one): those sentences go.
 const CONNECT = /\b(connect|conecta|conectar|conectes)\b[^.!?]{0,30}\b(wallet|billetera|cartera)\b/i
-const NEGATED = /\b(don'?t|do not|never|no|nunca|ni|avoid|evita)\b/i
+const NEGATED_BEFORE = /\b(don'?t|do not|never|not|no|nunca|ni|avoid|evita|sin)\b[^.!?,;]{0,16}$/i
+const advisesConnecting = (sentence: string) => {
+  const m = CONNECT.exec(sentence)
+  return Boolean(m) && !NEGATED_BEFORE.test(sentence.slice(0, m!.index))
+}
 export function withoutConnectAdvice(text: string) {
   const sentences = text.split(/(?<=[.!?])\s+/)
-  const kept = sentences.filter((s) => !CONNECT.test(s) || NEGATED.test(s))
-  return kept.length === sentences.length ? text : kept.join(' ')
+  const kept = sentences.filter((s) => !advisesConnecting(s))
+  if (kept.length === sentences.length) return text
+  return kept.length ? kept.join(' ') : 'Only use sites you typed in yourself, and never sign anything you don’t understand ☀️'
 }
 
 // A reply must not claim money moved when no pocket event happened.
@@ -339,3 +362,14 @@ export function claimedAmounts(text: string): number[] {
 
 // "Take $5 if there's enough": a spending verb near an amount, even when it isn't a clear ask.
 export const mentionsSpending = (text: string) => /\b(take|draw|spend|pay|send|move|toma|saca|gasta|paga|env[ií]a)\b[^.?!]{0,24}\$?\s?\d/i.test(normalized(text))
+
+/** Per-payment and daily figures in a reply, corrected to the real limits read this turn. */
+export function limitsStated(text: string, perTx?: number, daily?: number) {
+  const fix = (n: string, real?: number) => (real !== undefined && Math.abs(Number(n) - real) > 0.004 ? String(+real.toFixed(2)) : n)
+  return text
+    .replace(/\$\s?(\d+(?:\.\d+)?)(\s*(?:per payment|a payment|per-payment|per transaction|por pago|por retiro))/gi, (_, n, rest) => `$${fix(n, perTx)}${rest}`)
+    .replace(/((?:per-payment|per payment|per-transaction) limit(?: is| of)?\s*)\$\s?(\d+(?:\.\d+)?)/gi, (_, pre, n) => `${pre}$${fix(n, perTx)}`)
+    .replace(/(l[ií]mite por (?:pago|retiro)(?: es| de)?\s*(?:de\s*)?)\$\s?(\d+(?:\.\d+)?)/gi, (_, pre, n) => `${pre}$${fix(n, perTx)}`)
+    .replace(/\$\s?(\d+(?:\.\d+)?)(\s*(?:per day|a day|per UTC day|al d[ií]a|por d[ií]a))/gi, (_, n, rest) => `$${fix(n, daily)}${rest}`)
+    .replace(/(daily limit(?: is| of)?\s*)\$\s?(\d+(?:\.\d+)?)/gi, (_, pre, n) => `${pre}$${fix(n, daily)}`)
+}

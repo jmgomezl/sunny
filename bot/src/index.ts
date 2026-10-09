@@ -8,7 +8,7 @@ import { startRefunds } from './refunds.js'
 import { hasChain } from './solana.js'
 import { startAlertChecker } from './alerts.js'
 import { forget, hasBrain, reply } from './brain.js'
-import { sharedSecret } from './guard.js'
+import { secretWarning, sharedSecret } from './guard.js'
 import { startScamLists } from './scams.js'
 import { allow, HOUR } from './limits.js'
 import { ago, KIND_ICON, latestNews, startNews, type NewsItem } from './news.js'
@@ -115,7 +115,14 @@ async function askBrain(ctx: Context, text: string) {
     return
   }
   if (!allowed(ctx.from!.id)) {
-    await ctx.reply('I need a little rest to save my energy ☀️ Let’s pick this up in a bit.')
+    const es = (ctx.from!.language_code ?? '').startsWith('es')
+    // A pasted recovery phrase gets its warning even when Sunny is resting.
+    if (sharedSecret(text)) return void (await ctx.reply(secretWarning(ctx.from!.language_code ?? 'en')))
+    await ctx.reply(
+      es
+        ? 'Necesito descansar un ratito para recargar energía ☀️ Seguimos en unos minutos.'
+        : 'I need a little rest to save my energy ☀️ Let’s pick this up in a few minutes.',
+    )
     return
   }
   await ctx.replyWithChatAction('typing')
