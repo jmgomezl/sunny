@@ -522,7 +522,7 @@ export function PocketEventView({ event }: { event: PocketEvent }) {
           {event.ok ? `${event.reason} · ${event.message}` : event.refunded ? event.message : refusalFacts(event.amount, event.message, limits)}
           {(event.refunded || event.explorer) && (
             <>
-              {' · '}
+              {event.ok || event.refunded ? ' · ' : <br />}
               <a href={event.refunded || event.explorer} target="_blank" rel="noreferrer">
                 {event.ok || event.refunded ? 'View tx' : 'View the refusal on Solscan ↗'}
               </a>

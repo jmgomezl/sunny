@@ -813,7 +813,7 @@ export default function App() {
     haptic('light')
     if (topic === 'watch' && !inTelegram()) {
       // Alerts arrive as Telegram messages: say so before anyone spends a question on it.
-      const ask = 'Price alerts arrive as Telegram messages, so they live in @SunnySolBot. Open me there (t.me/SunnySolBot) and say “watch BONK for a 10% drop”.'
+      const ask = 'Price alerts come as Telegram messages, so I set them there. Open t.me/SunnySolBot and say “watch BONK for a 10% drop”.'
       setChat((prev) => (prev.at(-1)?.text === ask ? prev : [...prev, sunnySays(ask)]))
       setSuggestions([])
     } else if (topic === 'watch') {
@@ -1266,7 +1266,7 @@ export default function App() {
           onAdd={() => openChat('watch')}
         />
         {!demo && home && home.news.length > 0 && <NewsCard items={home.news} />}
-        <ActivityCard items={demo ? ACTIVITY.map(demoActivity) : (home?.activity ?? [])} />
+        <ActivityCard items={demo ? ACTIVITY.map(demoActivity) : (home?.activity ?? [])} onTry={() => openScan('check', 'raydlum.io')} />
         <button type="button" className="group-invite" onClick={() => openTelegram(ADD_TO_GROUP)}>
           <ShieldIcon size={18} />
           <span>
@@ -1474,9 +1474,11 @@ function CareCard({ wellbeing, bond, streak, pocket, onPocket, onRetry, guest = 
                 ? `${whole(live.left)} of ${whole(live.daily)}`
                 : pocket.kind === 'loading' || pocket.kind === 'error'
                   ? 'Checking…'
-                  : 'Needs a pocket'
+                  : guest
+                    ? 'Try the demo ↓'
+                    : 'Needs a pocket'
           }
-          value={live ? (live.left / live.daily) * 100 : pocket.kind === 'loading' || pocket.kind === 'error' ? null : 0}
+          value={live ? (live.left / live.daily) * 100 : pocket.kind === 'loading' || pocket.kind === 'error' || guest ? null : 0}
           tone={frozen ? 'frozen' : 'energy'}
         />
         <Meter
@@ -1493,7 +1495,7 @@ function CareCard({ wellbeing, bond, streak, pocket, onPocket, onRetry, guest = 
         />
       </div>
 
-      <div className="care-pocket">
+      <div className="care-pocket" data-stack={(guest && pocket.kind === 'no-wallet') || undefined}>
         <button
           type="button"
           className="care-pocket-main"
@@ -1604,7 +1606,7 @@ function Meter({ label, hint, value, tone }: { label: string; hint: string; valu
         <motion.span
           className="meter-fill"
           initial={false}
-          animate={{ width: `${Math.max(4, v)}%` }}
+          animate={{ width: value === null ? '0%' : `${Math.max(4, v)}%` }}
           transition={{ type: 'spring', stiffness: 110, damping: 20 }}
         />
       </div>
@@ -1966,14 +1968,19 @@ function BadgesCard({ badges }: { badges: Badge[] }) {
   )
 }
 
-function ActivityCard({ items }: { items: ActivityItem[] }) {
+function ActivityCard({ items, onTry }: { items: ActivityItem[]; onTry: () => void }) {
   return (
     <section className="card activity">
       <div className="card-head">
         <span className="eyebrow">What Sunny did</span>
       </div>
       {items.length === 0 ? (
-        <p className="activity-empty">Nothing yet. Ask me to check a token, or scan a wallet or a link.</p>
+        <>
+          <p className="activity-empty">Nothing yet. Hand me a link you’re unsure about and watch what I catch.</p>
+          <button type="button" className="activity-try" onClick={onTry}>
+            <ShieldIcon size={15} /> Check raydlum.io
+          </button>
+        </>
       ) : (
         <ul>
           {items.slice(0, 6).map((a) => {

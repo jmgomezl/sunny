@@ -44,6 +44,18 @@ type ChatSheetProps = {
 
 const MAX_CHARS = 800
 
+/** Sunny's own Telegram link becomes tappable. Nothing else does: a reply may quote a scam's link. */
+const linkify = (text: string) =>
+  text.split(/(t\.me\/SunnySolBot(?:\?startgroup=guard)?)/g).map((part, i) =>
+    i % 2 ? (
+      <a key={i} href={`https://${part}`} target="_blank" rel="noreferrer">
+        {part}
+      </a>
+    ) : (
+      part
+    ),
+  )
+
 /** Chat with Sunny without leaving the Mini App; it's the same conversation as the Telegram chat. */
 export function ChatSheet({ open, messages, pending, suggestions, sameAsTelegram, onSend, onClose }: ChatSheetProps) {
   const [draft, setDraft] = useState('')
@@ -144,7 +156,7 @@ export function ChatSheet({ open, messages, pending, suggestions, sameAsTelegram
                     </span>
                   )}
                   <div className="chat-body">
-                    <p>{m.text}</p>
+                    <p>{m.from === 'sunny' ? linkify(m.text) : m.text}</p>
                     {m.links?.map((l) => (
                       <LinkCardView key={l.domain} link={l} />
                     ))}

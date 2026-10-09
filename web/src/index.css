@@ -227,7 +227,9 @@ ul {
   position: absolute;
   inset: 0;
   opacity: 0;
-  transition: opacity 1.6s ease;
+  transition:
+    opacity 1.6s ease,
+    filter 1.2s ease;
 }
 
 .sky-layer[data-active='true'] {
@@ -289,7 +291,7 @@ ul {
   transition: filter 1.2s ease;
 }
 
-:root[data-theme='dark']:not([data-weather='night']) .sky {
+:root[data-theme='dark']:not([data-weather='night']) :is(.sky-layer, .sky-sunbeam) {
   filter: brightness(0.6) saturate(1.15) contrast(1.05) hue-rotate(-6deg);
 }
 
@@ -455,7 +457,6 @@ ul {
   font-weight: 650;
   font-variant-numeric: tabular-nums;
   backdrop-filter: blur(12px) saturate(1.4);
-  -webkit-backdrop-filter: blur(12px) saturate(1.4);
   border: 1px solid rgba(255, 255, 255, 0.55);
   transition: background-color 0.8s ease, color 0.8s ease;
 }
@@ -498,7 +499,6 @@ ul {
   font-weight: 650;
   border: 1px solid rgba(255, 255, 255, 0.45);
   backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
   transition: background-color 0.25s ease, transform 0.25s ease, color 0.8s ease;
 }
 
@@ -1134,7 +1134,6 @@ ul {
   border: 1px solid color-mix(in oklab, var(--card-edge) 80%, transparent);
   box-shadow: 0 18px 40px -18px rgba(90, 50, 20, 0.5);
   backdrop-filter: blur(18px) saturate(1.5);
-  -webkit-backdrop-filter: blur(18px) saturate(1.5);
   transition: background-color 0.8s ease, border-color 0.8s ease;
 }
 
@@ -1936,7 +1935,6 @@ ul {
   background: var(--chip);
   border: 1px solid rgba(255, 255, 255, 0.35);
   backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
 }
 
 :root[data-theme='dark'] .theme-toggle,
@@ -2112,7 +2110,7 @@ ul {
 .feed-coin-spot {
   position: absolute;
   left: calc(50% + 92px);
-  top: 54%;
+  top: 46%;
   z-index: 4;
   display: grid;
   justify-items: center;
@@ -3412,6 +3410,11 @@ button.token:active {
   font-size: 14px;
 }
 
+.scan-input input::placeholder {
+  font-family: var(--font-ui);
+  font-size: 15px;
+}
+
 .scan-try {
   align-items: center;
   padding: 0;
@@ -4246,7 +4249,7 @@ button.token:active {
 }
 
 .ghost-btn {
-  min-height: 40px;
+  min-height: 44px;
 }
 
 .badge a {
@@ -4640,6 +4643,12 @@ textarea:focus-visible {
     left: calc(50% - 50vw);
     right: calc(50% - 50vw);
   }
+
+  .cloud-bank {
+    left: calc(50% - 50vw);
+    right: calc(50% - 50vw);
+    height: 96px;
+  }
 }
 
 /* A refusal card: the proof link on its own line, the guardrail chip never inline with text. */
@@ -4668,7 +4677,89 @@ textarea:focus-visible {
   }
 }
 
-/* Dark mode: clouds stay soft and bright instead of turning flat grey. */
+/* Dark mode: clouds stay soft instead of turning flat grey. */
 :root[data-theme='dark']:not([data-weather='night']) .sky-clouds {
-  filter: brightness(1.35) saturate(0.9);
+  filter: brightness(0.82) saturate(0.9);
+}
+
+/* Narrow phones: the guest's demo row stacks, so "Try to break it" gets the full width. */
+@media (max-width: 420px) {
+  .care-pocket[data-stack] {
+    flex-wrap: wrap;
+  }
+
+  .care-pocket[data-stack] .care-pocket-actions {
+    flex-basis: 100%;
+  }
+
+  .care-pocket[data-stack] .care-pocket-actions .btn {
+    flex: 1;
+  }
+}
+
+/* Touch screens have no number keys, so the mood chips drop their hints and fit the row. */
+@media (pointer: coarse) {
+  .mood-chip kbd {
+    display: none;
+  }
+}
+
+/* The popular-tokens row fades at the edge, so it reads as scrollable. */
+.watch-row {
+  mask-image: linear-gradient(90deg, #000 88%, transparent);
+}
+
+/* Links in Sunny's chat bubbles. */
+.chat-body > p a {
+  color: inherit;
+  font-weight: 750;
+  text-decoration-color: var(--honey-deep);
+  text-underline-offset: 3px;
+}
+
+/* The refusal's "Guardrail held" chip lands like a seal, then a light sweeps across it once. */
+.pocket-event .guardrail-held {
+  position: relative;
+  overflow: hidden;
+  animation: held-pop 0.45s cubic-bezier(0.3, 1.6, 0.5, 1) 0.3s both;
+}
+
+.pocket-event .guardrail-held::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(100deg, transparent 35%, rgba(255, 255, 255, 0.7) 50%, transparent 65%);
+  translate: -110% 0;
+  animation: held-shine 0.9s ease-out 0.8s both;
+}
+
+@keyframes held-pop {
+  from {
+    scale: 0.7;
+    opacity: 0;
+  }
+}
+
+@keyframes held-shine {
+  to {
+    translate: 110% 0;
+  }
+}
+
+/* An empty "What Sunny did" offers a first catch. */
+.activity-try {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  margin-top: 10px;
+  padding: 0 14px;
+  border-radius: 999px;
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--ink);
+  background: var(--card);
+  border: 1px solid var(--card-edge);
+  cursor: pointer;
 }
