@@ -27,11 +27,11 @@ Everything for the listing is in this folder. The app itself is `android/app/bui
 Scams start in chat, not in your wallet. Sunny is a little sun that catches them first.
 
 - **Should I sign this?** Paste any Blink or link. Sunny fetches the transaction it wants signed, reads every instruction and simulates it with your wallet, then tells you in plain words what you'd lose.
-- **Watches your wallet.** Sign in with Seed Vault and Sunny watches that wallet, read-only. Its sky is your wallet's weather: clear when all is well, stormy when a risky token shows up.
+- **Watches your wallet.** Sign in with your Seeker's wallet and Sunny watches that wallet, read-only. Its sky is your wallet's weather: clear when all is well, stormy when a risky token shows up.
 - **Pocket money with guardrails.** Give Sunny a small allowance and it can pay for tools, like a deep token scan over x402. The limits live in a Solana program, not in the AI: up to $5 a payment, $10 a day, only into Sunny's own account, and a freeze only you control. Talk it into "$500, urgent!" and Solana says no, on-chain.
 - **A pet you'll actually open.** It dozes with a lantern at night, says good morning with what happened while you slept, and wears sunglasses in dark mode.
 
-Your keys stay yours: Sunny never asks for your recovery phrase, and your Seeker's wallet signs everything. The pocket runs on Solana devnet with test USDC, so you can try it all for free. Also in Telegram as @SunnySolBot. Open source (MIT).
+Your keys stay yours: Sunny never asks for your recovery phrase, and your wallet signs every change to the pocket. Sunny's own key can only draw inside your limits. The pocket runs on Solana devnet with test USDC, so you can try it all for free. Also in Telegram as @SunnySolBot. Open source (MIT).
 
 ### What's new (1.0.1)
 
