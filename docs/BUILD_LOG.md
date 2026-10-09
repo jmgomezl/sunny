@@ -189,6 +189,17 @@ Another round of parallel AI reviewers (QA, UX, bug hunting and a judge) went ov
 | `5c3d0aa` | The same review's end-to-end run showed two more: "What happened in my wallet?" was answered with "I didn't move any money" (the money-claim guard couldn't tell history from a fresh claim), and the model sometimes judged a drainer Blink by its URL alone. Replies may now describe history read that turn, unless the person asked for money; a Blink-shaped link always runs the Blink reader first |
 | `0455ad5` | A third pass of the same review: reading Sunny's spending wallet turned any RPC error into a zero balance, so recovery after a restart could mark a purchase settled with money still owed. Now an unreadable balance keeps the purchase held until it can be read |
 
+## Oct 9 · A fourth review round: bug hunt, live QA, UX and a judge
+
+Four reviewers ran in parallel again: a server bug hunt, a QA pass against production, a design review with screenshots, and a judge reading every claim against the code. Each finding was checked before it was fixed.
+
+| Commit | What |
+|---|---|
+| `a2e8b40` | Claims exactly as true as the code: the ceiling is your daily limit **per day** (it resets at midnight UTC), signing outside Telegram is tested with Solana Mobile's fakewallet rather than Seed Vault, and the owner screens don't change limits |
+| `b33155b` | The demo drainer's lock is an off-curve address with no private key, so nobody, the server included, can ever complete it; Blink answers carry the Actions spec headers; routes match the path; "refused" counts only the program's own refusals |
+| `7c5066d` | Updates run concurrently (in order within each chat), so one slow link can't freeze Sunny for everyone; an unconfirmed draw is never called a refusal; DMs read hidden links and captions; refunds survive an unreadable file; tighter money-claim rules; 50 tests; the attack suite's [latest full run](attack-suite-run.txt), unedited |
+| `1bddb1f` | Design fixes: frosted glass restored on Android (the minifier had dropped it), a clean refusal card, kinder empty states for guests, a one-tap first catch |
+
 ## Decisions, and why
 
 - **Money rules live in a program, not in the prompt.** A model can be talked into things; a program can't. Sunny is told to always *try* the draw you ask for, because watching Solana refuse a $500 draw is the whole point.
