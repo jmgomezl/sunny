@@ -16,7 +16,7 @@ export function guardrailFor(reason: string): Guardrail | null {
   return null
 }
 
-const usd = (n: number) => `$${n.toLocaleString('en-US', { maximumFractionDigits: 2 })}`
+const usd = (n: number) => `$${n.toLocaleString('en-US', { minimumFractionDigits: Number.isInteger(n) ? 0 : 2, maximumFractionDigits: 2 })}`
 
 type Props = {
   perTx: number
@@ -33,8 +33,8 @@ type Props = {
 function resetsIn() {
   const now = new Date()
   const midnight = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1)
-  const h = Math.ceil((midnight - now.getTime()) / 3_600_000)
-  return h <= 1 ? 'Resets within the hour' : `Resets in ${h} h`
+  const min = Math.round((midnight - now.getTime()) / 60_000)
+  return min >= 60 ? `Resets in ${Math.floor(min / 60)} h` : `Resets in ${min} min`
 }
 
 export function Guardrails({ perTx, daily, spentToday, frozen = false, programUrl, preview = false, compact = false }: Props & { compact?: boolean }) {

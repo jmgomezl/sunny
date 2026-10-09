@@ -309,10 +309,16 @@ export default function App() {
   // The status line's own timer: play() clears every later() timer, and a cleared reset left a
   // warning on screen for good.
   const statusTimer = useRef<number | undefined>(undefined)
+  // Whether a sheet is open (Scan & check, chat, wallet): a warning stays while it's on screen.
+  const sheetOpenRef = useRef(false)
   const flagStatus = useCallback((next: Status | null, ms = 8000) => {
     window.clearTimeout(statusTimer.current)
     setStatusOverride(next)
-    if (next && ms) statusTimer.current = window.setTimeout(() => setStatusOverride(null), ms)
+    if (!next || !ms) return
+    const expire = () => {
+      statusTimer.current = window.setTimeout(() => (sheetOpenRef.current ? expire() : setStatusOverride(null)), ms)
+    }
+    expire()
   }, [])
   const [bond, setBond] = useState(loadBond)
   const [badges, setBadges] = useState<Badge[] | null>(null)
@@ -339,7 +345,6 @@ export default function App() {
   const [chatPending, setChatPending] = useState(false)
   const [suggestions, setSuggestions] = useState<string[]>([])
   const timers = useRef<number[]>([])
-  const sheetOpenRef = useRef(false)
   const heldLine = useRef<string | null>(null)
   const lastTouch = useRef(0)
   const ps = pocket?.state
@@ -520,13 +525,18 @@ export default function App() {
     touch()
     window.addEventListener('pointerdown', touch)
     window.addEventListener('keydown', touch)
+    window.addEventListener('pointermove', touch, { passive: true })
+    window.addEventListener('wheel', touch, { passive: true })
     const check = window.setInterval(() => {
-      // A guardian doesn't nap in a storm.
-      if (performance.now() - lastTouch.current > DOZE_AFTER_MS && moodRef.current !== 'worried') setDozing(true)
+      // A guardian doesn't nap in a storm, mid-conversation, or in a ?demo recording.
+      if (DEMO || sheetOpenRef.current || moodRef.current === 'worried') return
+      if (performance.now() - lastTouch.current > DOZE_AFTER_MS) setDozing(true)
     }, 3000)
     return () => {
       window.removeEventListener('pointerdown', touch)
       window.removeEventListener('keydown', touch)
+      window.removeEventListener('pointermove', touch)
+      window.removeEventListener('wheel', touch)
       clearInterval(check)
     }
   }, [])
@@ -814,7 +824,7 @@ export default function App() {
     haptic('light')
     if (topic === 'watch' && !inTelegram()) {
       // Alerts arrive as Telegram messages: say so before anyone spends a question on it.
-      const ask = 'Price alerts come as Telegram messages, so I set them there. Open t.me/SunnySolBot and say “watch BONK for a 10% drop”.'
+      const ask = `Price alerts come as Telegram messages, so I set them there. Open t.me/SunnySolBot and say “watch ${symbol ?? 'BONK'} for a 10% drop”.`
       setChat((prev) => (prev.at(-1)?.text === ask ? prev : [...prev, sunnySays(ask)]))
       setSuggestions([])
     } else if (topic === 'watch') {
@@ -832,7 +842,7 @@ export default function App() {
             : 'Hi! Ask me anything about Solana, your wallet or staying safe ☀️',
         ),
       ])
-      setSuggestions(signedIn() ? ASK_SUGGESTIONS : GUEST_SUGGESTIONS)
+      setSuggestions(!signedIn() ? GUEST_SUGGESTIONS : ps?.exists ? [TRY_IT, ...ASK_SUGGESTIONS.slice(0, 3)] : ASK_SUGGESTIONS)
     }
   }
 
@@ -912,6 +922,8 @@ export default function App() {
       }
     } catch (err) {
       setChat((prev) => [...prev, sunnySays(err instanceof Error ? err.message : String(err), true)])
+      setSuggestions([text])
+      play({ reaction: 'blush', ms: 900 })
       haptic('warning')
     } finally {
       setChatPending(false)

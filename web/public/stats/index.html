@@ -248,7 +248,7 @@
           <div class="stat"><b data-k="checks.blinks">–</b><span>Blinks read</span></div>
           <div class="stat"><b data-k="checks.wallets">–</b><span>wallets checked</span></div>
           <div class="stat stat--catch"><b data-k="caught.scamLinks">–</b><span>scam links flagged</span></div>
-          <div class="stat stat--catch"><b data-k="caught.drainerBlinks">–</b><span>drainer Blinks stopped</span></div>
+          <div class="stat stat--catch"><b data-k="caught.drainerBlinks">–</b><span>real drainer Blinks stopped (Sunny’s practice one isn’t counted)</span></div>
         </div>
       </section>
 
@@ -333,6 +333,11 @@
             const value = get(s, el.dataset.k)
             el.closest('.stat').classList.toggle('zero', !value)
             show(el, value)
+          }
+          // A section with nothing to show yet stays out of the way.
+          for (const sec of document.querySelectorAll('section')) {
+            const keys = [...sec.querySelectorAll('[data-k]')]
+            if (keys.length) sec.hidden = !keys.some((el) => get(s, el.dataset.k) > 0)
           }
           const at = new Date(s.updatedAt)
           document.getElementById('updated').textContent = `Live · updated ${at.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`

@@ -59,7 +59,7 @@ type Prepared = {
   at: number
 }
 
-const usd = (n: number) => `$${n.toLocaleString('en-US', { maximumFractionDigits: 2 })}`
+const usd = (n: number) => `$${n.toLocaleString('en-US', { minimumFractionDigits: Number.isInteger(n) ? 0 : 2, maximumFractionDigits: 2 })}`
 
 const firstName = () => window.Telegram?.WebApp?.initDataUnsafe?.user?.first_name?.split(' ')[0]
 
@@ -403,7 +403,7 @@ export function PocketSheet({
               <div className="chat-title">
                 <SunMark size={22} />
                 <div>
-                  <strong>{external || (!inTelegram() && !record) ? 'Your wallet' : 'Sunny wallet'}</strong>
+                  <strong>{external ? 'Your wallet' : !inTelegram() && !record ? 'Connect your wallet' : 'Sunny wallet'}</strong>
                   <small>
                     {owner
                       ? `${external ? 'Signed in with' : 'Your wallet'} ${owner.slice(0, 4)}…${owner.slice(-4)} · `

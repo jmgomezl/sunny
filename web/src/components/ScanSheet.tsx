@@ -66,7 +66,6 @@ export function ScanSheet(props: ScanSheetProps) {
     setDraft(input)
     setPending(true)
     setError(null)
-    setResult(null)
     onChecking()
     try {
       const r = await inspectInput(input)
@@ -74,6 +73,7 @@ export function ScanSheet(props: ScanSheetProps) {
       // A token pasted where a wallet was asked for isn't a little win for Sunny.
       onResult(mode === 'link' && r.kind === 'token' ? null : r)
     } catch (err) {
+      setResult(null)
       setError(err instanceof Error ? err.message : String(err))
       onResult(null)
     } finally {
@@ -116,6 +116,7 @@ export function ScanSheet(props: ScanSheetProps) {
 
   const onSubmit = (e: FormEvent) => {
     e.preventDefault()
+    if (matchMedia('(pointer: coarse)').matches) inputRef.current?.blur()
     void check(draft)
   }
 
@@ -232,6 +233,7 @@ export function ScanSheet(props: ScanSheetProps) {
               {result && (
                 <motion.div
                   className="scan-result"
+                  data-stale={pending || undefined}
                   // Results are read out when they arrive, safe ones included.
                   role="status"
                   initial={{ opacity: 0, y: 12 }}
