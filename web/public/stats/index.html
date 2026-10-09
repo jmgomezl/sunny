@@ -177,6 +177,13 @@
           color: #ff8a6b;
         }
       }
+      @media (prefers-color-scheme: dark) {
+        .cta a.primary {
+          color: #3a2414;
+          background: var(--honey);
+          border-color: var(--honey);
+        }
+      }
       a {
         color: var(--ink);
         font-weight: 700;
@@ -233,17 +240,6 @@
       <div class="live"><i></i><span id="updated">Loading…</span></div>
 
       <section>
-        <h2>👥 Guarding groups</h2>
-        <p>Telegram groups that added Sunny. It stays quiet and warns when a scam link, drainer Blink or risky token lands.</p>
-        <div class="grid">
-          <div class="stat"><b data-k="groups.guarded">–</b><span>groups guarded</span></div>
-          <div class="stat"><b data-k="groups.members">–</b><span>people in those groups</span></div>
-          <div class="stat stat--catch"><b data-k="groups.warnings">–</b><span>scam warnings posted</span></div>
-          <div class="stat"><b data-k="groups.checks">–</b><span>/check answers</span></div>
-        </div>
-      </section>
-
-      <section>
         <h2>🛡 Checks and catches</h2>
         <p>Everything Sunny checked in chats, Scan &amp; check and the web preview.</p>
         <div class="grid">
@@ -282,6 +278,17 @@
           <div class="stat"><b data-k="people.telegram">–</b><span>in Telegram</span></div>
           <div class="stat"><b data-k="people.wallets">–</b><span>signed in with a wallet</span></div>
           <div class="stat"><b data-k="people.webGuests">–</b><span>tried the web preview</span></div>
+        </div>
+      </section>
+
+      <section>
+        <h2>👥 Guarding groups</h2>
+        <p>Telegram groups that added Sunny. It stays quiet and warns when a scam link, drainer Blink or risky token lands.</p>
+        <div class="grid">
+          <div class="stat"><b data-k="groups.guarded">–</b><span>groups guarded</span></div>
+          <div class="stat"><b data-k="groups.members">–</b><span>people in those groups</span></div>
+          <div class="stat stat--catch"><b data-k="groups.warnings">–</b><span>scam warnings posted</span></div>
+          <div class="stat"><b data-k="groups.checks">–</b><span>/check answers</span></div>
         </div>
       </section>
 

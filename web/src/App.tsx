@@ -721,7 +721,8 @@ export default function App() {
     if (!r || r.kind === 'unknown' || (r.kind === 'token' && !r.found)) return play({ reaction: 'blush', ms: 900 })
     if (r.kind === 'blink' && r.report.verdict === 'danger') {
       void refreshBadges()
-      return warn(`Don’t sign · ${r.report.host}`, 'Don’t sign that one! I read what it would do to your wallet.')
+      const where = r.report.host === window.location.host ? 'practice drainer' : r.report.host
+      return warn(`Don’t sign · ${where}`, 'Don’t sign that one! I read what it would do to your wallet.')
     }
     if (r.kind === 'link' && (r.link.verdict === 'known_scam' || r.link.verdict === 'suspicious')) {
       void refreshBadges()
@@ -884,7 +885,14 @@ export default function App() {
       } else if (draws.length) {
         play({ reaction: 'yum', particles: ['coin', 4], haptic: 'success', ms: 1300, bond: 1 })
       } else if (scam) {
-        play({ reaction: 'alarm', haptic: 'warning', ms: 1800, bond: 1 })
+        play({
+          reaction: 'alarm',
+          haptic: 'warning',
+          ms: 1800,
+          bond: 1,
+          lineMs: 8000,
+          line: scam.verdict === 'known_scam' ? 'That site is a trap. Don’t connect your wallet there!' : 'That link looks fishy to me. Please be careful.',
+        })
         flagStatus({
           tone: 'warn',
           text: `${scam.verdict === 'known_scam' ? 'Scam site' : 'Suspicious link'} · ${scam.domain}`,
@@ -910,10 +918,18 @@ export default function App() {
     }
   }
 
-  const askFromScan = (question: string) => {
-    openChat('ask')
-    void sendChat(question)
+  // Closing Scan & check pops its history entry a moment later; a chat opened in the same tick
+  // would catch that "back" and close itself. Wait it out, as the wallet sheet's demo button does.
+  const afterScan = (fn: () => void) => {
+    if (!scan.open) return fn()
+    closeScan()
+    window.setTimeout(fn, 300)
   }
+  const askFromScan = (question: string) =>
+    afterScan(() => {
+      openChat('ask')
+      void sendChat(question)
+    })
 
   const POCKET_REACTIONS: Record<PocketEventKind, Play> = {
     created: {
@@ -1329,7 +1345,7 @@ export default function App() {
         onLinkWallet={(a) => void watchWallet(a)}
         onUnwatch={(a) => void unwatch(a)}
         onAsk={askFromScan}
-        onWatch={(symbol) => openChat('watch', symbol)}
+        onWatch={(symbol) => afterScan(() => openChat('watch', symbol))}
         deepScan={
           !signedIn() || !pocket?.wallet
             ? 'none'

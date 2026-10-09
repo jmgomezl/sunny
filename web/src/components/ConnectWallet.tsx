@@ -82,7 +82,9 @@ export function ConnectWallet({
           <p className="scan-hint">
             {isAndroid()
               ? 'No wallet app found. Seed Vault, Phantom or Solflare work.'
-              : 'No wallet extension found. Phantom or Solflare work, or open me on your phone.'}
+              : /iphone|ipad/i.test(navigator.userAgent)
+                ? 'No wallet here. Open me in Phantom’s or Solflare’s browser, or in Telegram.'
+                : 'No wallet extension found. Phantom or Solflare work, or open me on your phone.'}
           </p>
         </>
       )}

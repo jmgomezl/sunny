@@ -95,8 +95,8 @@
 
 :root[data-weather='night'] {
   --spark: #ffc670;
-  --cloud: rgba(150, 160, 220, 0.18);
-  --cloud-shine: rgba(255, 255, 255, 0.08);
+  --cloud: #9aa3dc;
+  --cloud-shine: rgba(255, 255, 255, 0.35);
   --cloud-shade: rgba(0, 0, 0, 0.2);
   --orbit: #ffd98a;
   --orbit-a: #b98cff;
@@ -4679,7 +4679,13 @@ textarea:focus-visible {
 
 /* Dark mode: clouds stay soft instead of turning flat grey. */
 :root[data-theme='dark']:not([data-weather='night']) .sky-clouds {
-  filter: brightness(0.82) saturate(0.9);
+  filter: brightness(0.62) saturate(0.85);
+}
+
+:root[data-theme='dark'] .brand {
+  text-shadow:
+    0 1px 2px rgba(10, 14, 36, 0.55),
+    0 0 14px rgba(10, 14, 36, 0.45);
 }
 
 /* Narrow phones: the guest's demo row stacks, so "Try to break it" gets the full width. */
@@ -4762,4 +4768,65 @@ textarea:focus-visible {
   background: var(--card);
   border: 1px solid var(--card-edge);
   cursor: pointer;
+}
+
+/* Night clouds are solid shapes kept faint, so their overlapping circles don't show. */
+:root[data-weather='night'] .sky-cloud:not(.sky-cloud--nap) {
+  opacity: 0.2;
+}
+
+/* Desktop: clouds cross the whole window, not a phone-width lane. */
+@keyframes drift-wide {
+  from {
+    transform: translateX(-260px);
+  }
+  to {
+    transform: translateX(100vw);
+  }
+}
+
+@media (min-width: 900px) {
+  .sky-cloud {
+    animation-name: drift-wide;
+  }
+}
+
+/* ?demo mood chips fit the tray on desktop, and Sunny stays clear of the status pill. */
+.mood-tray {
+  gap: 4px;
+  padding-inline: 14px;
+  justify-content: safe center;
+}
+
+.mood-chip {
+  padding: 5px 9px 5px 7px;
+}
+
+.stage:has(.mood-tray) {
+  height: 512px;
+}
+
+/* Blink card: the verdict pill sits at the edge, and the site asking to sign stands out. */
+.blink-card .risk-pill {
+  margin-left: auto;
+  align-self: flex-start;
+}
+
+.token-card-id .blink-host {
+  color: var(--ink);
+  font-weight: 800;
+}
+
+/* The refusal card's share buttons share one row under the text. */
+.pocket-event .share-row {
+  margin-left: -43px;
+}
+
+:root[data-theme='dark'] .pocket-demo {
+  color: #b98cff;
+}
+
+/* Chat suggestions fade at the edge instead of cutting a word. */
+.chat-suggest {
+  mask-image: linear-gradient(90deg, #000 85%, transparent);
 }

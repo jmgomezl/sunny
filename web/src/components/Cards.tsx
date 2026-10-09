@@ -424,10 +424,12 @@ export function BlinkCardView({ report }: { report: BlinkReport }) {
   const [iconFailed, setIconFailed] = useState(false)
   const pill = VERDICT_PILL[report.verdict]
   const short = report.wallet ? `${report.wallet.slice(0, 4)}…${report.wallet.slice(-4)}` : ''
+  // Sunny's own harmless drainer demo: never shown with Sunny's face, as if Sunny were the scam.
+  const practice = report.host === window.location.host
   return (
     <div className={`token-card blink-card token-card--${pill.risk}`}>
       <div className="token-card-top">
-        {report.icon && !iconFailed ? (
+        {report.icon && !iconFailed && !practice ? (
           <img
             src={report.icon}
             alt=""
@@ -444,7 +446,7 @@ export function BlinkCardView({ report }: { report: BlinkReport }) {
           <strong>Should I sign this?</strong>
           <small className="blink-title">{report.title}</small>
           {/* The site asking for the signature is the key trust signal: always in full. */}
-          <small className="blink-host">{report.host}</small>
+          <small className="blink-host">{practice ? `${report.host} · Sunny’s practice drainer` : report.host}</small>
         </div>
         <span className={`risk-pill risk-pill--${pill.risk}`}>{pill.label}</span>
       </div>
