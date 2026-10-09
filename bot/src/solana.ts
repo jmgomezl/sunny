@@ -550,7 +550,7 @@ const LABELS = new Map(
   [
     ['open_pocket', 'Pocket opened'],
     ['top_up', 'Pocket topped up'],
-    ['draw', 'Sunny took pocket money'],
+    ['draw', 'Sunny drew pocket money'],
     ['withdraw', 'Money taken back'],
     ['set_limits', 'Pocket limits changed'],
     ['set_agent', 'Sunny’s spending key changed'],
@@ -614,7 +614,8 @@ export async function walletHistory(ownerAddress: string, limit = 6): Promise<Wa
     const moved = ['top_up', 'draw', 'withdraw'].includes(name) ? vault : name === 'mint' ? mine : 0
     return {
       at: s.blockTime ? new Date(s.blockTime * 1000).toISOString() : null,
-      what: label,
+      // A refused draw moved nothing: Solana said no.
+      what: name === 'draw' && s.err ? 'Solana refused a pocket draw' : label,
       amount: moved ? Math.round(moved * 100) / 100 : null,
       ok: !s.err,
       explorer: `https://solscan.io/tx/${s.signature}?cluster=${CLUSTER}`,

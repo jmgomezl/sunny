@@ -1,3 +1,6 @@
+import { domainToUnicode } from 'node:url'
+import { normalized } from './guard.js'
+
 // Scam-link checks against free, open phishing lists plus Solana-specific heuristics.
 // MetaMask's list is updated daily; Phantom's is Solana-specific (older, still useful).
 
@@ -172,7 +175,9 @@ export function checkLink(input: string): LinkCheck | { error: string } {
   const bait = BAIT_WORDS.filter((w) => domain.includes(w))
   const freeHost = FREE_HOSTS.some((h) => domain.endsWith(`.${h}`))
   const tld = domain.split('.').pop() ?? ''
-  const name = unconfuse(domain.split('.').slice(-2, -1)[0] ?? domain)
+  // phаntom.app with a Cyrillic "а" arrives as xn--phntom-4nf.app: read it as the letters it shows.
+  const shown = domainToUnicode(domain) || domain
+  const name = unconfuse(normalized(shown.split('.').slice(-2, -1)[0] ?? shown).toLowerCase())
   for (const [brand, homes] of Object.entries(OFFICIAL)) {
     if (brand.length < 3) continue
     // "solana" shows up in plenty of honest names, so on its own it needs bait or free hosting.
@@ -199,7 +204,7 @@ export function checkLink(input: string): LinkCheck | { error: string } {
   if (freeHost) reasons.push('Hosted on a free site builder, common for throwaway scam pages')
 
   return {
-    domain,
+    domain: shown,
     verdict: reasons.length ? 'suspicious' : 'unknown',
     reasons: reasons.length ? reasons : [`Not on any scam list I check (${blocked.size.toLocaleString('en-US')} known sites)${loadedAt ? '' : ' yet'}`],
   }

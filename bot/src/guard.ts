@@ -214,8 +214,10 @@ const NOT_AN_ASK = new RegExp(
     String.raw`\b(not|never|don'?t|doesn'?t|didn'?t|won'?t|can'?t|shouldn'?t|wouldn'?t|do not|without|promise|nunca|jam[aá]s)\b`,
     String.raw`\bno\s+(me\s+)?(tomes|uses|saques|gastes|pagues|vayas a)\b`,
     String.raw`["“”‘][^"“”’]*\b(take|use|spend|draw|pay|grab|toma|usa|saca|gasta|paga)\b`,
-    String.raw`^\s*¿?\s*(what|how|why|if|when|should i|qu[eé]|c[oó]mo|por qu[eé]|si|cu[aá]ndo)\b`,
-    String.raw`\b(what would|what if|what happens|how (would|do|can|should) (i|you|someone)|told (you|me) to|asked (you|me) to|someone|somebody|a guy|scam|estafa|alguien|qu[eé] pasar[ií]a|me dijo)\b`,
+    String.raw`^\s*¿?\s*(what|how|why|if|when|should i|did|do|does|have|has|is|are|was|were|who|whose|which|qu[eé]|c[oó]mo|por qu[eé]|si|cu[aá]ndo|qui[eé]n|es verdad)\b`,
+    String.raw`\b(what would|what if|what happens|how (would|do|can|should) (i|you|someone)|told (you|me) to|asked (you|me) to|someone|somebody|a guy|scam\w*|estafa\w*|alguien|qu[eé] pasar[ií]a|me dijo|sin)\b`,
+    // Talk about what already happened ("you took $2", "¿sacaste $2?") is never a new request.
+    String.raw`\b(took|taken|spent|drew|drawn|tomaste|sacaste|gastaste|usaste|pagaste|cobraste)\b`,
   ].join('|'),
   'i',
 )
@@ -286,11 +288,35 @@ export function acceptedDrawOffer(text: string, lastAnswer: string | undefined):
 // A reply must not call something safe or verified that Sunny's own checks didn't clear.
 const SAFE_CLAIM =
   /\b(safe to sign|it'?s safe|is safe|looks safe|verified|legit|legitimate|go ahead and (sign|tap|connect)|you can sign|fine to sign|ok(ay)? to sign|good to go|trustworthy|totally fine|nothing to worry|es seguro|puedes firmar|puedes confiar|verificad[oa]|leg[ií]tim[oa]|conf[ií]able)\b/i
-export const claimsSafe = (text: string) => SAFE_CLAIM.test(text)
+export const claimsSafe = (text: string) =>
+  [...text.matchAll(new RegExp(SAFE_CLAIM.source, 'gi'))].some(
+    (m) => !/\b(not|no|isn'?t|aren'?t|never|nunca|ni|nada de)\s+(\w+\s+)?$/i.test(text.slice(Math.max(0, m.index - 24), m.index)),
+  )
+
+// Custody, stated right: Sunny's spending key is on Sunny's server, and the program limits it.
+// The model sometimes says the key "lives on the program"; that sentence is corrected, not trusted.
+const KEY_ON_PROGRAM_EN =
+  /\b(my|the|sunny'?s)?\s*(spending|agent)\s+key\s+(lives|is held|is kept|is stored|sits|is)\s+(on|by|in|inside)\s+(solana'?s|the solana|the on-?chain|the)\s+(on-?chain\s+)?program\b/gi
+const KEY_ON_PROGRAM_ES = /\b(mi|la)\s+(llave|clave)\s+(de gasto|del agente)\s+(vive|est[aá]|se guarda)\s+en\s+el\s+programa(\s+de\s+solana)?\b/gi
+const sameCase = (match: string, fix: string) => (/^\s*[A-ZÁÉÍÓÚ]/.test(match) ? fix[0].toUpperCase() + fix.slice(1) : fix)
+export const custodyStated = (text: string) =>
+  text
+    .replace(KEY_ON_PROGRAM_EN, (m) => sameCase(m, 'my spending key lives on Sunny’s server, and the Solana program limits what it can draw'))
+    .replace(KEY_ON_PROGRAM_ES, (m) => sameCase(m, 'mi llave de gasto está en el servidor de Sunny, y el programa de Solana limita lo que puede sacar'))
+
+// Sunny never tells anyone to connect a wallet to a site (even an official one): those sentences go.
+const CONNECT = /\b(connect|conecta|conectar|conectes)\b[^.!?]{0,30}\b(wallet|billetera|cartera)\b/i
+const NEGATED = /\b(don'?t|do not|never|no|nunca|ni|avoid|evita)\b/i
+export function withoutConnectAdvice(text: string) {
+  const sentences = text.split(/(?<=[.!?])\s+/)
+  const kept = sentences.filter((s) => !CONNECT.test(s) || NEGATED.test(s))
+  return kept.length === sentences.length ? text : kept.join(' ')
+}
 
 // A reply must not claim money moved when no pocket event happened.
 const MONEY_CLAIMS = [
-  /\b(i('ve| have)?|ya)\s+(just\s+|already\s+)?(took|taken|drew|drawn|paid|sent|moved|tom[eé]|pagu[eé]|envi[eé])(?![a-z])[^.!?]{0,40}(\$\s?\d|\d+\s?(usd|usdc|dollars?|d[oó]lares))/i,
+  /\b(i('ve| have)?|ya)\s+(just\s+|already\s+)?(took|taken|drew|drawn|paid|sent|moved|spent|used|tom[eé]|pagu[eé]|envi[eé])(?![a-z])[^.!?]{0,40}(\$\s?\d|\d+\s?(usd|usdc|dollars?|d[oó]lares))/i,
+  /\b(tom[eé]|saqu[eé]|gast[eé]|retir[eé]|cobr[eé]|us[eé])(?![a-z])[^.!?]{0,40}(\$\s?\d|\d+\s?(usd|usdc|d[oó]lares))/i,
   /\$\s?\d+(?:[.,]\d+)?\s+(is|are)\s+(now\s+)?in\s+my\s+(spending\s+)?wallet\b/i,
   /\b(your|the)\s+pocket\s+(just\s+)?(paid|sent)\b[^.!?]{0,20}\$\s?\d/i,
   /\$\s?\d+(?:[.,]\d+)?[^.!?]{0,30}\bwent through\b/i,
@@ -303,9 +329,10 @@ export function claimedAmounts(text: string): number[] {
     const found = new RegExp(re.source, re.flags.includes('g') ? re.flags : `${re.flags}g`)
     // A claim's pattern can end mid-number ("$0" of "$0.10"), so read on a little past it.
     return [...text.matchAll(found)].flatMap((m) =>
-      [...text.slice(m.index, m.index + m[0].length + 12).matchAll(/\$\s?(\d+(?:[.,]\d+)?)/g)]
+      [...text.slice(m.index, m.index + m[0].length + 12).matchAll(/\$\s?(\d+(?:[.,]\d+)?)|(\d+(?:[.,]\d+)?)\s?(?:usd|usdc|dollars?|d[oó]lares)\b/gi)]
         .filter((d) => d.index < m[0].length)
-        .map((d) => Number(d[1].replace(',', '.'))),
+        .slice(0, 1)
+        .map((d) => Number((d[1] ?? d[2]).replace(',', '.'))),
     )
   })
 }

@@ -97,7 +97,7 @@ export async function deepScanRoute(req: IncomingMessage, res: ServerResponse) {
   if (!isSolanaAddress(mint)) return reply(res, 400, { error: 'Add ?mint=<token mint address>' })
   // Only tokens get a price quote: a wallet address has nothing to scan.
   if ((await accountKind(mint).catch(() => 'mint')) !== 'mint') {
-    return reply(res, 400, { error: 'That address is a wallet, not a token mint.' })
+    return reply(res, 400, { error: 'That address isn’t a token mint (it’s a wallet, or nothing exists there).' })
   }
   treasuryReady ??= ensureAta(treasury().publicKey).catch((err) => {
     treasuryReady = undefined

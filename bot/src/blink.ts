@@ -5,6 +5,7 @@ import {
   TransactionMessage,
   VersionedTransaction,
 } from '@solana/web3.js'
+import { DEMO_BLINK_PATH, DEMO_HOST, demoBlinkMeta, demoBlinkTransaction } from './demoblink.js'
 import { lookup } from 'node:dns/promises'
 import { BlockList, isIP, isIPv4, isIPv6 } from 'node:net'
 import { MAINNET_RPC, SOL_MINT_ADDRESS } from './market.js'
@@ -87,7 +88,24 @@ async function readCapped(res: Response) {
   return Buffer.concat(chunks).toString('utf8')
 }
 
+// Sunny's own demo Blink is read in-process: no trip out to the internet and back in through
+// its own public rate limit, which every visitor shares.
+async function ownDemo<T>(url: URL, init?: RequestInit) {
+  if (url.hostname !== DEMO_HOST || url.pathname.replace(/\/$/, '') !== DEMO_BLINK_PATH) return null
+  if (init?.method !== 'POST') return { ok: true, status: 200, body: demoBlinkMeta(`https://${DEMO_HOST}`) as T }
+  let account = ''
+  try {
+    account = String((JSON.parse(String(init.body ?? '{}')) as { account?: unknown }).account ?? '')
+  } catch {
+    // no account
+  }
+  const tx = account ? await demoBlinkTransaction(account).catch(() => null) : null
+  return { ok: Boolean(tx), status: tx ? 200 : 400, body: (tx ?? { message: 'Send the account that would sign.' }) as T }
+}
+
 const json = async <T>(target: string, init?: RequestInit) => {
+  const local = await ownDemo<T>(new URL(target), init)
+  if (local) return local
   let url = new URL(target)
   for (let hop = 0; ; hop++) {
     await assertPublic(url)
@@ -163,7 +181,12 @@ export async function looksLikeBlink(input: string) {
  * Action-style API path)? No network: it decides whether the Blink reader must run first.
  */
 export function hasBlinkShapedLink(message: string) {
-  for (const raw of message.split(/\s+/)) {
+  // Links wrapped in «», backticks, Markdown or a label ("link:"), or glued to a word ("¡Mira!https…").
+  const spaced = message
+    .replace(/[«»`*[\]()¿¡<>]/g, ' ')
+    .replace(/\b(link|url|enlace):/gi, ' ')
+    .replace(/(?<=\S)(?=(solana(-action)?:)?https?:\/\/)/gi, ' ')
+  for (const raw of spaced.split(/\s+/)) {
     // Links wrapped in brackets or quotes, or ending a sentence, count too.
     const word = raw.replace(/^[(<[{"'“‘]+|[)>\]}"'”’.,;!?]+$/gu, '')
     if (/^solana(-action)?:/i.test(word) || /(^|\/\/)(www\.)?dial\.to([/?]|$)/i.test(word)) return true
@@ -209,6 +232,9 @@ export async function resolveAction(input: string): Promise<string | null> {
   // Or the link is an Action API itself.
   const direct = await json<ActionMeta>(url.toString()).catch(() => null)
   if (direct?.ok && direct.body?.title && (direct.body.links?.actions?.length || direct.body.label)) return url.toString()
+  // An Action API path that won't answer Sunny (a drainer can hide from checkers) is still read
+  // as a Blink, so the verdict is "it won't show me its transaction", never a neutral link.
+  if (/\/api\/(actions?|blinks?)(\/|$)/i.test(url.pathname)) return url.toString()
   return null
 }
 
@@ -327,7 +353,7 @@ export function inspectInstructions(
   for (const [to, lamports] of sent) {
     if (lamports < 100_000_000n) continue
     const sol = Number(lamports) / 1e9
-    warnings.push({ level: 'caution', code: 'sol', text: `it sends ${sol.toLocaleString('en-US', { maximumFractionDigits: 3 })} SOL from your wallet to ${short(to)}` })
+    warnings.push({ level: 'caution', code: 'sol', text: `it sends ${sol.toLocaleString('en-US', { maximumFractionDigits: 3 })} SOL from the wallet that signs to ${short(to)}` })
   }
   if (handedOver) warnings.push({ level: 'danger', code: 'owner', text: `it hands ${accounts(handedOver)} to another wallet` })
   if (closed) warnings.push({ level: 'caution', code: 'close', text: `it closes ${accounts(closed)} and sends the rent to someone else` })
@@ -670,7 +696,7 @@ export function finish(raw: Omit<BlinkReport, 'verdict' | 'summary'>): BlinkRepo
         ? 'Dialect’s registry lists this Blink as malicious.'
         : r.phishing === 'known_scam'
           ? `${r.host} is a known phishing site.`
-          : `${sentence(dangers.slice(0, 3).map((d) => d.text))}.`
+          : `${sentence([...dangers, ...r.warnings.filter((w) => w.level !== 'danger')].slice(0, 3).map((d) => d.text))}.`
     summary = `Don’t sign. ${why}`
   } else if (r.outcome === 'would_fail') {
     // The reason comes from program logs, which a hostile program can write: kept short.

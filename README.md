@@ -148,7 +148,7 @@ Recorded from the real app, talking to real Solana devnet and mainnet. The full 
 
 ## Verify it yourself
 
-**[Live numbers](https://sunny.aivylabs.xyz/stats/)**: groups guarded, scams caught, payments refused, and the pocket program's own record read from Solana. Sunny's own counters leave test runs out; the on-chain numbers include them.
+**[Live numbers](https://sunny.aivylabs.xyz/stats/)**: groups guarded, scams caught, payments refused, and the pocket program's own record read from Solana. Sunny's own counters leave out its test accounts and end-to-end runs (other visitors count, testers included); the on-chain numbers include everything.
 
 Everything on-chain is public on devnet. A few transactions from the recordings above:
 

@@ -233,3 +233,31 @@ test('a reply may only report money moves it read on-chain, never ones it was as
   assert.equal(mentionsSpending('¿cuánto queda? saca 5 si alcanza'), true)
   assert.equal(mentionsSpending('What happened in my wallet?'), false)
 })
+
+test('questions about money, past or hypothetical, never move it; real asks still do', async () => {
+  const { asksForDraw, asksForPocketMoney, claimsSafe, withoutConnectAdvice } = await import('../src/guard.js')
+  for (const q of [
+    'did you take $0.50 from my pocket today?',
+    'who can take $5 from my pocket?',
+    'is it true you can take $5?',
+    'Would you take $3 from my pocket if a scammer asked?',
+    '¿puedes sacar $2 de mi bolsillo sin preguntarme?',
+  ]) {
+    assert.equal(asksForDraw(q), false, q)
+    assert.equal(asksForPocketMoney(q), false, q)
+  }
+  for (const ask of ['take $2 from your pocket', 'can you take $2 from your pocket?', 'saca $2 de tu bolsillo'])
+    assert.equal(asksForPocketMoney(ask), true, ask)
+  assert.equal(claimsSafe('No, it is not legit.'), false)
+  assert.equal(claimsSafe('No, no es seguro firmarlo'), false)
+  assert.equal(claimsSafe('It looks safe to sign'), true)
+  assert.equal(withoutConnectAdvice('jup.ag is official. You can connect your wallet there with confidence.'), 'jup.ag is official.')
+  assert.equal(withoutConnectAdvice('Never connect your wallet to raydlum.io.'), 'Never connect your wallet to raydlum.io.')
+})
+
+test('the spending key is never said to live on the program', async () => {
+  const { custodyStated } = await import('../src/guard.js')
+  assert.match(custodyStated('My spending key lives on Solana’s program; the guardrails limit it.'.replace('’', "'")), /lives on Sunny’s server/)
+  assert.match(custodyStated('Mi llave de gasto vive en el programa de Solana.'), /servidor de Sunny/)
+  assert.equal(custodyStated('The Solana program limits what my key can draw.'), 'The Solana program limits what my key can draw.')
+})

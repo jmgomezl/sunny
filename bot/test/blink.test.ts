@@ -70,7 +70,7 @@ test('flags a second signer, and leaves a plain transfer alone', () => {
   // A real amount of SOL leaving the wallet is named, even with nothing to simulate against.
   const sweep = read([SystemProgram.transfer({ fromPubkey: wallet, toPubkey: thief, lamports: 250_000_000 })])
   assert.equal(sweep.warnings.length, 1)
-  assert.match(sweep.warnings[0].text, /sends 0\.25 SOL from your wallet to/)
+  assert.match(sweep.warnings[0].text, /sends 0\.25 SOL from the wallet that signs to/)
   assert.equal(sweep.warnings[0].level, 'caution')
   // And it survives into the final report (a merge step once dropped codes it didn't list).
   const report = finish({
@@ -141,6 +141,11 @@ test('a Blink-shaped link always goes to the Blink reader; ordinary links and wo
     'https://jüp.ag/api/actions/airdrop',
     'solana:https://claim-jup.xyz/api/pay',
     'claim-jup.xyz?action=solana-action:https://x.io/api',
+    '«https://claim-jup.xyz/api/actions/airdrop»',
+    '¡Mira!https://claim-jup.xyz/api/actions/airdrop',
+    '[claim](https://claim-jup.xyz/api/actions/airdrop)',
+    'link:https://claim-jup.xyz/api/actions/airdrop',
+    '¿https://claim-jup.xyz/api/actions/airdrop?',
   ])
     assert.equal(hasBlinkShapedLink(blink), true, blink)
   for (const other of ['check raydlum.io please', 'what is https://jup.ag/swap/SOL-USDC', 'take $5 from your pocket'])

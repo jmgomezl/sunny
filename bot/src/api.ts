@@ -241,6 +241,9 @@ async function inspectRoute(req: IncomingMessage, res: ServerResponse, botToken:
     logActivity(person.id, 'check', `Checked $${result.card.symbol} · ${result.card.risk} risk`, 'Jupiter + RugCheck')
   } else if (result.kind === 'wallet') {
     logActivity(person.id, 'wallet', `Checked wallet ${short(result.report.address)}`, `${result.report.risk} risk`)
+  } else if (result.kind === 'blink') {
+    const r = result.report
+    logActivity(person.id, r.verdict === 'danger' ? 'scam' : 'check', r.verdict === 'danger' ? `Stopped a drainer Blink on ${r.host}` : `Read a Blink on ${r.host}`, r.verdict)
   } else if (result.kind === 'link') {
     const bad = result.link.verdict === 'known_scam' || result.link.verdict === 'suspicious'
     logActivity(person.id, bad ? 'scam' : 'check', `${bad ? 'Flagged' : 'Checked'} ${result.link.domain}`, result.link.verdict.replace('_', ' '))
@@ -496,7 +499,7 @@ export function startApi(port: number, botToken: string) {
       if (post && path === '/api/badges') return await badgesRoute(req, res, botToken)
       if (post && path === '/api/auth') return await authRoute(req, res)
       if (get && path === '/api/stats') return await statsRoute(req, res)
-      if (path === DEMO_BLINK_PATH) return await demoBlinkRoute(req, res)
+      if (path.replace(/\/$/, '') === DEMO_BLINK_PATH) return await demoBlinkRoute(req, res)
       if (get && path.startsWith('/api/share/')) return shareImage(req, res)
       // Public x402 API: anyone can pay for a deep scan, not just Sunny.
       if (req.method === 'OPTIONS' && path === DEEP_SCAN_PATH) return deepScanPreflight(res)
