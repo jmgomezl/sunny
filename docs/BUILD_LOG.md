@@ -199,6 +199,8 @@ Four reviewers ran in parallel again: a server bug hunt, a QA pass against produ
 | `b33155b` | The demo drainer's lock is an off-curve address with no private key, so nobody, the server included, can ever complete it; Blink answers carry the Actions spec headers; routes match the path; "refused" counts only the program's own refusals |
 | `7c5066d` | Updates run concurrently (in order within each chat), so one slow link can't freeze Sunny for everyone; an unconfirmed draw is never called a refusal; DMs read hidden links and captions; refunds survive an unreadable file; tighter money-claim rules; 50 tests; the attack suite's [latest full run](attack-suite-run.txt), unedited |
 | `1bddb1f` | Design fixes: frosted glass restored on Android (the minifier had dropped it), a clean refusal card, kinder empty states for guests, a one-tap first catch |
+| `9f2d693` | A second round, with a 41-message conversation test of the AI: a question about money ("did you take $0.50?") could draw it, and true history was sometimes replaced. Questions never move money now, history is checked against what was read on-chain, Sunny never says "connect your wallet", and custody is stated right; the demo Blink reads in-process and names what it takes; 52 tests, attack suite 10/10 again |
+| `8602a5a` | Design round 2: asking Sunny from a scan opens the chat in a browser (a history race closed it), and Sunny's practice drainer no longer shows Sunny's face and domain under "Don't sign" |
 
 ## Decisions, and why
 
@@ -250,7 +252,7 @@ Four reviewers ran in parallel again: a server bug hunt, a QA pass against produ
 
 - **Program:** 7 LiteSVM tests (`cargo test -p sunny_pocket`).
 - **CI:** every push runs the server, web and program jobs ([Actions](https://github.com/jmgomezl/sunny/actions/workflows/ci.yml)).
-- **Server:** 50 tests (`pnpm test`), including wallet sign-in and refunds (a lost confirmation, a dropped transaction, a restart mid-purchase, a balance that can’t be read).
+- **Server:** 52 tests (`pnpm test`), including wallet sign-in and refunds (a lost confirmation, a dropped transaction, a restart mid-purchase, a balance that can’t be read).
   - The phone's transaction verifier, including what a compromised server might try (wrong wallet, foreign pocket).
   - Guardrails, covering attacks, pasted seeds and keys, and the ordinary questions that must still pass.
   - News, groups, streaks and the Blink reader.
