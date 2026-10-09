@@ -201,6 +201,10 @@ Four reviewers ran in parallel again: a server bug hunt, a QA pass against produ
 | `1bddb1f` | Design fixes: frosted glass restored on Android (the minifier had dropped it), a clean refusal card, kinder empty states for guests, a one-tap first catch |
 | `9f2d693` | A second round, with a 41-message conversation test of the AI: a question about money ("did you take $0.50?") could draw it, and true history was sometimes replaced. Questions never move money now, history is checked against what was read on-chain, Sunny never says "connect your wallet", and custody is stated right; the demo Blink reads in-process and names what it takes; 52 tests, attack suite 10/10 again |
 | `8602a5a` | Design round 2: asking Sunny from a scan opens the chat in a browser (a history race closed it), and Sunny's practice drainer no longer shows Sunny's face and domain under "Don't sign" |
+| `46f0770` | A third conversation round: scam victims always get next steps, limit figures are corrected to the real ones, and Sunny never claims the program enforces consent (its own code does) |
+| `63b8493` | Production round 3: a stalling or redirected drainer Blink still gets "don't sign", memory can't grow forever, and one address can't use up the day's shared limits |
+| `ec50b46` | The group guardian's first dedicated QA: no false alarms on verified tokens or builder sites, /check reads Blinks, and channel posts, edits and link buttons are all checked; warnings in the group's language, scam domains un-tappable |
+| `922c97b` | Design round 3, shot by shot at the recording sizes: Sunny stays awake on camera and warnings last while they're shown |
 
 ## Decisions, and why
 
