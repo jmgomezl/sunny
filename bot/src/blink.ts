@@ -163,11 +163,16 @@ export async function looksLikeBlink(input: string) {
  * Action-style API path)? No network: it decides whether the Blink reader must run first.
  */
 export function hasBlinkShapedLink(message: string) {
-  for (const word of message.split(/\s+/)) {
-    if (/^solana-action:/i.test(word) || /(^|\/\/)(www\.)?dial\.to\//i.test(word)) return true
-    if (!/^(https?:\/\/)?[\w-]+(\.[\w-]+)+\//i.test(word)) continue
+  for (const raw of message.split(/\s+/)) {
+    // Links wrapped in brackets or quotes, or ending a sentence, count too.
+    const word = raw.replace(/^[(<[{"'“‘]+|[)>\]}"'”’.,;!?]+$/gu, '')
+    if (/^solana(-action)?:/i.test(word) || /(^|\/\/)(www\.)?dial\.to([/?]|$)/i.test(word)) return true
+    // Anything that starts with a scheme, or host.tld followed by a path or query (ports and
+    // non-ASCII hosts too).
+    const scheme = /^[a-z][a-z0-9+.-]*:\/\//i.test(word)
+    if (!scheme && !/^[^\s/?#]+\.[^\s/?#]+[/?]/u.test(word)) continue
     try {
-      const url = new URL(/^https?:\/\//i.test(word) ? word : `https://${word}`)
+      const url = new URL(scheme ? word : `https://${word}`)
       if (url.searchParams.has('action') || /\/(api\/)?(actions?|blinks?)(\/|$)/i.test(url.pathname)) return true
     } catch {
       // not a link
@@ -225,7 +230,8 @@ export async function registryState(host: string): Promise<'trusted' | 'maliciou
       }
       registry = { at: Date.now(), hosts }
     } catch {
-      registry ??= { at: 0, hosts: new Map() }
+      // Unreachable: keep what we had and try again in five minutes, not on every check.
+      registry = { at: Date.now() - REGISTRY_MS + 5 * 60_000, hosts: registry?.hosts ?? new Map() }
     }
   }
   return registry.hosts.get(host) ?? 'unknown'
@@ -484,7 +490,20 @@ function pickButton(meta: ActionMeta, actionUrl: string) {
  * Checks a Blink for `wallet` (a wallet you watch, so the simulation uses your real
  * balances). Without one, Sunny still reads the transaction, but can't say what you'd lose.
  */
-export async function checkBlink(link: string, watched: string | null, probe: string): Promise<BlinkReport | null> {
+// One answer per check, however slow the site: each request has its own timeout, and the whole
+// check (redirects, metadata, the transaction, simulation) has this one.
+const CHECK_DEADLINE_MS = 20_000
+
+/** "Should I sign this?" for a link. Null when it isn't a Blink; throws if it takes too long. */
+export function checkBlink(link: string, watched: string | null, probe: string): Promise<BlinkReport | null> {
+  let timer: NodeJS.Timeout | undefined
+  const deadline = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error('That site took too long to answer, so I couldn’t read what it wants signed.')), CHECK_DEADLINE_MS)
+  })
+  return Promise.race([readBlink(link, watched, probe), deadline]).finally(() => clearTimeout(timer))
+}
+
+async function readBlink(link: string, watched: string | null, probe: string): Promise<BlinkReport | null> {
   const actionUrl = await resolveAction(link)
   if (!actionUrl) return null
   const host = new URL(actionUrl).hostname

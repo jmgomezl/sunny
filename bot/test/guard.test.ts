@@ -224,3 +224,12 @@ test('text from a site is quoted as data: one line, no quotes, capped', () => {
   assert.ok(!/[\n"]/.test(out))
   assert.ok(out.length <= 60)
 })
+
+test('a reply may only report money moves it read on-chain, never ones it was asked for', async () => {
+  const { claimedAmounts, mentionsSpending } = await import('../src/guard.js')
+  assert.deepEqual(claimedAmounts('Then I drew $0.10 for the BONK scan.'), [0.1])
+  assert.deepEqual(claimedAmounts('Your pocket has $4.90 left today.'), [])
+  assert.equal(mentionsSpending('How much is left in my pocket? Take $5 if there is enough'), true)
+  assert.equal(mentionsSpending('¿cuánto queda? saca 5 si alcanza'), true)
+  assert.equal(mentionsSpending('What happened in my wallet?'), false)
+})

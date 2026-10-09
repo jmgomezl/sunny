@@ -296,3 +296,19 @@ const MONEY_CLAIMS = [
   /\$\s?\d+(?:[.,]\d+)?[^.!?]{0,30}\bwent through\b/i,
 ]
 export const claimsMoneyMoved = (text: string) => MONEY_CLAIMS.some((re) => re.test(text))
+
+/** The dollar amounts inside a reply's money-moved claims ("I drew $0.10" → [0.1]). */
+export function claimedAmounts(text: string): number[] {
+  return MONEY_CLAIMS.flatMap((re) => {
+    const found = new RegExp(re.source, re.flags.includes('g') ? re.flags : `${re.flags}g`)
+    // A claim's pattern can end mid-number ("$0" of "$0.10"), so read on a little past it.
+    return [...text.matchAll(found)].flatMap((m) =>
+      [...text.slice(m.index, m.index + m[0].length + 12).matchAll(/\$\s?(\d+(?:[.,]\d+)?)/g)]
+        .filter((d) => d.index < m[0].length)
+        .map((d) => Number(d[1].replace(',', '.'))),
+    )
+  })
+}
+
+// "Take $5 if there's enough": a spending verb near an amount, even when it isn't a clear ask.
+export const mentionsSpending = (text: string) => /\b(take|draw|spend|pay|send|move|toma|saca|gasta|paga|env[ií]a)\b[^.?!]{0,24}\$?\s?\d/i.test(normalized(text))

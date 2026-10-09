@@ -1,6 +1,7 @@
 import { existsSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { run, sequentialize, type RunnerHandle } from '@grammyjs/runner'
 import { Bot, GrammyError, HttpError, InlineKeyboard, InputFile, type Context } from 'grammy'
 import { startApi } from './api.js'
 import { startRefunds } from './refunds.js'
@@ -11,7 +12,7 @@ import { sharedSecret } from './guard.js'
 import { startScamLists } from './scams.js'
 import { allow, HOUR } from './limits.js'
 import { ago, KIND_ICON, latestNews, startNews, type NewsItem } from './news.js'
-import { handleGroup } from './groups.js'
+import { handleGroup, linksIn } from './groups.js'
 import { newsSubscribers, setMorning, setNewsAlerts, touch } from './users.js'
 import { briefFor, startMorning } from './morning.js'
 import { loadStickers, packLink, stickerFor, type Pose } from './stickerpack.js'
@@ -51,6 +52,11 @@ const COMMANDS = [
 
 const bot = new Bot(token)
 let avatarFileId: string | undefined
+let runner: RunnerHandle | undefined
+
+// Updates are handled concurrently, one at a time per chat: a slow link or a long answer in one
+// chat never holds up anyone else, and each chat's messages still go in order.
+bot.use(sequentialize((ctx) => ctx.chat?.id.toString()))
 
 // In private chats Sunny is a companion. In groups it's a quiet guardian (see groups.ts),
 // and channels are left alone.
@@ -214,10 +220,13 @@ bot.command('freeze', (ctx) =>
   ),
 )
 
-bot.on('message:text', async (ctx) => {
+bot.on(['message:text', 'message:caption'], async (ctx) => {
+  const text = ctx.message.text ?? ctx.message.caption ?? ''
   // A pasted recovery phrase or key is taken out of the chat right away (Sunny's answer explains).
-  if (sharedSecret(ctx.message.text)) await ctx.deleteMessage().catch(() => {})
-  await askBrain(ctx, ctx.message.text)
+  if (sharedSecret(text)) await ctx.deleteMessage().catch(() => {})
+  // Links hidden behind words ("Claim here") or in a photo's caption are part of what was sent.
+  const hidden = linksIn(ctx.message).filter((link) => !text.includes(link))
+  await askBrain(ctx, hidden.length ? `${text}\n${hidden.join('\n')}` : text)
 })
 
 bot.on('message', (ctx) => ctx.reply('I can only read text for now ☀️ Tell me what’s on your mind.'))
@@ -256,12 +265,13 @@ async function main() {
   const me = await bot.api.getMe()
   await loadStickers(bot.api, me.username)
   console.log(`[sunny] @${me.username} is awake; Mini App at ${MINI_APP_URL}; free chat ${HAS_BRAIN ? 'on' : 'off'}`)
-  await bot.start({ drop_pending_updates: true, allowed_updates: ['message', 'my_chat_member'] })
+  await bot.api.deleteWebhook({ drop_pending_updates: true })
+  runner = run(bot, { runner: { fetch: { allowed_updates: ['message', 'my_chat_member'] } } })
 }
 
 // The API server would keep the process alive on its own, so shutting down exits explicitly.
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {
-  process.once(signal, () => void Promise.resolve(bot.isRunning() ? bot.stop() : undefined).finally(() => process.exit(0)))
+  process.once(signal, () => void Promise.resolve(runner?.isRunning() ? runner.stop() : undefined).finally(() => process.exit(0)))
 }
 // One request gone wrong must never take Sunny down for everyone: log it and keep going.
 process.on('unhandledRejection', (err) => console.error('[sunny] unhandled rejection', err))

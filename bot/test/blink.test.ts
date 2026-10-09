@@ -136,6 +136,11 @@ test('a Blink-shaped link always goes to the Blink reader; ordinary links and wo
     'solana-action:https://jupiter.dial.to/swap',
     'https://dial.to/?action=solana-action:https://example.com/api',
     'is bonk.com/actions/claim legit?',
+    'look (https://claim-jup.xyz/api/actions/airdrop)',
+    'https://claim-jup.xyz:443/api/actions/airdrop',
+    'https://jüp.ag/api/actions/airdrop',
+    'solana:https://claim-jup.xyz/api/pay',
+    'claim-jup.xyz?action=solana-action:https://x.io/api',
   ])
     assert.equal(hasBlinkShapedLink(blink), true, blink)
   for (const other of ['check raydlum.io please', 'what is https://jup.ag/swap/SOL-USDC', 'take $5 from your pocket'])

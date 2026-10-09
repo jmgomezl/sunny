@@ -16,6 +16,8 @@ import { MAINNET_RPC } from './market.js'
 // "Should I sign this?" check catch a drainer, using their own wallet's real balances.
 
 export const DEMO_BLINK_PATH = '/api/blinks/free-airdrop'
+// Where the demo lives: catching it doesn't count as catching a real drainer in the stats.
+export const DEMO_HOST = new URL(process.env.PUBLIC_URL || 'https://sunny.aivylabs.xyz').hostname
 const TOKEN = new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')
 const MEMO = new PublicKey('MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr')
 const mainnet = new Connection(MAINNET_RPC, 'confirmed')

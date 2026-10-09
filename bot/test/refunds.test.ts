@@ -170,3 +170,24 @@ test('a balance that can’t be read keeps the purchase held; it is never taken 
   assert.equal(r.status, 'done', 'once the balance reads, the money still there goes back')
   assert.equal(chain.built, 1)
 })
+
+test('a purchase that finishes while recovery is asking the chain keeps its own outcome', async () => {
+  const { releasePurchase } = await import('../src/refunds.js')
+  const chain = fakeChain()
+  const r = holdPurchase(OWNER, 70, 0.1, 'A paid scan that didn’t come back')
+  noteDraw(r, 'draw-racing', 100)
+  chain.landed.add('draw-racing')
+  r.createdAt = new Date(Date.now() - 11 * 60_000).toISOString()
+  // The scan settles while recovery waits for the chain's answer.
+  const status = chain.status.bind(chain)
+  chain.status = async (sig: string) => {
+    const answer = await status(sig)
+    releasePurchase(r, 'settled')
+    return answer
+  }
+  await processRefunds(chain)
+  assert.equal(r.status, 'settled')
+  assert.equal(chain.built, 0, 'no refund for a purchase that went through')
+  owe(r)
+  assert.equal(r.status, 'settled', 'a finished purchase can’t be reopened')
+})

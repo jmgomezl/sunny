@@ -16,7 +16,7 @@ import { challenge, sessionFor, verifySignIn, walletOfSession, walletUserId } fr
 import { count, seen, snapshot } from './stats.js'
 import { DEEP_SCAN_PATH, deepScanPreflight, deepScanRoute } from './x402.js'
 import { MAX_SHARE_BYTES, readShare, saveShare, startShareCleanup } from './shares.js'
-import { DEMO_BLINK_PATH, demoBlinkMeta, demoBlinkTransaction } from './demoblink.js'
+import { DEMO_BLINK_PATH, DEMO_HOST, demoBlinkMeta, demoBlinkTransaction } from './demoblink.js'
 
 // Small HTTP API for the Mini App, served behind nginx at /api/.
 // Telegram users are identified from the signed initData, so chatting in the Mini App
@@ -235,7 +235,7 @@ async function inspectRoute(req: IncomingMessage, res: ServerResponse, botToken:
     if (result.link.verdict === 'known_scam' || result.link.verdict === 'suspicious') count('scamsFlagged', person.id)
   } else if (result.kind === 'blink') {
     count('blinksChecked', person.id)
-    if (result.report.verdict === 'danger') count('drainersFlagged', person.id)
+    if (result.report.verdict === 'danger' && result.report.host !== DEMO_HOST) count('drainersFlagged', person.id)
   }
   if (result.kind === 'token' && result.found) {
     logActivity(person.id, 'check', `Checked $${result.card.symbol} · ${result.card.risk} risk`, 'Jupiter + RugCheck')
@@ -385,11 +385,13 @@ async function authRoute(req: IncomingMessage, res: ServerResponse) {
     if (typeof body.message !== 'string' || typeof body.signature !== 'string' || body.message.length > 600) {
       throw new ApiError(400, 'Missing signature.')
     }
-    if (!allow('wallet-signins', WALLET_SIGNINS_PER_DAY, DAY)) {
+    // The day's ceiling counts real sign-ins only, so junk signatures can't use it up for everyone.
+    if (hits('wallet-signins', DAY) >= WALLET_SIGNINS_PER_DAY) {
       throw new ApiError(429, 'Lots of new friends today ☀️ Try again tomorrow, or open me in Telegram.')
     }
     const address = verifySignIn(body.message, body.signature, domain)
     if (!address) throw new ApiError(401, 'That signature didn’t check out. Try connecting again.')
+    allow('wallet-signins', WALLET_SIGNINS_PER_DAY, DAY)
     const id = walletUserId(address)
     linkWallet(id, address)
     touch(id, 'friend', 'en')
@@ -499,7 +501,10 @@ export function startApi(port: number, botToken: string) {
       // Public x402 API: anyone can pay for a deep scan, not just Sunny.
       if (req.method === 'OPTIONS' && path === DEEP_SCAN_PATH) return deepScanPreflight(res)
       if (get && path === DEEP_SCAN_PATH) {
-        if (!allow(`x402:${clientIp(req)}`, 120, HOUR)) return send(res, 429, { error: 'Too many scans. Try again later.' })
+        // Sunny's own purchases come from this machine (nginx always adds X-Real-IP for the public);
+        // they're limited per person before any draw, so they don't share the public bucket.
+        const internal = !req.headers['x-real-ip'] && ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress ?? '')
+        if (!internal && !allow(`x402:${clientIp(req)}`, 120, HOUR)) return send(res, 429, { error: 'Too many scans. Try again later.' })
         return await deepScanRoute(req, res)
       }
       send(res, 404, { error: 'Not found' })

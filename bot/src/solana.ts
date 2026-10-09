@@ -314,7 +314,7 @@ export async function agentDraw(ownerAddress: string, usd: number, onSigned?: (s
   tx.recentBlockhash = blockhash
   tx.sign(feePayer(), agent)
   onSigned?.(base58.encode(tx.signature!), lastValidBlockHeight)
-  return sendToChain(tx)
+  return sendToChain(tx, lastValidBlockHeight)
 }
 
 /** A refund transaction, signed once and kept as bytes, so a retry can resend the very same one. */
@@ -396,16 +396,31 @@ export const refundChain = {
  * failed transaction carrying the program's own error: on-chain proof that Solana said no,
  * not just a server message. A refusal throws with `explorer` pointing at that transaction.
  */
-async function sendToChain(tx: Transaction) {
+async function sendToChain(tx: Transaction, lastValidBlockHeight: number) {
   const signature = await connection.sendRawTransaction(tx.serialize(), { skipPreflight: true })
   const explorer = explorerTx(signature)
   let failure: unknown = null
   try {
-    failure = (await connection.confirmTransaction(signature, 'confirmed')).value.err
+    failure = (await connection.confirmTransaction({ signature, blockhash: tx.recentBlockhash!, lastValidBlockHeight }, 'confirmed')).value.err
   } catch (err) {
     // web3.js throws the transaction's own error object ({InstructionError: …}) when it failed.
     if (err && typeof err === 'object' && !(err instanceof Error)) failure = err
-    else throw Object.assign(new Error(explain(err)), { cause: err })
+    else {
+      // No answer in time is not a refusal: ask the chain what happened before saying anything.
+      const outcome = await outcomeOf(signature, lastValidBlockHeight)
+      if (outcome === 'landed') return { signature, explorer }
+      if (typeof outcome === 'object') failure = outcome.failed
+      else {
+        throw Object.assign(
+          new Error(
+            outcome === 'expired'
+              ? 'Solana was slow and the request expired, so nothing was taken. You can ask again'
+              : 'Solana hasn’t confirmed it yet. Check the pocket in a minute before asking again',
+          ),
+          { cause: err, uncertain: outcome === 'unknown' },
+        )
+      }
+    }
   }
   if (!failure) return { signature, explorer }
   const logs =
@@ -414,6 +429,19 @@ async function sendToChain(tx: Transaction) {
   const custom = (failure as { InstructionError?: [number, { Custom?: number }] }).InstructionError?.[1]?.Custom
   const reason = explain(new Error(`${custom !== undefined ? `Error Number: ${custom}` : JSON.stringify(failure)} ${logs.join(' ')}`))
   throw Object.assign(new Error(reason), { explorer, signature })
+}
+
+/** Waits for a sent transaction's fate: landed, its on-chain error, expired unseen, or still unknown. */
+async function outcomeOf(signature: string, lastValidBlockHeight: number): Promise<'landed' | 'expired' | 'unknown' | { failed: unknown }> {
+  for (let i = 0; i < 20; i++) {
+    const status = (await connection.getSignatureStatuses([signature], { searchTransactionHistory: true }).catch(() => null))?.value[0]
+    if (status?.err) return { failed: status.err }
+    if (status && status.confirmationStatus !== 'processed') return 'landed'
+    const height = await connection.getBlockHeight('confirmed').catch(() => null)
+    if (!status && height !== null && height > lastValidBlockHeight) return 'expired'
+    await new Promise((r) => setTimeout(r, 2_000))
+  }
+  return 'unknown'
 }
 
 /** Opens a wallet's test-USDC account if it doesn't exist yet. Sunny's fee wallet pays the rent. */

@@ -15,7 +15,9 @@ import {
   amountsIn,
   asksForDraw,
   asksForPocketMoney,
+  claimedAmounts,
   claimsMoneyMoved,
+  mentionsSpending,
   claimsSafe,
   cleanReply,
   cooldownReply,
@@ -30,6 +32,7 @@ import type { DeepReport } from './deepscan.js'
 import { DEEP_SCAN_PRICE, sunnyBuysDeepScan } from './x402.js'
 import { ago, latestNews } from './news.js'
 import { checkBlink, hasBlinkShapedLink, probeAccount, untrusted, type BlinkReport } from './blink.js'
+import { DEMO_HOST } from './demoblink.js'
 import { allow, HOUR } from './limits.js'
 
 // Sunny's brain runs through OpenRouter so the model can be swapped from .env.
@@ -61,8 +64,6 @@ const QUESTION = /^(what|how|why|which|who|is|are|should|does|que|como|por que|c
 const asksForAction = (text: string) => ACTION_REQUEST.test(fold(text)) && !QUESTION.test(fold(text))
 // Tools whose answers come from Jupiter's live market data (for the "📡 Live from Jupiter" note).
 const JUPITER_TOOLS = new Set(['lookup_token', 'market_overview', 'wallet_snapshot', 'create_price_alert', 'my_wallet'])
-// Tools that read what already happened on-chain, so a reply may describe past money moves.
-const HISTORY_TOOLS = new Set(['my_wallet', 'pocket_status', 'wallet_snapshot'])
 const COULDNT_ACT = {
   en: 'I couldn’t do that just now, sorry. Try asking me again in a moment? ☀️',
   es: 'No pude hacerlo justo ahora, perdón. ¿Me lo pides de nuevo en un momento? ☀️',
@@ -409,6 +410,8 @@ const toAlertCard = (a: Alert): AlertCard => ({
 })
 
 const histories = new Map<number, Turn[]>()
+// Chats whose last answer was written after reading untrusted text.
+const untrustedTurns = new Set<number>()
 
 const priceText = (usd: number) =>
   usd >= 1 ? `$${usd.toLocaleString('en-US', { maximumFractionDigits: 2 })}` : `$${Number(usd.toPrecision(4)).toString()}`
@@ -536,9 +539,11 @@ async function deepScan(query: string, ctx: Ctx) {
       return { not_paid: true, refunded: Boolean(refunded), reason: why, pocket_now: await pocketFacts(wallet) }
     }
     const proof = (err as { explorer?: string }).explorer
-    ctx.pocket.push({ amount: DEEP_SCAN_PRICE, reason, ok: false, message: why, ...(proof ? { explorer: proof } : {}) })
+    // No on-chain answer is not a refusal; if the draw did land, the refund queue settles it.
+    if (!proof) return { error: why, not_a_refusal: true, pocket_now: await pocketFacts(wallet) }
+    ctx.pocket.push({ amount: DEEP_SCAN_PRICE, reason, ok: false, message: why, explorer: proof })
     logActivity(ctx.userId, 'check', `Solana stopped a $${DEEP_SCAN_PRICE.toFixed(2)} deep scan`, why)
-    return { not_paid: true, reason: why, ...(proof ? { on_chain_proof: proof } : {}), pocket_now: await pocketFacts(wallet) }
+    return { not_paid: true, reason: why, on_chain_proof: proof, pocket_now: await pocketFacts(wallet) }
   }
 }
 
@@ -635,7 +640,7 @@ async function runTool(name: string, rawArgs: string, ctx: Ctx): Promise<unknown
         if (ctx.blinks.length < 2) ctx.blinks.push(report)
         if (report.verdict === 'danger') noteHabit(ctx.userId, 'scamCaught')
         count('blinksChecked', ctx.userId)
-        if (report.verdict === 'danger') count('drainersFlagged', ctx.userId)
+        if (report.verdict === 'danger' && report.host !== DEMO_HOST) count('drainersFlagged', ctx.userId)
         logActivity(
           ctx.userId,
           report.verdict === 'danger' ? 'scam' : 'check',
@@ -745,6 +750,8 @@ async function runTool(name: string, rawArgs: string, ctx: Ctx): Promise<unknown
           const why = err instanceof Error ? err.message : 'The transaction failed'
           // The refusal itself is a failed transaction on Solana: proof it was the program.
           const proof = (err as { explorer?: string }).explorer
+          // No on-chain answer (slow or unreachable network) is not a refusal: say what we know.
+          if (!proof) return { error: why, not_a_refusal: true, ...(owner.demo ? {} : { pocket_now: await pocketFacts(wallet).catch(() => null) }) }
           const now = await pocketFacts(wallet)
           const limits = now && 'per_payment_limit_usd' in now ? { perTx: now.per_payment_limit_usd, daily: now.daily_limit_usd } : {}
           ctx.pocket.push({ amount, reason, ok: false, message: why, explorer: proof, ...limits, demo: owner.demo || undefined })
@@ -824,6 +831,9 @@ export async function reply(chatId: number, name: string, text: string, lang = '
 
   const history = histories.get(chatId) ?? []
   const lastAnswer = history.findLast((m) => m.role === 'assistant')?.content
+  // An offer Sunny made right after reading untrusted text (a Blink, the news) can't be accepted
+  // with a bare "yes": that text may have put the offer there.
+  const offerTrusted = !untrustedTurns.has(chatId)
   history.push({ role: 'user', content: text })
 
   const where = isWalletUser(chatId)
@@ -844,8 +854,8 @@ export async function reply(chatId: number, name: string, text: string, lang = '
     scans: [],
     blinks: [],
     watchChanged: false,
-    scanConsent: acceptsScanOffer(text, typeof lastAnswer === 'string' ? lastAnswer : undefined),
-    drawConsent: acceptedDrawOffer(text, typeof lastAnswer === 'string' ? lastAnswer : undefined),
+    scanConsent: offerTrusted && acceptsScanOffer(text, typeof lastAnswer === 'string' ? lastAnswer : undefined),
+    drawConsent: offerTrusted ? acceptedDrawOffer(text, typeof lastAnswer === 'string' ? lastAnswer : undefined) : null,
     untrustedSeen: false,
     draws: 0,
   }
@@ -857,7 +867,6 @@ export async function reply(chatId: number, name: string, text: string, lang = '
   let forceBlink = !forceDraw && hasBlinkShapedLink(text)
   let acted = false
   let jupiter = false
-  let readHistory = false
   let forced = false
   let prompted = false
   let raw = ''
@@ -909,7 +918,6 @@ export async function reply(chatId: number, name: string, text: string, lang = '
     forceDraw = false
     forceBlink = false
     jupiter ||= calls.some((c) => JUPITER_TOOLS.has(c.function.name))
-    readHistory ||= calls.some((c) => HISTORY_TOOLS.has(c.function.name))
     messages.push({ role: 'assistant', content: msg.content ?? null, tool_calls: calls })
     for (const call of calls) {
       const result = await runTool(call.function.name, call.function.arguments, ctx)
@@ -924,8 +932,16 @@ export async function reply(chatId: number, name: string, text: string, lang = '
   const flagged = ctx.blinks.find((b) => b.verdict !== 'ok')
   if (flagged && claimsSafe(raw)) raw = flagged.summary
   // And it can't claim money moved when nothing moved on Solana. Describing history it just read
-  // ("I drew $5 this morning") is fine, but only when the person asked about history, not for money.
-  const reportingHistory = readHistory && !asksForPocketMoney(ctx.ask)
+  // ("I drew $0.10 for the scan") is fine, but only amounts that are in that history, only when the
+  // person asked about history (not for money), and never after reading untrusted text.
+  const readOnChain = (ctx.mine?.recent ?? []).flatMap((e) => (e.amount === null ? [] : [e.amount]))
+  const claimed = claimedAmounts(raw)
+  const reportingHistory =
+    !ctx.untrustedSeen &&
+    !asksForPocketMoney(ctx.ask) &&
+    !mentionsSpending(ctx.ask) &&
+    claimed.length > 0 &&
+    claimed.every((c) => readOnChain.some((h) => Math.abs(h - c) < 0.005))
   if (claimsMoneyMoved(raw) && !ctx.pocket.some((e) => e.ok) && !ctx.scans.length && !reportingHistory) {
     raw = language.startsWith('es')
       ? 'No moví nada de dinero: no pasó nada en Solana.'
@@ -934,10 +950,13 @@ export async function reply(chatId: number, name: string, text: string, lang = '
   const answer = cleanReply(plain(raw) || 'Hmm, I lost my train of thought. Try me again? ☀️', PERSONA, language)
   history.push({ role: 'assistant', content: answer })
   histories.set(chatId, history.slice(-HISTORY_TURNS * 2))
+  if (ctx.untrustedSeen) untrustedTurns.add(chatId)
+  else untrustedTurns.delete(chatId)
   const { cards, links, alerts, pocket, mine, wallets, scans, blinks, watchChanged } = ctx
   return { text: answer, cards, links, alerts, pocket, mine, wallets, scans, blinks, watchChanged, live: jupiter }
 }
 
 export function forget(chatId: number) {
   histories.delete(chatId)
+  untrustedTurns.delete(chatId)
 }

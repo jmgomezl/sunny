@@ -60,8 +60,10 @@ function scheduleSave() {
     saveTimer = undefined
     const ids = Object.keys(users)
     if (ids.length > MAX_USERS) {
+      // Web-preview guests (negative ids above the wallet sign-in range) go first, oldest first.
+      const guest = (id: string) => Number(id) < 0 && Number(id) > -(2 ** 50)
       ids
-        .sort((a, b) => users[a].seenAt.localeCompare(users[b].seenAt))
+        .sort((a, b) => Number(guest(b)) - Number(guest(a)) || users[a].seenAt.localeCompare(users[b].seenAt))
         .slice(0, ids.length - MAX_USERS)
         .forEach((id) => delete users[id])
     }

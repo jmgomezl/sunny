@@ -39,28 +39,46 @@ export type Refund = {
 export type RefundChain = Pick<typeof refundChain, 'build' | 'submit' | 'status' | 'expired' | 'spendable'>
 
 let refunds: Refund[] | null = null
+// Set when refunds.json exists but can't be read: purchases stop until a person looks at it.
+let unreadable = false
 
 function load(): Refund[] {
   if (refunds) return refunds
   try {
-    refunds = JSON.parse(readFileSync(FILE, 'utf8')) as Refund[]
-  } catch {
+    const parsed: unknown = JSON.parse(readFileSync(FILE, 'utf8'))
+    if (!Array.isArray(parsed)) throw new Error('not a list')
+    refunds = parsed as Refund[]
+  } catch (err) {
     refunds = []
+    // No file yet is a clean start. Anything else would silently forget money owed, so the file is
+    // kept aside for a person to recover, and no new purchase starts until then.
+    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
+      unreadable = true
+      const aside = `${FILE}.unreadable-${Date.now()}`
+      try {
+        renameSync(FILE, aside)
+      } catch {
+        // already moved or gone
+      }
+      console.error(`[sunny] refunds.json couldn't be read; kept as ${aside}. Paid scans are paused.`, err)
+    }
   }
   return refunds
 }
 
 function save() {
   mkdirSync(DATA_DIR, { recursive: true })
-  // Open ones are always kept; finished ones for a week, as a record.
+  // Open ones and refunds that never landed are always kept; finished ones for a week, as a record.
   const week = Date.now() - 7 * 86_400_000
-  refunds = load().filter((r) => r.status === 'pending' || r.status === 'held' || Date.parse(r.createdAt) > week)
+  refunds = load().filter((r) => ['pending', 'held', 'failed'].includes(r.status) || Date.parse(r.createdAt) > week)
   writeFileSync(`${FILE}.tmp`, JSON.stringify(refunds))
   renameSync(`${FILE}.tmp`, FILE)
 }
 
 /** Written to disk before Sunny draws money for a purchase. */
 export function holdPurchase(owner: string, userId: number, amount: number, reason: string): Refund {
+  load()
+  if (unreadable) throw new Error('Paid scans are paused for a moment while I sort out my books. Nothing was taken.')
   const r: Refund = {
     id: randomUUID(),
     owner,
@@ -83,14 +101,19 @@ export function noteDraw(r: Refund, signature: string, validUntil: number) {
   save()
 }
 
-/** The purchase is over: it went through ('settled'), or no money moved ('void'). */
+/**
+ * The purchase is over: it went through ('settled'), or no money moved ('void'). Only a held
+ * purchase can be released, so a late answer never overwrites what recovery already decided.
+ */
 export function releasePurchase(r: Refund, outcome: 'settled' | 'void') {
+  if (r.status !== 'held') return
   r.status = outcome
   save()
 }
 
-/** What Sunny paid for didn't arrive: the pocket is owed this money back. */
+/** What Sunny paid for didn't arrive: the pocket is owed this money back. Only from held. */
 export function owe(r: Refund) {
+  if (r.status !== 'held') return
   r.status = 'pending'
   r.nextAt = 0
   save()
@@ -150,16 +173,20 @@ export async function refundNow(r: Refund, chain: RefundChain = refundChain): Pr
 async function recover(r: Refund, chain: RefundChain) {
   if (!r.draw) return releasePurchase(r, 'void')
   const drawn = await chain.status(r.draw.signature)
+  // The purchase may have finished while we asked: then it already knows its outcome.
+  if (r.status !== 'held') return
   if (drawn === 'failed') return releasePurchase(r, 'void')
   if (drawn === 'unknown') {
-    if (await chain.expired(r.draw.validUntil)) releasePurchase(r, 'void')
+    if ((await chain.expired(r.draw.validUntil)) && r.status === 'held') releasePurchase(r, 'void')
     return
   }
   // The draw landed. If the money is still in Sunny's spending wallet, put it back. That wallet
   // is this owner's alone, so even if the scan did get paid, a refund only moves their own money
   // back into their own pocket; nobody can be paid twice. If the balance can't be read, this
   // throws and the purchase stays held for the next pass: unknown is never taken as empty.
-  if ((await chain.spendable(r.owner)) >= r.amount) return owe(r)
+  const spendable = await chain.spendable(r.owner)
+  if (r.status !== 'held') return
+  if (spendable >= r.amount) return owe(r)
   console.warn('[sunny] a purchase was paid but its answer was lost in a restart', r.owner, r.draw.signature)
   releasePurchase(r, 'settled')
 }
