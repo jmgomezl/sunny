@@ -50,7 +50,14 @@ export async function inspect(input: string, watched: string | null = null): Pro
 
   const address = extractAddress(text)
   if (address) {
-    if ((await accountKind(address)) === 'mint') return { kind: 'token', ...(await lookupToken(address)) }
+    const kind = await accountKind(address)
+    if (kind === 'mint') return { kind: 'token', ...(await lookupToken(address)) }
+    // Nothing on-chain yet: a coin seconds old may not have reached the RPC, so ask the token index.
+    if (kind === 'none') {
+      const token = await lookupToken(address).catch(() => null)
+      if (token?.found) return { kind: 'token', ...token }
+      return { kind: 'unknown', message: 'Nothing exists at that address yet. If it’s a brand-new coin, try again in a minute.' }
+    }
     return { kind: 'wallet', report: await walletReport(address) }
   }
 
