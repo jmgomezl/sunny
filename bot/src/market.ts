@@ -29,11 +29,17 @@ export type JupToken = {
   stats6h?: Stats
   stats24h?: Stats
   firstPool?: { createdAt?: string }
+  createdAt?: string
+  /** The launchpad it started on (pump.fun…), and whether it has left the launch curve for a real pool. */
+  launchpad?: string | null
+  graduatedPool?: string | null
   audit?: {
     mintAuthorityDisabled?: boolean
     freezeAuthorityDisabled?: boolean
     topHoldersPercentage?: number
     devBalancePercentage?: number
+    /** How many tokens its creator has launched. */
+    devMints?: number
   }
   organicScoreLabel?: string
   isVerified?: boolean
@@ -79,15 +85,34 @@ const round = (n: number | undefined, digits = 2) =>
 const price = (n: number | undefined) =>
   n === undefined || !Number.isFinite(n) ? null : Number(n.toPrecision(n < 1 ? 4 : 6))
 
+function ageMs(t: JupToken) {
+  const created = Date.parse(t.firstPool?.createdAt ?? t.createdAt ?? '')
+  return Number.isFinite(created) ? Math.max(0, Date.now() - created) : null
+}
+
 function ageDays(t: JupToken) {
-  const created = t.firstPool?.createdAt ? Date.parse(t.firstPool.createdAt) : NaN
-  return Number.isFinite(created) ? Math.floor((Date.now() - created) / 86_400_000) : null
+  const ms = ageMs(t)
+  return ms === null ? null : Math.floor(ms / 86_400_000)
+}
+
+/** "12 minutes", "5 hours", "3 days": how long ago a coin launched, the way people say it. */
+function ageText(ms: number) {
+  const min = Math.floor(ms / 60_000)
+  if (min < 60) return `${Math.max(1, min)} minute${min <= 1 ? '' : 's'}`
+  const h = Math.floor(min / 60)
+  if (h < 24) return `${h} hour${h === 1 ? '' : 's'}`
+  const d = Math.floor(h / 24)
+  return `${d} day${d === 1 ? '' : 's'}`
 }
 
 /** Plain-language red flags from Jupiter's audit and market stats. */
 export function redFlags(t: JupToken): Flag[] {
   const flags: Flag[] = []
   const a = t.audit ?? {}
+  // A creator who launches token after token is the strongest rug signal: it goes first.
+  const launches = a.devMints ?? 0
+  if (launches >= 5) flags.push({ level: 'high', text: `Its creator has launched ${launches.toLocaleString('en-US')} tokens: a common pattern behind rug pulls` })
+  else if (launches >= 2) flags.push({ level: 'medium', text: `Its creator has launched ${launches} tokens` })
   if (a.mintAuthorityDisabled === false) flags.push({ level: 'high', text: 'Mint is still open: the creator can print more tokens' })
   if (a.freezeAuthorityDisabled === false) flags.push({ level: 'high', text: 'Freeze authority is on: holders’ tokens can be frozen' })
   const top = a.topHoldersPercentage
@@ -97,8 +122,11 @@ export function redFlags(t: JupToken): Flag[] {
   const liq = t.liquidity
   if (liq !== undefined && liq < 10_000) flags.push({ level: 'high', text: `Very low liquidity ($${Math.round(liq).toLocaleString('en-US')}): hard to sell` })
   else if (liq !== undefined && liq < 75_000) flags.push({ level: 'medium', text: `Low liquidity ($${Math.round(liq).toLocaleString('en-US')})` })
-  const age = ageDays(t)
-  if (age !== null && age < 7) flags.push({ level: 'medium', text: `Very new: first pool ${age === 0 ? 'today' : `${age} day${age === 1 ? '' : 's'} ago`}` })
+  const age = ageMs(t)
+  if (age !== null && age < 7 * 86_400_000) flags.push({ level: 'medium', text: `Very new: launched ${ageText(age)} ago` })
+  // Launchpad coins: still on the launch curve means no real market yet, and serial creators rug.
+  if (t.launchpad && !t.graduatedPool) flags.push({ level: 'medium', text: `Still on ${t.launchpad}’s launch curve: not on a real market yet` })
+  if (t.holderCount !== undefined && t.holderCount < 50) flags.push({ level: 'medium', text: `Only ${t.holderCount} holder${t.holderCount === 1 ? '' : 's'}` })
   if (!t.isVerified) flags.push({ level: 'medium', text: 'Not verified on Jupiter' })
   if (t.organicScoreLabel === 'low') flags.push({ level: 'medium', text: 'Trading looks mostly automated, not real people' })
   return flags
@@ -159,6 +187,13 @@ export async function lookupToken(query: string) {
       volume_24h_usd: round(v24, 0),
       change_1h_pct: round(pick.stats1h?.priceChange, 1),
       age_days: ageDays(pick),
+      launched: (() => {
+        const ms = ageMs(pick)
+        return ms === null ? null : `${ageText(ms)} ago`
+      })(),
+      launchpad: pick.launchpad ?? null,
+      left_the_launch_curve: pick.launchpad ? Boolean(pick.graduatedPool) : null,
+      creator_launches: pick.audit?.devMints ?? null,
       organic_trading: pick.organicScoreLabel ?? 'unknown',
       tags: (pick.tags ?? []).slice(0, 6),
       rugcheck: rug

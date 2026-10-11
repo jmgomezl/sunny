@@ -24,7 +24,10 @@ export function extractAddress(input: string): string | null {
   if (isAddress(s)) return s
   // Solscan, Explorer, Birdeye, Jupiter links that carry an address in the path.
   const inPath = s.match(/(?:solscan\.io|explorer\.solana\.com|birdeye\.so|jup\.ag)\/(?:token|account|address|tokens|swap)?\/?(?:[^/]*-)?([1-9A-HJ-NP-Za-km-z]{32,44})/i)
-  return inPath && isAddress(inPath[1]) ? inPath[1] : null
+  if (inPath && isAddress(inPath[1])) return inPath[1]
+  // Memecoin pages (pump.fun/coin/…, gmgn.ai/sol/token/…): the site is real, the coin is what to check.
+  const coin = s.match(/(?:pump\.fun\/(?:coin\/)?|gmgn\.ai\/sol\/token\/(?:[^/]*_)?)([1-9A-HJ-NP-Za-km-z]{32,44})/i)
+  return coin && isAddress(coin[1]) ? coin[1] : null
 }
 
 /** Whether an address is a token's mint or a wallet. */

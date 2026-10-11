@@ -114,3 +114,12 @@ test('no false alarms for builders, and look-alikes work in /check', async () =>
   assert.match(await checkCommand('phаntom.app', 'en'), /Suspicious: phаntom\[\.\]app\nPretends to be Phantom/)
   assert.match(await checkCommand('phаntom.app', 'es'), /Sospechoso: phаntom\[\.\]app\nSe hace pasar por Phantom/)
 })
+
+test('memecoin pages are read as their coin, never as "the official site"', async () => {
+  const { extractAddress } = await import('../src/inspect.js')
+  const mint = 'DzBroQ3WunfC5Q3RphmNkRn4JxmhmmvmebJpTTU1pump'
+  assert.equal(extractAddress(`https://pump.fun/coin/${mint}`), mint)
+  assert.equal(extractAddress(`pump.fun/${mint}`), mint)
+  assert.equal(extractAddress(`https://gmgn.ai/sol/token/${mint}`), mint)
+  assert.equal(extractAddress('https://pump.fun/board'), null)
+})

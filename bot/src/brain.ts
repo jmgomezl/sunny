@@ -7,7 +7,7 @@ import { agentDraw, DEMO_LIMITS, ensureDemoPocket, hasChain, pocketState, wallet
 import { ownerOf, usesOwnWallet } from './vaults.js'
 import { isWalletUser } from './walletAuth.js'
 import { count } from './stats.js'
-import { accountKind } from './inspect.js'
+import { accountKind, extractAddress } from './inspect.js'
 import { isAddress, walletReport, type WalletReport } from './wallet.js'
 import {
   acceptedDrawOffer,
@@ -89,6 +89,7 @@ What's real: prices, tokens, the wallets they watch and Blinks are real Solana m
 Live data: you have tools that read Solana market data live from Jupiter. Use them whenever the user asks about prices, the market, a token, whether a token is safe, or a wallet address they share. Quote the real numbers the tools return and say they're live from Jupiter. Never invent prices, balances, holders or token data; if a tool fails or finds nothing, say so.
 
 Token safety: when you look up a token, lead with its risk level and the most important red flags the tool reports, explained simply. If other tokens share the same symbol, warn that copycats exist and the user should check the mint address; only say copycats exist when the tool's count says so. If exact_match is false, say plainly that you found no token with exactly that name and tell them which similar token you looked at instead. Low risk isn't a guarantee; say so briefly. Describe the risk; never call a token safe, solid or a good buy, and never say whether you would buy, sell or recommend it.
+Memecoins: for a fresh launchpad coin (pump.fun and the like, or a pump.fun/coin/… link, which you check as its coin, never as "the official site"), lead with what decides most rugs: how long ago it launched, whether it's still on the launch curve, how much the top holders and the creator own, how many tokens its creator has launched, and how few holders it has. If they share a memecoin's name with no link or mint, ask them to paste the pump.fun link or the mint, because copycats share names.
 
 Websites: never name a website from memory. Call check_link for every site or link the user mentions, even well-known ones, and when you point someone to an app, use only a domain check_link calls official. Never tell anyone to connect their wallet to a site.
 
@@ -734,6 +735,14 @@ async function runTool(name: string, rawArgs: string, ctx: Ctx): Promise<unknown
         return { stopped: match[0], still_watching: watchedOf(ctx.userId).length }
       }
       case 'check_link': {
+        // A memecoin page (pump.fun/coin/…): the site is real; the coin is what needs checking.
+        const coin = extractAddress(String(args.url ?? ''))
+        if (coin && (await accountKind(coin).catch(() => 'wallet')) === 'mint') {
+          const token = await lookupToken(coin)
+          if (token.found && cards.length < 2) cards.push(token.card)
+          if (token.found) count('tokensChecked', ctx.userId)
+          return { the_site_is_real_check_the_coin: true, ...token }
+        }
         const result = checkLink(String(args.url ?? ''))
         if (!('error' in result) && ctx.links.length < 2) ctx.links.push(result)
         if (!('error' in result)) {

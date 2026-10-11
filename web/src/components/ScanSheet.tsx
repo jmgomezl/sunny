@@ -174,7 +174,7 @@ export function ScanSheet(props: ScanSheetProps) {
                 <p className="scan-hint">
                   {mode === 'link'
                     ? 'Paste any Solana wallet address. I only read it; I can never spend from it.'
-                    : 'Paste a link, a wallet or a token. In Telegram you can also scan QR codes.'}
+                    : 'Paste a link, a wallet, a token or a pump.fun coin before you buy. In Telegram you can also scan QR codes.'}
                 </p>
               )}
 
@@ -183,7 +183,7 @@ export function ScanSheet(props: ScanSheetProps) {
                   ref={inputRef}
                   value={draft}
                   onChange={(e) => setDraft(e.target.value.slice(0, 2000))}
-                  placeholder={mode === 'link' ? 'Paste a wallet address' : 'Paste a wallet, token or link'}
+                  placeholder={mode === 'link' ? 'Paste a wallet address' : 'Paste a wallet, token, link or pump.fun coin'}
                   aria-label="Address, token or link"
                   enterKeyHint="go"
                   autoComplete="off"

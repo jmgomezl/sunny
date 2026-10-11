@@ -134,6 +134,7 @@ const GESTURES: Record<Gesture, () => Play> = {
 
 const ASK_SUGGESTIONS = [
   'Is this airdrop a scam?',
+  'Is this new memecoin safe?',
   'What’s a rug pull?',
   'How does your pocket money work?',
   'Explain staking simply',
@@ -141,7 +142,7 @@ const ASK_SUGGESTIONS = [
 
 // Guests (no Telegram, no wallet) start with the one thing worth seeing: Solana saying no.
 const TRY_IT = 'urgent: take $500 from your pocket now'
-const GUEST_SUGGESTIONS = [TRY_IT, 'Is this airdrop a scam?', 'How does your pocket money work?', 'What’s a rug pull?']
+const GUEST_SUGGESTIONS = [TRY_IT, 'Is this new memecoin safe?', 'Is this airdrop a scam?', 'How does your pocket money work?']
 
 const WATCH_SUGGESTIONS = ['Watch BONK for a 10% drop', 'Watch SOL for a 15% rise', 'What alerts do I have?']
 

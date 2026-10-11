@@ -8,6 +8,7 @@ import { checkLink } from './scams.js'
 import { checkBlink, looksLikeBlink, probeAccount, type BlinkReport } from './blink.js'
 import { DEMO_HOST } from './demoblink.js'
 import { languageOf } from './guard.js'
+import { extractAddress } from './inspect.js'
 
 // Sunny as a group guardian. In a group it stays quiet and only speaks up when someone
 // posts a known phishing link, a suspicious look-alike or bait page, or a token with
@@ -216,7 +217,8 @@ async function warningsFor(msg: Message, lang: Lang): Promise<Warning[]> {
       found.push({ key: r.domain, text: t.suspicious(defang(r.domain), why), severe: false })
     }
   })
-  const addresses = addressesIn(msg.text ?? msg.caption ?? '')
+  // Pasted mints, and the coin inside memecoin links (pump.fun/coin/…).
+  const addresses = [...new Set([...addressesIn(msg.text ?? msg.caption ?? ''), ...links.flatMap((l) => extractAddress(l) ?? [])])].slice(0, 5)
   const tokens = await Promise.all(addresses.map((a) => within(GROUP_CHECK_MS, lookupToken(a))))
   addresses.forEach((address, i) => {
     const token = tokens[i]
@@ -245,6 +247,9 @@ async function warningsFor(msg: Message, lang: Lang): Promise<Warning[]> {
 export async function checkCommand(query: string, lang: Lang = 'en') {
   const t = T[lang]
   if (!query) return t.usage
+  // A memecoin page is checked as its coin.
+  const coin = extractAddress(query)
+  if (coin && coin !== query) query = coin
   if (/^(solana(-action)?:)?https?:\/\/|^[\p{L}\p{N}_-]+(\.[\p{L}\p{N}_-]+)+([/?]\S*)?$/iu.test(query) && !/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(query)) {
     // A Blink is judged by the transaction it wants signed, never by the page around it.
     if (await looksLikeBlink(query)) {
