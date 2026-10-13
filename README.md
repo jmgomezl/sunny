@@ -21,7 +21,9 @@
 </p>
 
 <p align="center">
-  <b><a href="docs/media/sunny-tour.mp4">▶ Watch the 2-minute tour</a></b> ·
+  <b><a href="https://youtu.be/lMAXYKjTIxA">▶ Demo video</a></b> ·
+  <b><a href="https://youtu.be/4OHH8HRr2kU">▶ Pitch video</a></b> ·
+  <a href="docs/media/sunny-tour.mp4">2-minute tour</a> ·
   <b><a href="https://t.me/SunnySolBot">Try it in Telegram</a></b> ·
   <b><a href="https://sunny.aivylabs.xyz/?demo">Web preview, no login</a></b> ·
   <b><a href="https://sunny.aivylabs.xyz/stats/">Live numbers</a></b> ·
@@ -37,6 +39,7 @@
 | | What Sunny does | See it | Proof |
 |---|---|---|---|
 | **Checks your chat** | Paste or scan a link, token or wallet: MetaMask's and Phantom's phishing lists, Solana look-alikes, token risk from Jupiter and RugCheck, token approvals. | [GIF](docs/media/scam-caught.gif) | |
+| **Reads brand-new memecoins** | Paste a pump.fun or gmgn.ai coin link: Sunny reads it as its mint and checks what matters for a rug: how many minutes old it is, whether it's still on the launch curve, how few hold it, and how many coins its creator launched before. | [demo video, 0:31](https://youtu.be/lMAXYKjTIxA?t=31) | |
 | **"Should I sign this?"** | Paste a Blink: Sunny reads every instruction it would have you sign, then simulates it on mainnet against your wallet. | [GIF](#should-i-sign-this) | [demo drainer Blink](https://sunny.aivylabs.xyz/api/blinks/free-airdrop) |
 | **Guards your groups** | One tap to add. It stays quiet until someone posts a phishing link, drainer Blink or risky token, then warns in Spanish or English. No AI runs in groups, so nobody can steer it. | | [add to a group](https://t.me/SunnySolBot?startgroup=guard) |
 | **Spends only inside on-chain limits** | Feed Sunny a coin to open its pocket, a vault the program controls. Its key draws only within your per-payment and daily limits, only into its own wallet, never while frozen. Freeze it or take it all back anytime. | [GIF](#feed-sunny) · [GIF](#solana-says-no) | [open + fund tx](https://solscan.io/tx/3dcahHAPBweY3LHP1rczy7G63UMQ5WTw1hxZ4i4jp1Bdrh51kVTfBzJkXkB3HyBSfZNZ1K91mw2SYGxhEBNMUAKS?cluster=devnet) · [$2 draw tx](https://solscan.io/tx/66o1vXgqhANnNPb5dkLAKNrjyxyQE4VjdB6Qbez1vfHR62SLijPYnrwJff34xguS1WAVtu1ZdCYEBB389vd5EYHA?cluster=devnet) · [$7 refused tx](https://solscan.io/tx/2WSVAKYFEYBVmRuJdCvNVP46hiHRFxNFRBA6vTuPTkfHPmVpvXUYqiybF7wpcPfA4d4B5N7PSbWpLbZsH1Eysjao?cluster=devnet) |
